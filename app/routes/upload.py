@@ -1,4 +1,5 @@
 import os
+import io
 from datetime import date
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_required, current_user
@@ -15,13 +16,13 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def _parse_and_store_stats(filepath, filename):
-    """Parse player stats from Excel and store as cumulative daily data."""
+def _parse_and_store_stats_from_bytes(file_bytes, filename):
+    """Parse player stats from Excel bytes and store as cumulative daily data."""
     import pandas as pd
     from app.models import db, DailyUpload, DailyPlayerStats
 
     try:
-        sheets = pd.read_excel(filepath, sheet_name=None, header=None)
+        sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, header=None)
     except Exception:
         return 0
 
@@ -31,7 +32,7 @@ def _parse_and_store_stats(filepath, filename):
     df = sheets['Union Member Statistics']
     upload = DailyUpload(filename=filename, upload_date=date.today())
     db.session.add(upload)
-    db.session.flush()  # get upload.id
+    db.session.flush()
 
     count = 0
     current_club = ''
@@ -86,31 +87,39 @@ def index():
             flash('סוג קובץ לא נתמך. נא להעלות קובץ .xlsx או .xls', 'danger')
             return redirect(request.url)
 
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(filepath)
+        file_bytes = file.read()
 
-        session['uploaded_file'] = filepath
-        # Set as active file for structure/hierarchy
-        with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
-            f.write(filepath)
-        from app.union_data import set_excel_path
-        set_excel_path(filepath)
+        # Try to save locally (works on local dev, fails silently on Vercel)
+        try:
+            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            with open(filepath, 'wb') as f:
+                f.write(file_bytes)
+            session['uploaded_file'] = filepath
+            with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+                f.write(filepath)
+            from app.union_data import set_excel_path
+            set_excel_path(filepath)
+        except Exception:
+            pass  # On Vercel - no filesystem, that's OK
 
-        # Parse and store cumulative stats
-        player_count = _parse_and_store_stats(filepath, filename)
+        # Parse and store cumulative stats (works everywhere - saves to DB)
+        player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
 
         flash(f'הקובץ "{filename}" הועלה — {player_count} שחקנים נוספו למצטבר.', 'success')
-        return redirect(url_for('upload.preview'))
+        return redirect(url_for('upload.index'))
 
     uploaded = session.get('uploaded_file')
     active_file = None
-    if os.path.exists(ACTIVE_FILE_PATH):
-        with open(ACTIVE_FILE_PATH, 'r', encoding='utf-8') as f:
-            active_path = f.read().strip()
-        if active_path and os.path.exists(active_path):
-            active_file = os.path.basename(active_path)
+    try:
+        if os.path.exists(ACTIVE_FILE_PATH):
+            with open(ACTIVE_FILE_PATH, 'r', encoding='utf-8') as f:
+                active_path = f.read().strip()
+            if active_path and os.path.exists(active_path):
+                active_file = os.path.basename(active_path)
+    except Exception:
+        pass
 
     uploads = DailyUpload.query.order_by(DailyUpload.created_at.desc()).all()
     return render_template('upload/index.html',
@@ -123,7 +132,7 @@ def index():
 def preview():
     filepath = session.get('uploaded_file')
     if not filepath or not os.path.exists(filepath):
-        flash('לא נמצא קובץ. העלה קובץ תחילה.', 'warning')
+        flash('תצוגה מקדימה זמינה רק בהרצה מקומית.', 'warning')
         return redirect(url_for('upload.index'))
 
     import pandas as pd
@@ -161,27 +170,26 @@ def reset():
 
     from app.models import db, DailyUpload, DailyPlayerStats
 
-    # Clear cumulative data
+    # Clear cumulative data from DB
     DailyPlayerStats.query.delete()
     DailyUpload.query.delete()
     db.session.commit()
 
-    # Write empty active file
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
-        f.write('')
-
     session.pop('uploaded_file', None)
 
-    from app.union_data import set_excel_path
-    set_excel_path('')
+    # Try to clean local files (works locally, fails silently on Vercel)
+    try:
+        with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write('')
+        from app.union_data import set_excel_path
+        set_excel_path('')
+        if os.path.exists(UPLOAD_FOLDER):
+            for fname in os.listdir(UPLOAD_FOLDER):
+                fpath = os.path.join(UPLOAD_FOLDER, fname)
+                if os.path.isfile(fpath) and fname != '_active.txt':
+                    os.remove(fpath)
+    except Exception:
+        pass
 
-    # Delete uploaded files
-    if os.path.exists(UPLOAD_FOLDER):
-        for fname in os.listdir(UPLOAD_FOLDER):
-            fpath = os.path.join(UPLOAD_FOLDER, fname)
-            if os.path.isfile(fpath) and fname != '_active.txt':
-                os.remove(fpath)
-
-    flash('כל הנתונים המצטברים אופסו. שיוכים, רייקים ומשתמשים נשמרו.', 'success')
+    flash('כל הנתונים המצטברים אופסו.', 'success')
     return redirect(url_for('upload.index'))
