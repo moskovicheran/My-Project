@@ -132,6 +132,15 @@ class ExpenseCharge(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class ActiveExcelData(db.Model):
+    __tablename__ = 'active_excel_data'
+
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(200), nullable=False)
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class DailyUpload(db.Model):
     __tablename__ = 'daily_uploads'
 

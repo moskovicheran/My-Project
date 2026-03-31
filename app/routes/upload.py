@@ -90,7 +90,13 @@ def index():
         filename = secure_filename(file.filename)
         file_bytes = file.read()
 
-        # Try to save locally (works on local dev, fails silently on Vercel)
+        # Save Excel bytes to DB (works on Vercel + local)
+        from app.models import db as _db, ActiveExcelData
+        ActiveExcelData.query.delete()  # keep only latest
+        _db.session.add(ActiveExcelData(filename=filename, file_data=file_bytes))
+        _db.session.commit()
+
+        # Also try to save locally (works on local dev, fails silently on Vercel)
         try:
             os.makedirs(UPLOAD_FOLDER, exist_ok=True)
             filepath = os.path.join(UPLOAD_FOLDER, filename)
@@ -102,7 +108,7 @@ def index():
             from app.union_data import set_excel_path
             set_excel_path(filepath)
         except Exception:
-            pass  # On Vercel - no filesystem, that's OK
+            pass
 
         # Parse and store cumulative stats (works everywhere - saves to DB)
         player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
@@ -168,8 +174,10 @@ def reset():
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
-    from app.models import db, DailyUpload, DailyPlayerStats
+    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData
 
+    # Clear all data from DB
+    ActiveExcelData.query.delete()
     # Clear cumulative data from DB
     DailyPlayerStats.query.delete()
     DailyUpload.query.delete()

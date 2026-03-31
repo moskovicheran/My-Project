@@ -93,10 +93,22 @@ def get_all_members():
 
 
 def _read_sheets():
+    import io
+    # Try local file first
     path = get_excel_path()
-    if not path or not os.path.exists(path):
-        return {}
-    return pd.read_excel(path, sheet_name=None, header=None)
+    if path and os.path.exists(path):
+        return pd.read_excel(path, sheet_name=None, header=None)
+
+    # Fallback: read from DB (for Vercel/cloud)
+    try:
+        from app.models import ActiveExcelData
+        active = ActiveExcelData.query.order_by(ActiveExcelData.id.desc()).first()
+        if active and active.file_data:
+            return pd.read_excel(io.BytesIO(active.file_data), sheet_name=None, header=None)
+    except Exception:
+        pass
+
+    return {}
 
 
 def get_union_overview():
