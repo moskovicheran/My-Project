@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}דשבורד - ניהול כספים{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>דשבורד</h1>
+    <a href="{{ url_for('main.add_transaction') }}" class="btn btn-primary">+ הוסף עסקה</a>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card income">
+        <div class="stat-label">סה"כ הכנסות</div>
+        <div class="stat-value">₪{{ "%.2f"|format(total_income) }}</div>
+    </div>
+    <div class="stat-card expense">
+        <div class="stat-label">סה"כ הוצאות</div>
+        <div class="stat-value">₪{{ "%.2f"|format(total_expense) }}</div>
+    </div>
+    <div class="stat-card balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
+        <div class="stat-label">יתרה</div>
+        <div class="stat-value">₪{{ "%.2f"|format(balance) }}</div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h2>עסקאות אחרונות</h2>
+        <a href="{{ url_for('main.transactions') }}" class="btn btn-outline">הכל</a>
+    </div>
+
+    {% if transactions %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>תאריך</th>
+                <th>קטגוריה</th>
+                <th>תיאור</th>
+                <th>סוג</th>
+                <th>סכום</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tx in transactions %}
+            <tr>
+                <td>{{ tx.date.strftime('%d/%m/%Y') }}</td>
+                <td>{{ tx.category }}</td>
+                <td>{{ tx.description or '-' }}</td>
+                <td><span class="badge badge-{{ tx.type }}">{{ 'הכנסה' if tx.type == 'income' else 'הוצאה' }}</span></td>
+                <td class="amount {{ tx.type }}">{% if tx.type == 'expense' %}-{% endif %}₪{{ "%.2f"|format(tx.amount) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>אין עסקאות עדיין.</p>
+        <a href="{{ url_for('main.add_transaction') }}" class="btn btn-primary">הוסף עסקה ראשונה</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

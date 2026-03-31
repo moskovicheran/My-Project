@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Members - Union{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Member Statistics</h1>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}" class="tab">Clubs</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab">Ring Games</a>
+        <a href="{{ url_for('union.mtts') }}" class="tab">MTTs</a>
+        <a href="{{ url_for('union.members') }}" class="tab active">Members</a>
+    </div>
+</div>
+
+<div class="members-grid">
+    <div class="section">
+        <h2 class="section-title winners">Top Winners</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Nickname</th>
+                    <th>Club</th>
+                    <th>Hands</th>
+                    <th>Rake</th>
+                    <th>P&L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in top_winners %}
+                <tr>
+                    <td class="muted">{{ loop.index }}</td>
+                    <td><strong>{{ m.nickname }}</strong></td>
+                    <td class="muted">{{ m.club }}</td>
+                    <td>{{ "{:,}".format(m.hands_total|int) }}</td>
+                    <td>{{ "%.2f"|format(m.rake_total) }}</td>
+                    <td class="amount income">+{{ "%.2f"|format(m.pnl_total) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title losers">Top Losers</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Nickname</th>
+                    <th>Club</th>
+                    <th>Hands</th>
+                    <th>Rake</th>
+                    <th>P&L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in top_losers %}
+                <tr>
+                    <td class="muted">{{ loop.index }}</td>
+                    <td><strong>{{ m.nickname }}</strong></td>
+                    <td class="muted">{{ m.club }}</td>
+                    <td>{{ "{:,}".format(m.hands_total|int) }}</td>
+                    <td>{{ "%.2f"|format(m.rake_total) }}</td>
+                    <td class="amount expense">{{ "%.2f"|format(m.pnl_total) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

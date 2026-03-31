@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}התחברות - ניהול כספים{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <h1 class="auth-title">💰 ניהול כספים</h1>
+        <h2 class="auth-subtitle">התחברות</h2>
+
+        <form method="POST" action="{{ url_for('auth.login') }}">
+            <div class="form-group">
+                <label for="email">שם משתמש או אימייל</label>
+                <input type="text" id="email" name="email" required placeholder="שם משתמש">
+            </div>
+            <div class="form-group">
+                <label for="password">סיסמה</label>
+                <input type="password" id="password" name="password" required placeholder="••••••">
+            </div>
+            <div class="form-group form-check">
+                <input type="checkbox" id="remember" name="remember">
+                <label for="remember">זכור אותי</label>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">התחבר</button>
+        </form>
+
+        <p class="auth-footer">אין לך חשבון? <a href="{{ url_for('auth.register') }}">הירשם כאן</a></p>
+    </div>
+</div>
+{% endblock %}

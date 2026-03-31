@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}Super Agents - Union{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Super Agents</h1>
+        <p class="subtitle">{{ sa_tables|length }} Super Agents — טבלה לכל אחד עם הסוכנים ושחקניהם</p>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}"   class="tab">Clubs</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab">Ring Games</a>
+        <a href="{{ url_for('union.mtts') }}"       class="tab">MTTs</a>
+        <a href="{{ url_for('union.members') }}"    class="tab">Members</a>
+        <a href="{{ url_for('union.players') }}"    class="tab">Players</a>
+        <a href="{{ url_for('union.agents') }}"     class="tab active">Agents</a>
+    </div>
+</div>
+
+{% for sa in sa_tables %}
+<div class="section sa-table-block">
+
+    {# ── Super Agent header ── #}
+    <div class="sa-table-header">
+        <div class="sa-table-title">
+            <span class="role-badge role-sa">Super Agent</span>
+            <a href="{{ url_for('union.player_detail', player_id=sa.sa_id) }}" class="player-link sa-name">{{ sa.sa_nick }}</a>
+            <span class="muted small">{{ sa.sa_id }}</span>
+            <span class="muted small">@ {{ sa.club }}</span>
+        </div>
+        <div class="sa-summary-chips">
+            <span class="summary-chip {% if sa.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                P&L {% if sa.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa.total_pnl) }}
+            </span>
+            <span class="summary-chip">Rake {{ "%.2f"|format(sa.total_rake) }}</span>
+            <span class="summary-chip">Hands {{ "{:,}".format(sa.total_hands|int) }}</span>
+        </div>
+    </div>
+
+    {# ── Per-Agent sub-tables ── #}
+    {% for ag_id, ag in sa.agents.items() %}
+    <div class="agent-sub-table">
+        <div class="agent-sub-header">
+            <span class="role-badge role-agent">Agent</span>
+            <a href="{{ url_for('union.player_detail', player_id=ag.id) }}" class="player-link">{{ ag.nick }}</a>
+            <span class="muted small">{{ ag.id }}</span>
+            <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
+                {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
+            </span>
+            <span class="summary-chip chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+            <span class="summary-chip chip-sm">H {{ "{:,}".format(ag.total_hands|int) }}</span>
+        </div>
+        <table class="table table-sm agent-members-table">
+            <thead>
+                <tr>
+                    <th>Nickname</th>
+                    <th>Role</th>
+                    <th>Hands</th>
+                    <th>Rake</th>
+                    <th>P&L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in ag.members %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">
+                            {{ m.nickname }}
+                        </a>
+                    </td>
+                    <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
+                    <td>{{ m.hands|int }}</td>
+                    <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                    <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
+                        {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="2"><strong>סה"כ Agent</strong></td>
+                    <td><strong>{{ "{:,}".format(ag.total_hands|int) }}</strong></td>
+                    <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
+                    <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                        <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% endfor %}
+
+    {# ── Direct members (no agent) ── #}
+    {% if sa.direct %}
+    <div class="agent-sub-table">
+        <div class="agent-sub-header">
+            <span class="muted small">ישיר תחת Super Agent</span>
+        </div>
+        <table class="table table-sm agent-members-table">
+            <thead>
+                <tr>
+                    <th>Nickname</th>
+                    <th>Role</th>
+                    <th>Hands</th>
+                    <th>Rake</th>
+                    <th>P&L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in sa.direct %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">
+                            {{ m.nickname }}
+                        </a>
+                    </td>
+                    <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
+                    <td>{{ m.hands|int }}</td>
+                    <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                    <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
+                        {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+</div>
+{% endfor %}
+{% endblock %}

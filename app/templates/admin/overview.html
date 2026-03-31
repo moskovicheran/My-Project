@@ -1,0 +1,72 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}סקירה - לוח בקרה{% endblock %}
+
+{% block content %}
+<div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">מועדונים</div>
+        <div class="stat-value">{{ clubs|length }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">שחקנים פעילים</div>
+        <div class="stat-value">{{ total.active_players }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">סשנים</div>
+        <div class="stat-value">{{ tables_count }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">סה"כ רייק</div>
+        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">רווח / הפסד</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+    </div>
+</div>
+
+<div class="stats-grid stats-3">
+    <div class="stat-card">
+        <div class="stat-label">Total Hands</div>
+        <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Fee (Union)</div>
+        <div class="stat-value">{{ "%.2f"|format(total.total_fee) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">תקופה</div>
+        <div class="stat-value small-val">{{ meta.period }}</div>
+    </div>
+</div>
+
+<div class="section" style="margin-top:1.5rem;">
+    <h2 class="section-title">מועדונים פעילים</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>מועדון</th>
+                <th>שחקנים</th>
+                <th>Hands</th>
+                <th>Fee</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for club in clubs %}
+            {% if club.total_hands > 0 %}
+            <tr>
+                <td><strong>{{ club.club_name }}</strong></td>
+                <td>{{ club.active_players }}</td>
+                <td>{{ "{:,}".format(club.total_hands|int) }}</td>
+                <td>{{ "%.2f"|format(club.total_fee) }}</td>
+                <td class="amount {% if club.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if club.pnl > 0 %}+{% endif %}{{ "%.2f"|format(club.pnl) }}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

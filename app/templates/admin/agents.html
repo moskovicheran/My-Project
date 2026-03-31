@@ -1,0 +1,290 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}שיוך סוכנים - לוח בקרה{% endblock %}
+
+{% block content %}
+
+{# ═══════ Section 1: SA → SA Hierarchy ═══════ #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">שיוך Super Agent → Super Agent</h2>
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <input type="hidden" name="action" value="add_hierarchy">
+        <div style="flex:1; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">SA ראשי (אב)</label>
+            <select name="parent_sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר...</option>
+                {% for sa in all_sa %}
+                <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="font-size:1.3rem; color:#888; padding-bottom:0.3rem;">←</div>
+        <div style="flex:1; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">SA משויך (בן)</label>
+            <select name="child_sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר...</option>
+                {% for sa in all_sa %}
+                <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">שייך</button>
+    </form>
+
+    {% if hierarchy_links %}
+    <table class="table table-sm">
+        <thead><tr><th>SA ראשי</th><th></th><th>SA משויך</th><th></th></tr></thead>
+        <tbody>
+            {% for link in hierarchy_links %}
+            <tr>
+                <td><strong>{{ link.parent_nick }}</strong> <span class="muted small">{{ link.parent_id }}</span></td>
+                <td style="text-align:center; color:#888;">←</td>
+                <td><strong>{{ link.child_nick }}</strong> <span class="muted small">{{ link.child_id }}</span></td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך?');">
+                        <input type="hidden" name="action" value="delete_hierarchy">
+                        <input type="hidden" name="link_id" value="{{ link.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">אין שיוכי SA → SA.</p>
+    {% endif %}
+</div>
+
+{# ═══════ Section 2: SA Config (Club + Rake %) ═══════ #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">הגדרת SA — מועדון + אחוז רייק</h2>
+
+    {# Add/update config #}
+    <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+        {# Set Club #}
+        <form method="POST" style="display:flex; align-items:flex-end; gap:0.5rem; flex:1; min-width:300px;">
+            <input type="hidden" name="action" value="set_club">
+            <div style="flex:1;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Super Agent</label>
+                <select name="sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                    <option value="">בחר SA...</option>
+                    {% for sa in all_sa %}
+                    <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">מועדון</label>
+                <select name="club_id" style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                    <option value="">ללא מועדון</option>
+                    {% for c in all_clubs %}
+                    <option value="{{ c.club_id }}">{{ c.name }} ({{ c.club_id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">שייך מועדון</button>
+        </form>
+
+        {# Set Rake % #}
+        <form method="POST" style="display:flex; align-items:flex-end; gap:0.5rem; flex:1; min-width:300px;">
+            <input type="hidden" name="action" value="set_rake">
+            <div style="flex:1;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Super Agent</label>
+                <select name="sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                    <option value="">בחר SA...</option>
+                    {% for sa in all_sa %}
+                    <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="min-width:100px;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק %</label>
+                <input type="number" name="rake_percent" step="0.1" min="0" max="100" placeholder="50"
+                       style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">עדכן רייק</button>
+        </form>
+    </div>
+
+    {# Configs table #}
+    {% if configs %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Super Agent</th>
+                <th>מועדון משויך</th>
+                <th>אחוז רייק</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cfg in configs %}
+            <tr>
+                <td><strong>{{ cfg.sa_nick }}</strong> <span class="muted small">{{ cfg.sa_id }}</span></td>
+                <td>{{ cfg.managed_club_name or '-' }}</td>
+                <td><strong>{{ cfg.rake_percent }}%</strong></td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק הגדרה?');">
+                        <input type="hidden" name="action" value="delete_config">
+                        <input type="hidden" name="config_id" value="{{ cfg.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">אין הגדרות SA עדיין.</p>
+    {% endif %}
+</div>
+
+{# ═══════ Section 3: Rake Config (Clubs / Agents / Players) ═══════ #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">הגדרת רייק — מועדונים / סוכנים / שחקנים</h2>
+
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <input type="hidden" name="action" value="add_rake_config">
+
+        <div style="min-width:120px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סוג</label>
+            <select name="entity_type" id="rake-entity-type" required onchange="switchRakeEntity(this.value)"
+                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="club">מועדון</option>
+                <option value="agent">סוכן (SA)</option>
+                <option value="player">שחקן</option>
+            </select>
+        </div>
+
+        <div style="flex:2; min-width:220px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">בחר</label>
+            <select name="entity_key" id="rake-select-club" required
+                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר מועדון...</option>
+                {% for c in all_clubs %}
+                <option value="{{ c.club_id }}|{{ c.name }}">{{ c.name }} ({{ c.club_id }})</option>
+                {% endfor %}
+            </select>
+            <select name="entity_key" id="rake-select-agent" disabled
+                    style="display:none; width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר סוכן...</option>
+                {% for sa in all_sa %}
+                <option value="{{ sa.id }}|{{ sa.nick }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
+                {% endfor %}
+            </select>
+            <select name="entity_key" id="rake-select-player" disabled
+                    style="display:none; width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר שחקן...</option>
+                {% for m in all_members %}
+                <option value="{{ m.player_id }}|{{ m.nickname }}">{{ m.nickname }} ({{ m.player_id }}) - {{ m.club }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="min-width:100px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק %</label>
+            <input type="number" name="rake_percent" step="0.1" min="0" max="100" required placeholder="50"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+
+        <button type="submit" class="btn btn-primary">הגדר רייק</button>
+    </form>
+
+    {% if rake_configs %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>סוג</th>
+                <th>שם</th>
+                <th>ID</th>
+                <th>אחוז רייק</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rc in rake_configs %}
+            <tr>
+                <td>
+                    <span class="role-badge {% if rc.entity_type == 'club' %}role-sa{% elif rc.entity_type == 'agent' %}role-agent{% else %}role-player{% endif %}">
+                        {{ {'club': 'מועדון', 'agent': 'סוכן', 'player': 'שחקן'}[rc.entity_type] }}
+                    </span>
+                </td>
+                <td><strong>{{ rc.entity_name }}</strong></td>
+                <td class="muted">{{ rc.entity_id }}</td>
+                <td><strong>{{ rc.rake_percent }}%</strong></td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק הגדרת רייק?');">
+                        <input type="hidden" name="action" value="delete_rake_config">
+                        <input type="hidden" name="rc_id" value="{{ rc.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">אין הגדרות רייק עדיין.</p>
+    {% endif %}
+</div>
+
+<script>
+function switchRakeEntity(type) {
+    var club = document.getElementById('rake-select-club');
+    var agent = document.getElementById('rake-select-agent');
+    var player = document.getElementById('rake-select-player');
+    club.style.display = type === 'club' ? '' : 'none';
+    club.disabled = type !== 'club';
+    agent.style.display = type === 'agent' ? '' : 'none';
+    agent.disabled = type !== 'agent';
+    player.style.display = type === 'player' ? '' : 'none';
+    player.disabled = type !== 'player';
+}
+</script>
+
+{# ═══════ Section 4: SA Balance Summary ═══════ #}
+<div class="section">
+    <h2 class="section-title">מאזן Super Agents</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Super Agent</th>
+                <th>מועדון</th>
+                <th>Hands</th>
+                <th>רייק כולל</th>
+                <th>אחוז</th>
+                <th>רייק נטו</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sa in all_sa %}
+            {% set stats = sa_stats.get(sa.id, {}) %}
+            {% set total_rake = stats.get('total_rake', 0) %}
+            {% set total_pnl = stats.get('total_pnl', 0) %}
+            {% set total_hands = stats.get('total_hands', 0) %}
+            {% set cfg = None %}
+            {% for c in configs if c.sa_id == sa.id %}{% set cfg = c %}{% endfor %}
+            {% set pct = cfg.rake_percent if cfg else 0 %}
+            {% set net_rake = (total_rake * pct / 100)|round(2) %}
+            {% if total_hands > 0 %}
+            <tr>
+                <td><strong>{{ sa.nick }}</strong> <span class="muted small">{{ sa.id }}</span></td>
+                <td class="muted">{{ sa.club }}</td>
+                <td>{{ "{:,}".format(total_hands|int) }}</td>
+                <td class="amount income">{{ "%.2f"|format(total_rake) }}</td>
+                <td>{% if pct > 0 %}<strong>{{ pct }}%</strong>{% else %}<span class="muted">-</span>{% endif %}</td>
+                <td class="amount {% if net_rake > 0 %}income{% endif %}">
+                    {% if pct > 0 %}{{ "%.2f"|format(net_rake) }}{% else %}-{% endif %}
+                </td>
+                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

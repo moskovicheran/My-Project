@@ -1,0 +1,114 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}הוצאות שוטפות - לוח בקרה{% endblock %}
+
+{% block content %}
+
+{# ── Add expense form ── #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">הוסף הוצאה</h2>
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap;">
+        <input type="hidden" name="action" value="add">
+
+        <div style="flex:2; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">תיאור</label>
+            <input type="text" name="description" required placeholder="דוגמא: טורניר חינמי בוקר"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+
+        <div style="min-width:120px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סכום</label>
+            <input type="number" name="amount" required step="0.01" min="0.01" placeholder="0.00"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+
+        <button type="submit" class="btn btn-primary">הוסף הוצאה</button>
+    </form>
+    <p class="muted small" style="margin-top:0.5rem;">
+        בלחיצה על "חייב" ההוצאה תתחלק שווה בשווה בין {{ agents_count }} סוכנים (מנהלים) במערכת
+    </p>
+</div>
+
+{# ── Expenses table ── #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">הוצאות ({{ expenses|length }})</h2>
+    {% if expenses %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>תאריך</th>
+                <th>תיאור</th>
+                <th>סכום</th>
+                <th>לכל סוכן</th>
+                <th>סטטוס</th>
+                <th>פעולות</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in expenses %}
+            <tr>
+                <td class="muted">{{ exp.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                <td><strong>{{ exp.description }}</strong></td>
+                <td class="amount expense">{{ "%.2f"|format(exp.amount) }}</td>
+                <td class="muted">
+                    {% if agents_count > 0 %}{{ "%.2f"|format(exp.amount / agents_count) }}{% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if exp.charged %}
+                    <span class="badge badge-expense">חויב</span>
+                    {% else %}
+                    <span class="badge badge-income">ממתין</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not exp.charged %}
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('לחייב את כל הסוכנים?');">
+                        <input type="hidden" name="action" value="charge">
+                        <input type="hidden" name="expense_id" value="{{ exp.id }}">
+                        <button type="submit" class="btn btn-primary btn-sm">חייב</button>
+                    </form>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק?');">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="expense_id" value="{{ exp.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                    {% else %}
+                    <span class="muted small">{{ exp.charges|length }} חויבו</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>אין הוצאות עדיין.</p></div>
+    {% endif %}
+</div>
+
+{# ── Charge history ── #}
+{% if charges %}
+<div class="section">
+    <h2 class="section-title">היסטוריית חיובים</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>תאריך</th>
+                <th>סוכן</th>
+                <th>הוצאה</th>
+                <th>סכום חיוב</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in charges %}
+            <tr>
+                <td class="muted">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                <td><strong>{{ c.agent_name }}</strong> <span class="muted small">{{ c.agent_player_id }}</span></td>
+                <td>{{ c.expense.description }}</td>
+                <td class="amount expense">{{ "%.2f"|format(c.charge_amount) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}

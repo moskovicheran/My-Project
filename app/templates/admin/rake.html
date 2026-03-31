@@ -1,0 +1,56 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}ניהול רייק - לוח בקרה{% endblock %}
+
+{% block content %}
+<div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">מועדונים עם רייק</div>
+        <div class="stat-value">{{ club_rake|length }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">סה"כ רייק</div>
+        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">רווח / הפסד</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">רייק לפי מועדון</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>מועדון</th>
+                <th>סשנים</th>
+                <th>Hands</th>
+                <th>Rake</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for club_name, data in club_rake.items()|sort(attribute='1.rake', reverse=true) %}
+            <tr>
+                <td><strong>{{ club_name }}</strong></td>
+                <td>{{ data.sessions }}</td>
+                <td>{{ "{:,}".format(data.hands) }}</td>
+                <td class="amount income">{{ "%.2f"|format(data.rake) }}</td>
+                <td class="amount {% if data.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if data.pnl > 0 %}+{% endif %}{{ "%.2f"|format(data.pnl) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="3"><strong>סה"כ</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(total_rake) }}</strong></td>
+                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endblock %}

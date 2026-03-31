@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}תצוגה מקדימה - {{ filename }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>📄 {{ filename }}</h1>
+        <p class="subtitle">{{ sheets|length }} גיליונות</p>
+    </div>
+    <a href="{{ url_for('upload.index') }}" class="btn btn-outline">העלה קובץ אחר</a>
+</div>
+
+{% for sheet in sheets %}
+<div class="section sheet-section">
+    <div class="sheet-header">
+        <h2 class="section-title">{{ sheet.name }}</h2>
+        <span class="sheet-meta">{{ sheet.rows }} שורות × {{ sheet.cols }} עמודות</span>
+    </div>
+
+    <div class="table-scroll">
+        <table class="table table-sm preview-table">
+            <thead>
+                <tr>
+                    <th class="row-num">#</th>
+                    {% for j in range(sheet.cols) %}
+                    <th>{{ j }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for i, row in sheet.preview|enumerate %}
+                <tr>
+                    <td class="row-num muted">{{ i }}</td>
+                    {% for cell in row %}
+                    <td>{{ cell }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if sheet.rows > 8 %}
+    <p class="muted preview-note">מוצגות 8 שורות ראשונות מתוך {{ sheet.rows }}</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

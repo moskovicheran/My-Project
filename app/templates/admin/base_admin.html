@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}לוח בקרה{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body style="background:#eef1f5;">
+
+{# ── Admin Header ── #}
+<div class="admin-header">
+    <div class="admin-header-top">
+        <h1 class="admin-title">לוח בקרה — ניהול</h1>
+        <div class="admin-header-actions">
+            <a href="{{ url_for('main.dashboard') }}" class="admin-btn">חזרה לדשבורד</a>
+            <a href="{{ url_for('auth.logout') }}" class="admin-btn admin-btn-outline">התנתק</a>
+        </div>
+    </div>
+
+    <div class="admin-tabs">
+        <a href="{{ url_for('admin.overview') }}" class="admin-tab {% if request.endpoint == 'admin.overview' %}active{% endif %}">סקירה</a>
+        <a href="{{ url_for('admin.transfers') }}" class="admin-tab {% if request.endpoint == 'admin.transfers' %}active{% endif %}">העברת כספים</a>
+        <a href="{{ url_for('admin.expenses') }}" class="admin-tab {% if request.endpoint == 'admin.expenses' %}active{% endif %}">הוצאות שוטפות</a>
+        <a href="{{ url_for('admin.notes') }}" class="admin-tab {% if request.endpoint == 'admin.notes' %}active{% endif %}">הערות</a>
+        <a href="{{ url_for('admin.upload') }}" class="admin-tab">העלאת קובץ יומי</a>
+        <a href="{{ url_for('admin.users') }}" class="admin-tab">משתמשים וסיסמאות</a>
+        <a href="{{ url_for('admin.rake') }}" class="admin-tab {% if request.endpoint == 'admin.rake' %}active{% endif %}">ניהול רייק</a>
+        <a href="{{ url_for('admin.agents') }}" class="admin-tab {% if request.endpoint == 'admin.agents' %}active{% endif %}">שיוך סוכנים</a>
+        <a href="{{ url_for('admin.clubs') }}" class="admin-tab {% if request.endpoint == 'admin.clubs' %}active{% endif %}">ניהול מועדונים</a>
+        <a href="{{ url_for('admin.lost_players') }}" class="admin-tab {% if request.endpoint == 'admin.lost_players' %}active{% endif %}">שחקנים אבודים</a>
+    </div>
+</div>
+
+{# ── Content ── #}
+<main class="admin-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

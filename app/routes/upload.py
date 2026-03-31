@@ -1,0 +1,187 @@
+import os
+from datetime import date
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
+
+upload_bp = Blueprint('upload', __name__, url_prefix='/upload')
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+ACTIVE_FILE_PATH = os.path.join(UPLOAD_FOLDER, '_active.txt')
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _parse_and_store_stats(filepath, filename):
+    """Parse player stats from Excel and store as cumulative daily data."""
+    import pandas as pd
+    from app.models import db, DailyUpload, DailyPlayerStats
+
+    try:
+        sheets = pd.read_excel(filepath, sheet_name=None, header=None)
+    except Exception:
+        return 0
+
+    if 'Union Member Statistics' not in sheets:
+        return 0
+
+    df = sheets['Union Member Statistics']
+    upload = DailyUpload(filename=filename, upload_date=date.today())
+    db.session.add(upload)
+    db.session.flush()  # get upload.id
+
+    count = 0
+    current_club = ''
+    for i in range(6, len(df)):
+        row = df.iloc[i]
+        if '(ID:' in str(row.iloc[0]):
+            current_club = str(row.iloc[0]).split(' (ID:')[0]
+        nickname = str(row.iloc[9])
+        if nickname in ('nan', '-'):
+            continue
+        player_id = str(row.iloc[8])
+        try:
+            pnl = float(row.iloc[37]) if str(row.iloc[37]) != 'nan' else 0
+        except (ValueError, TypeError):
+            pnl = 0
+        try:
+            rake = float(row.iloc[64]) if str(row.iloc[64]) != 'nan' else 0
+        except (ValueError, TypeError):
+            rake = 0
+        try:
+            hands = float(row.iloc[151]) if str(row.iloc[151]) != 'nan' else 0
+        except (ValueError, TypeError):
+            hands = 0
+
+        stat = DailyPlayerStats(upload_id=upload.id, player_id=player_id,
+                                nickname=nickname, club=current_club,
+                                pnl=round(pnl, 2), rake=round(rake, 2),
+                                hands=round(hands, 0))
+        db.session.add(stat)
+        count += 1
+
+    db.session.commit()
+    return count
+
+
+@upload_bp.route('/', methods=['GET', 'POST'])
+@login_required
+def index():
+    from app.models import DailyUpload
+
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('לא נבחר קובץ.', 'danger')
+            return redirect(request.url)
+
+        file = request.files['file']
+        if file.filename == '':
+            flash('לא נבחר קובץ.', 'danger')
+            return redirect(request.url)
+
+        if not allowed_file(file.filename):
+            flash('סוג קובץ לא נתמך. נא להעלות קובץ .xlsx או .xls', 'danger')
+            return redirect(request.url)
+
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        session['uploaded_file'] = filepath
+        # Set as active file for structure/hierarchy
+        with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write(filepath)
+        from app.union_data import set_excel_path
+        set_excel_path(filepath)
+
+        # Parse and store cumulative stats
+        player_count = _parse_and_store_stats(filepath, filename)
+
+        flash(f'הקובץ "{filename}" הועלה — {player_count} שחקנים נוספו למצטבר.', 'success')
+        return redirect(url_for('upload.preview'))
+
+    uploaded = session.get('uploaded_file')
+    active_file = None
+    if os.path.exists(ACTIVE_FILE_PATH):
+        with open(ACTIVE_FILE_PATH, 'r', encoding='utf-8') as f:
+            active_path = f.read().strip()
+        if active_path and os.path.exists(active_path):
+            active_file = os.path.basename(active_path)
+
+    uploads = DailyUpload.query.order_by(DailyUpload.created_at.desc()).all()
+    return render_template('upload/index.html',
+                           current_file=os.path.basename(uploaded) if uploaded else None,
+                           active_file=active_file, uploads=uploads)
+
+
+@upload_bp.route('/preview')
+@login_required
+def preview():
+    filepath = session.get('uploaded_file')
+    if not filepath or not os.path.exists(filepath):
+        flash('לא נמצא קובץ. העלה קובץ תחילה.', 'warning')
+        return redirect(url_for('upload.index'))
+
+    import pandas as pd
+    sheets_info = []
+    try:
+        all_sheets = pd.read_excel(filepath, sheet_name=None, header=None)
+        for name, df in all_sheets.items():
+            preview_rows = []
+            for i, row in df.iterrows():
+                cols = [str(v) if str(v) != 'nan' else '' for v in row]
+                preview_rows.append(cols)
+                if i >= 7:
+                    break
+            sheets_info.append({
+                'name': name,
+                'rows': df.shape[0],
+                'cols': df.shape[1],
+                'preview': preview_rows,
+            })
+    except Exception as e:
+        flash(f'שגיאה בקריאת הקובץ: {e}', 'danger')
+        return redirect(url_for('upload.index'))
+
+    return render_template('upload/preview.html',
+                           filename=os.path.basename(filepath),
+                           sheets=sheets_info)
+
+
+@upload_bp.route('/reset', methods=['POST'])
+@login_required
+def reset():
+    if not hasattr(current_user, 'role') or current_user.role != 'admin':
+        flash('אין הרשאה.', 'danger')
+        return redirect(url_for('upload.index'))
+
+    from app.models import db, DailyUpload, DailyPlayerStats
+
+    # Clear cumulative data
+    DailyPlayerStats.query.delete()
+    DailyUpload.query.delete()
+    db.session.commit()
+
+    # Write empty active file
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+        f.write('')
+
+    session.pop('uploaded_file', None)
+
+    from app.union_data import set_excel_path
+    set_excel_path('')
+
+    # Delete uploaded files
+    if os.path.exists(UPLOAD_FOLDER):
+        for fname in os.listdir(UPLOAD_FOLDER):
+            fpath = os.path.join(UPLOAD_FOLDER, fname)
+            if os.path.isfile(fpath) and fname != '_active.txt':
+                os.remove(fpath)
+
+    flash('כל הנתונים המצטברים אופסו. שיוכים, רייקים ומשתמשים נשמרו.', 'success')
+    return redirect(url_for('upload.index'))

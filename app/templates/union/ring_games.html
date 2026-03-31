@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}Ring Games - Union{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Ring Games</h1>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}" class="tab">Clubs</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab active">Ring Games</a>
+        <a href="{{ url_for('union.mtts') }}" class="tab">MTTs</a>
+        <a href="{{ url_for('union.members') }}" class="tab">Members</a>
+    </div>
+</div>
+
+<div class="stats-grid stats-3">
+    <div class="stat-card">
+        <div class="stat-label">Tables</div>
+        <div class="stat-value">{{ games|length }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">Total Hands</div>
+        <div class="stat-value">{{ "{:,}".format(totals.hands|int) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Rake</div>
+        <div class="stat-value">{{ "%.2f"|format(totals.rake) }}</div>
+    </div>
+</div>
+
+<div class="section">
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Club</th>
+                <th>Table</th>
+                <th>Game</th>
+                <th>Blinds</th>
+                <th>Creator</th>
+                <th>Players</th>
+                <th>Hands</th>
+                <th>Buy-in</th>
+                <th>Rake</th>
+                <th>Duration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for g in games %}
+            <tr>
+                <td class="muted">{{ g.club_name }}</td>
+                <td><strong>{{ g.table_name }}</strong></td>
+                <td><span class="badge badge-game">{{ g.game_type }}</span></td>
+                <td>{{ g.blinds }}</td>
+                <td>{{ g.creator }}</td>
+                <td>{{ g.players }}</td>
+                <td>{{ "{:,}".format(g.hands|int) }}</td>
+                <td>{{ "%.2f"|format(g.buy_in) }}</td>
+                <td class="amount income">{{ "%.2f"|format(g.rake) }}</td>
+                <td class="muted">{{ g.duration }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="6"><strong>TOTAL</strong></td>
+                <td><strong>{{ "{:,}".format(totals.hands|int) }}</strong></td>
+                <td><strong>{{ "%.2f"|format(totals.buy_in) }}</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(totals.rake) }}</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endblock %}

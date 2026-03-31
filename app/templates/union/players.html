@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}Players - Union{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Players</h1>
+        <p class="subtitle">לחץ על Super Agent לפתיחה, לחץ על Agent לראות שחקנים</p>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}" class="tab">Clubs</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab">Ring Games</a>
+        <a href="{{ url_for('union.mtts') }}" class="tab">MTTs</a>
+        <a href="{{ url_for('union.members') }}" class="tab">Members</a>
+        <a href="{{ url_for('union.players') }}" class="tab active">Players</a>
+    </div>
+</div>
+
+{# ── Macro: render agents + direct members for any SA ── #}
+{% macro render_sa_content(sa, indent_rem) %}
+    {% for agent_id, agent in sa.agents.items() %}
+    <div class="tree-agent-row" onclick="toggleNode(this)" style="cursor:pointer; display:flex; align-items:center; gap:0.6rem; padding:0.55rem {{ indent_rem }}rem; border-bottom:1px solid #eee; user-select:none;">
+        <span class="tree-arrow" style="color:#888; font-size:0.75rem; transition:transform 0.2s;">▶</span>
+        <span class="role-badge role-agent">Agent</span>
+        <strong>{{ agent.nick }}</strong>
+        <span class="muted small">{{ agent.id }}</span>
+    </div>
+    <div class="node-children" style="display:none; background:#fff; padding:0.5rem {{ indent_rem + 1 }}rem 0.75rem;">
+        {% if agent.members %}
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem; padding-top:0.4rem;">
+            {% for m in agent.members %}
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                <span class="chip-name">{{ m.nickname }}</span>
+                <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <span class="muted small">אין שחקנים</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if sa.direct_members %}
+    <div style="padding:0.5rem {{ indent_rem }}rem 0.75rem; border-top:1px dashed #ddd;">
+        <div class="muted small" style="margin-bottom:0.4rem;">שחקנים ישירים תחת Super Agent</div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for m in sa.direct_members %}
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                <span class="chip-name">{{ m.nickname }}</span>
+                <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+{% endmacro %}
+
+{% for club in clubs %}
+<div class="section club-block" style="padding: 0; overflow: hidden;">
+    <div class="club-title" style="padding: 1rem 1.25rem; border-bottom: 1px solid #e8e8e8;">
+        <span class="club-icon">🏠</span>
+        <strong>{{ club.name }}</strong>
+        <span class="muted">(ID: {{ club.club_id }})</span>
+    </div>
+
+    <div style="padding: 0.5rem 0;">
+
+    {% for sa_id, sa in club.super_agents.items() %}
+    {# ── Parent Super Agent row ── #}
+    <div class="tree-sa-row" onclick="toggleNode(this)" style="cursor:pointer; display:flex; align-items:center; gap:0.6rem; padding:0.65rem 1.25rem; border-bottom:1px solid #f0f0f0; user-select:none;">
+        <span class="tree-arrow" style="color:#888; font-size:0.75rem; transition:transform 0.2s;">▶</span>
+        <span class="role-badge role-sa">Super Agent</span>
+        <strong style="font-size:1rem;">{{ sa.nick }}</strong>
+        <span class="muted small">{{ sa.id }}</span>
+    </div>
+
+    <div class="node-children" style="display:none; background:#fafafa; border-bottom:2px solid #e0e0e0;">
+
+        {# ── Child Super Agents nested under parent ── #}
+        {% if sa.child_super_agents is defined %}
+        {% for child_sa_id, child_sa in sa.child_super_agents.items() %}
+        <div class="tree-sa-row" onclick="toggleNode(this)" style="cursor:pointer; display:flex; align-items:center; gap:0.6rem; padding:0.6rem 2rem; border-bottom:1px solid #e8e8e8; user-select:none; background:#f0f3ff;">
+            <span class="tree-arrow" style="color:#888; font-size:0.75rem; transition:transform 0.2s;">▶</span>
+            <span class="role-badge role-sa">Super Agent</span>
+            <strong>{{ child_sa.nick }}</strong>
+            <span class="muted small">{{ child_sa.id }}</span>
+            <span class="muted small" style="margin-right:auto;">(תחת {{ sa.nick }})</span>
+        </div>
+        <div class="node-children" style="display:none; background:#f7f8fc; border-bottom:1px solid #e0e0e0;">
+            {{ render_sa_content(child_sa, 3) }}
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {# ── Parent SA's own agents + direct members ── #}
+        {{ render_sa_content(sa, 2) }}
+
+    </div>
+    {% endfor %}
+
+    {% if club.no_sa_members %}
+    <div style="padding:0.5rem 1.25rem 0.75rem;">
+        <div class="muted small" style="margin-bottom:0.4rem;">ללא Super Agent</div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for m in club.no_sa_members %}
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                <span class="chip-name">{{ m.nickname }}</span>
+                <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    </div>
+</div>
+{% endfor %}
+
+<script>
+function toggleNode(row) {
+    event.stopPropagation();
+    const children = row.nextElementSibling;
+    if (!children || !children.classList.contains('node-children')) return;
+    const arrow = row.querySelector('.tree-arrow');
+    const open = children.style.display !== 'none';
+    children.style.display = open ? 'none' : 'block';
+    arrow.style.transform = open ? '' : 'rotate(90deg)';
+}
+</script>
+{% endblock %}

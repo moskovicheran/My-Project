@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}MTTs - Union{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Tournaments (MTT)</h1>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}" class="tab">Clubs</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab">Ring Games</a>
+        <a href="{{ url_for('union.mtts') }}" class="tab active">MTTs</a>
+        <a href="{{ url_for('union.members') }}" class="tab">Members</a>
+    </div>
+</div>
+
+<div class="stats-grid stats-3">
+    <div class="stat-card">
+        <div class="stat-label">Tournaments</div>
+        <div class="stat-value">{{ mtts|length }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">Total Entries</div>
+        <div class="stat-value">{{ totals.entries }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Prize Pool</div>
+        <div class="stat-value">{{ "%.0f"|format(totals.prize_pool) }}</div>
+    </div>
+</div>
+
+<div class="section">
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Tournament</th>
+                <th>Game</th>
+                <th>Buy-in</th>
+                <th>Fee</th>
+                <th>Re-Entry</th>
+                <th>GTD</th>
+                <th>Entries</th>
+                <th>Prize Pool</th>
+                <th>Start</th>
+                <th>Duration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in mtts %}
+            <tr>
+                <td><strong>{{ t.title }}</strong></td>
+                <td><span class="badge badge-game">{{ t.game_type }}</span></td>
+                <td>{{ t.buyin }}</td>
+                <td>{{ t.fee }}</td>
+                <td class="muted">{{ t.reentry }}</td>
+                <td>{{ "{:,}".format(t.gtd|int) if t.gtd else '-' }}</td>
+                <td>{{ t.entries }}</td>
+                <td class="amount income">{{ "%.2f"|format(t.prize_pool) }}</td>
+                <td class="muted">{{ t.start }}</td>
+                <td class="muted">{{ t.duration }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="7"><strong>TOTAL</strong></td>
+                <td><strong>{{ totals.entries }}</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(totals.prize_pool) }}</strong></td>
+                <td colspan="2"></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endblock %}

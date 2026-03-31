@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ניהול כספים{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <nav class="navbar">
+        <div class="nav-brand">💰 ניהול כספים</div>
+        <div class="nav-links">
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('admin.overview') }}" class="nav-link" style="color:#4cc9f0; font-weight:600;">לוח בקרה</a>
+            {% endif %}
+            <a href="{{ url_for('main.dashboard') }}" class="nav-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}">דשבורד</a>
+            {% if current_user.role == 'agent' %}
+            <a href="{{ url_for('main.agent_transfers') }}" class="nav-link {% if request.endpoint == 'main.agent_transfers' %}active{% endif %}">העברת כספים</a>
+            {% endif %}
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('union.players') }}" class="nav-link {% if request.endpoint in ['union.players', 'union.player_detail', 'union.ring_games', 'union.mtts'] %}active{% endif %}">שחקנים וטבלאות</a>
+            <a href="{{ url_for('main.transactions') }}" class="nav-link {% if request.endpoint in ['main.transactions', 'main.add_transaction'] %}active{% endif %}">עסקאות</a>
+            <a href="{{ url_for('union.overview') }}" class="nav-link {% if request.blueprint == 'union' and request.endpoint not in ['union.players', 'union.player_detail', 'union.ring_games', 'union.mtts'] %}active{% endif %}">Union</a>
+            <a href="{{ url_for('upload.index') }}" class="nav-link {% if request.blueprint == 'upload' %}active{% endif %}">העלאת קובץ</a>
+            {% endif %}
+            <span class="nav-user">שלום, {{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="nav-link logout">התנתק</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

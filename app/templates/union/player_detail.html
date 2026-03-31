@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% block title %}{% if member %}{{ member.nickname }}{% else %}שחקן לא נמצא{% endif %} - Union{% endblock %}
+
+{% block content %}
+{% if not member %}
+<div class="empty-state">
+    <p>שחקן עם ID {{ player_id }} לא נמצא.</p>
+    <a href="{{ url_for('union.players') }}" class="btn btn-outline">חזור לרשימה</a>
+</div>
+{% else %}
+
+<div class="page-header">
+    <div>
+        <h1>{{ member.nickname }}</h1>
+        <p class="subtitle">
+            <span class="role-badge role-{{ member.role|lower|replace(' ', '-') }}">{{ member.role }}</span>
+            &nbsp;{{ member.player_id }}
+            {% if member.country != '-' and member.country != 'nan' %}&nbsp;| {{ member.country }}{% endif %}
+        </p>
+    </div>
+    <a href="{{ url_for('union.players') }}" class="btn btn-outline">← חזור</a>
+</div>
+
+{# ── Per-club breakdown (always shown) ── #}
+{% if club_entries|length > 1 %}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">פירוט לפי קלאב ({{ club_entries|length }} קלאבים)</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>קלאב</th>
+                <th>SA</th>
+                <th>Agent</th>
+                <th>Hands</th>
+                <th>Rake</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in club_entries %}
+            <tr>
+                <td><strong>{{ c.club }}</strong></td>
+                <td class="muted">{{ c.sa_nick if c.sa_nick != '-' else '' }}</td>
+                <td class="muted">{{ c.agent_nick if c.agent_nick != '-' else '' }}</td>
+                <td>{{ "{:,}".format(c.hands_total|int) }}</td>
+                <td class="amount income">{{ "%.2f"|format(c.rake_total) }}</td>
+                <td class="amount {% if c.pnl_total >= 0 %}income{% else %}expense{% endif %}">
+                    {% if c.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(c.pnl_total) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="3"><strong>סה"כ כל הקלאבים</strong></td>
+                <td><strong>{{ "{:,}".format(club_entries | sum(attribute='hands_total') | int) }}</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(club_entries | sum(attribute='rake_total')) }}</strong></td>
+                <td class="amount {% if club_entries | sum(attribute='pnl_total') >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if club_entries | sum(attribute='pnl_total') > 0 %}+{% endif %}{{ "%.2f"|format(club_entries | sum(attribute='pnl_total')) }}</strong>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+{# Single club - show classic stats cards #}
+<div class="stats-grid stats-4">
+    <div class="stat-card">
+        <div class="stat-label">קלאב</div>
+        <div class="stat-value small-val">{{ member.club }}</div>
+    </div>
+    <div class="stat-card {% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+        <div class="stat-label">P&L</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">Rake</div>
+        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Hands</div>
+        <div class="stat-value">{{ "{:,}".format(total_hands|int) }}</div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Ring Game Sessions ── #}
+<div class="section">
+    <h2 class="section-title">Ring Game Sessions ({{ sessions|length }})</h2>
+    {% if sessions %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Table</th>
+                <th>Game</th>
+                <th>Blinds</th>
+                <th>קלאב</th>
+                <th>Buy-in</th>
+                <th>Cashout</th>
+                <th>Hands</th>
+                <th>Rake</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in sessions %}
+            <tr>
+                <td><strong>{{ s.table_name }}</strong></td>
+                <td><span class="badge badge-game">{{ s.game_type }}</span></td>
+                <td>{{ s.blinds }}</td>
+                <td class="muted">{{ s.club_name if s.club_name else s.club }}</td>
+                <td>{{ "%.2f"|format(s.buyin) }}</td>
+                <td>{{ "%.2f"|format(s.cashout) }}</td>
+                <td>{{ s.hands|int }}</td>
+                <td class="amount income">{{ "%.2f"|format(s.rake) }}</td>
+                <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if s.pnl > 0 %}+{% endif %}{{ "%.2f"|format(s.pnl) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="6"><strong>TOTAL</strong></td>
+                <td><strong>{{ "{:,}".format(total_hands|int) }}</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(total_rake) }}</strong></td>
+                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>לא נמצאו משחקי Ring Game לשחקן זה.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

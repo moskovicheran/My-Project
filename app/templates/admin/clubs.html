@@ -1,0 +1,45 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}ניהול מועדונים - לוח בקרה{% endblock %}
+
+{% block content %}
+<div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">מועדונים</div>
+        <div class="stat-value">{{ clubs|length }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">סה"כ רייק</div>
+        <div class="stat-value">{{ "%.2f"|format(grand.rake) }}</div>
+    </div>
+    <div class="stat-card {% if grand.pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">סה"כ P&L</div>
+        <div class="stat-value">{% if grand.pnl > 0 %}+{% endif %}{{ "%.2f"|format(grand.pnl) }}</div>
+    </div>
+</div>
+
+{% for club in clubs %}
+<div class="section" style="margin-bottom:1rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <div>
+            <strong style="font-size:1.1rem;">{{ club.name }}</strong>
+            <span class="muted small">(ID: {{ club.club_id }})</span>
+        </div>
+        <div style="display:flex; gap:0.4rem;">
+            <span class="summary-chip">Rake {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
+            <span class="summary-chip {% if club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                P&L {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
+            </span>
+        </div>
+    </div>
+    <div class="muted small">
+        {{ club.super_agents|length }} Super Agents
+        {% if club.no_sa_members %} | {{ club.no_sa_members|length }} ללא SA{% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<div style="text-align:center; margin-top:1rem;">
+    <a href="{{ url_for('union.sa_hierarchy') }}" class="btn btn-outline">שיוך Super Agents</a>
+    <a href="{{ url_for('union.players') }}" class="btn btn-outline">עץ שחקנים</a>
+</div>
+{% endblock %}

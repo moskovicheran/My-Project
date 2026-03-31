@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}שיוך Super Agents{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>שיוך Super Agents</h1>
+        <p class="subtitle">הגדר איזה Super Agent נמצא תחת Super Agent אחר</p>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}"   class="tab">Clubs</a>
+        <a href="{{ url_for('union.cash') }}"       class="tab">Cash</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab">Ring Games</a>
+        <a href="{{ url_for('union.players') }}"    class="tab">Players</a>
+        <a href="{{ url_for('union.agents') }}"     class="tab">Agents</a>
+        <a href="{{ url_for('union.sa_hierarchy') }}" class="tab active">שיוך SA</a>
+    </div>
+</div>
+
+{# ── Add new link form ── #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">הוסף שיוך חדש</h2>
+    <form method="POST" style="display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
+        <input type="hidden" name="action" value="add">
+
+        <div style="flex:1; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Super Agent ראשי (אב)</label>
+            <select name="parent_sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר Super Agent...</option>
+                {% for sa in all_sa %}
+                <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="font-size:1.5rem; color:#888; padding-top:1.2rem;">&#8592;</div>
+
+        <div style="flex:1; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Super Agent משויך (בן)</label>
+            <select name="child_sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר Super Agent...</option>
+                {% for sa in all_sa %}
+                <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="padding-top:1.2rem;">
+            <button type="submit" class="btn btn-primary">הוסף שיוך</button>
+        </div>
+    </form>
+</div>
+
+{# ── Current links table ── #}
+<div class="section">
+    <h2 class="section-title">שיוכים קיימים ({{ links|length }})</h2>
+
+    {% if links %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Super Agent ראשי (אב)</th>
+                <th></th>
+                <th>Super Agent משויך (בן)</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in links %}
+            <tr>
+                <td>
+                    <strong>{{ link.parent_nick }}</strong>
+                    <span class="muted small">{{ link.parent_id }}</span>
+                    <span class="muted small">{{ link.parent_club }}</span>
+                </td>
+                <td style="text-align:center; color:#888;">&#8592;</td>
+                <td>
+                    <strong>{{ link.child_nick }}</strong>
+                    <span class="muted small">{{ link.child_id }}</span>
+                    <span class="muted small">{{ link.child_club }}</span>
+                </td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך זה?');">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="link_id" value="{{ link.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>אין שיוכים עדיין. השתמש בטופס למעלה כדי להוסיף.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

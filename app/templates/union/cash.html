@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}Cash Games - Union{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Cash Games</h1>
+        <p class="subtitle">{{ tables|length }} סשנים — תוצאות שחקנים</p>
+    </div>
+    <div class="nav-tabs">
+        <a href="{{ url_for('union.overview') }}"   class="tab">Clubs</a>
+        <a href="{{ url_for('union.cash') }}"       class="tab active">Cash</a>
+        <a href="{{ url_for('union.ring_games') }}" class="tab">Ring Games</a>
+        <a href="{{ url_for('union.mtts') }}"       class="tab">MTTs</a>
+        <a href="{{ url_for('union.members') }}"    class="tab">Members</a>
+        <a href="{{ url_for('union.players') }}"    class="tab">Players</a>
+        <a href="{{ url_for('union.agents') }}"     class="tab">Agents</a>
+    </div>
+</div>
+
+<div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">סשנים</div>
+        <div class="stat-value">{{ tables|length }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Hands</div>
+        <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">גבייה (Buy-in)</div>
+        <div class="stat-value">{{ "%.2f"|format(total_buyin) }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">סה"כ רייק</div>
+        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">רווח / הפסד</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+    </div>
+</div>
+
+{% for table in tables %}
+<div class="section cash-session">
+    <div class="cash-session-header">
+        <div class="cash-session-title">
+            <span class="badge badge-game">{{ table.game_type }}</span>
+            <strong>{{ table.table_name }}</strong>
+            <span class="muted small">Blinds: {{ table.blinds }}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            {% set t_rake = table.players | sum(attribute='rake') %}
+            {% set t_pnl = table.players | sum(attribute='pnl') %}
+            {% set t_buyin = table.players | sum(attribute='buyin') %}
+            <span class="summary-chip">גבייה {{ "%.2f"|format(t_buyin) }}</span>
+            <span class="summary-chip chip-win">רייק {{ "%.2f"|format(t_rake) }}</span>
+            <span class="summary-chip {% if t_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                P&L {% if t_pnl > 0 %}+{% endif %}{{ "%.2f"|format(t_pnl) }}
+            </span>
+            <span class="muted small">{{ table.club }}</span>
+        </div>
+    </div>
+
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Nickname</th>
+                <th>Club</th>
+                <th>Buy-in</th>
+                <th>Cashout</th>
+                <th>Hands</th>
+                <th>Rake</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in table.players %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('union.player_detail', player_id=p.player_id) }}" class="player-link">
+                        {{ p.nickname }}
+                    </a>
+                </td>
+                <td class="muted">{{ p.club_name }}</td>
+                <td>{{ "%.2f"|format(p.buyin) }}</td>
+                <td>{{ "%.2f"|format(p.cashout) }}</td>
+                <td>{{ p.hands|int }}</td>
+                <td class="amount income">{{ "%.2f"|format(p.rake) }}</td>
+                <td class="amount {% if p.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if p.pnl > 0 %}+{% endif %}{{ "%.2f"|format(p.pnl) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="5"><strong>סה"כ</strong></td>
+                <td class="amount income">
+                    <strong>{{ "%.2f"|format(table.players | sum(attribute='rake')) }}</strong>
+                </td>
+                <td class="amount">
+                    <strong>{{ "%.2f"|format(table.players | sum(attribute='pnl')) }}</strong>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endfor %}
+{% endblock %}

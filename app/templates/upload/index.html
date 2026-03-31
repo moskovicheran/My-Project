@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}העלאת קובץ{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>העלאת קובץ Excel</h1>
+</div>
+
+<div class="upload-container">
+    <form method="POST" action="{{ url_for('upload.index') }}" enctype="multipart/form-data" id="uploadForm">
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-icon">📂</div>
+            <p class="drop-text">גרור קובץ לכאן או לחץ לבחירה</p>
+            <p class="drop-sub">.xlsx / .xls בלבד</p>
+            <input type="file" name="file" id="fileInput" accept=".xlsx,.xls" hidden>
+        </div>
+
+        {% if current_file %}
+        <div class="current-file">
+            <span class="file-icon">📄</span>
+            <span>קובץ נוכחי: <strong>{{ current_file }}</strong></span>
+            <a href="{{ url_for('upload.preview') }}" class="btn btn-outline btn-sm">צפה בתצוגה מקדימה</a>
+        </div>
+        {% endif %}
+
+        {% if active_file %}
+        <div class="current-file" style="background:#edfaf8; border:1px solid #2ec4b6;">
+            <span class="file-icon">✅</span>
+            <span>קובץ פעיל: <strong>{{ active_file }}</strong></span>
+        </div>
+        {% endif %}
+
+        <div id="selectedFile" class="selected-file" style="display:none;">
+            <span class="file-icon">📄</span>
+            <span id="fileName"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full" id="submitBtn" style="display:none;">
+            העלה קובץ
+        </button>
+    </form>
+</div>
+
+{% if uploads %}
+<div class="section" style="margin-top:1.5rem;">
+    <h2 class="section-title">היסטוריית העלאות ({{ uploads|length }} קבצים — נתונים מצטברים)</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr><th>תאריך</th><th>קובץ</th><th>שחקנים</th></tr>
+        </thead>
+        <tbody>
+            {% for u in uploads %}
+            <tr>
+                <td class="muted">{{ u.upload_date.strftime('%d/%m/%Y') }}</td>
+                <td><strong>{{ u.filename }}</strong></td>
+                <td>{{ u.stats|length }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if current_user.role == 'admin' %}
+<div class="section" style="margin-top:1.5rem; text-align:center; padding:1.5rem;">
+    <p style="color:#666; margin-bottom:0.8rem;">איפוס כל הנתונים המצטברים — שיוכים, רייקים ומשתמשים יישמרו</p>
+    <form method="POST" action="{{ url_for('upload.reset') }}" onsubmit="return confirm('האם לאפס את כל הנתונים המצטברים? שיוכים, הגדרות רייק ומשתמשים יישמרו.');">
+        <button type="submit" class="btn btn-danger">איפוס נתונים מצטברים</button>
+    </form>
+</div>
+{% endif %}
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const submitBtn = document.getElementById('submitBtn');
+const selectedFile = document.getElementById('selectedFile');
+const fileName = document.getElementById('fileName');
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length) {
+        fileInput.files = files;
+        showFile(files[0].name);
+    }
+});
+
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) showFile(fileInput.files[0].name);
+});
+
+function showFile(name) {
+    fileName.textContent = name;
+    selectedFile.style.display = 'flex';
+    submitBtn.style.display = 'block';
+    dropZone.classList.add('has-file');
+}
+</script>
+{% endblock %}

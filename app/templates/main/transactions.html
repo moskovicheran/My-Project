@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}עסקאות - ניהול כספים{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>עסקאות</h1>
+    <a href="{{ url_for('main.add_transaction') }}" class="btn btn-primary">+ הוסף עסקה</a>
+</div>
+
+<div class="filters">
+    <form method="GET" action="{{ url_for('main.transactions') }}" class="filter-form">
+        <select name="type" onchange="this.form.submit()">
+            <option value="" {% if not selected_type %}selected{% endif %}>כל הסוגים</option>
+            <option value="income" {% if selected_type == 'income' %}selected{% endif %}>הכנסות</option>
+            <option value="expense" {% if selected_type == 'expense' %}selected{% endif %}>הוצאות</option>
+        </select>
+        <select name="category" onchange="this.form.submit()">
+            <option value="">כל הקטגוריות</option>
+            {% for cat in income_categories %}
+            <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+            {% for cat in expense_categories %}
+            <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        {% if selected_type or selected_category %}
+        <a href="{{ url_for('main.transactions') }}" class="btn btn-outline">נקה סינון</a>
+        {% endif %}
+    </form>
+</div>
+
+{% if transactions %}
+<table class="table">
+    <thead>
+        <tr>
+            <th>תאריך</th>
+            <th>קטגוריה</th>
+            <th>תיאור</th>
+            <th>סוג</th>
+            <th>סכום</th>
+            <th>פעולות</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for tx in transactions %}
+        <tr>
+            <td>{{ tx.date.strftime('%d/%m/%Y') }}</td>
+            <td>{{ tx.category }}</td>
+            <td>{{ tx.description or '-' }}</td>
+            <td><span class="badge badge-{{ tx.type }}">{{ 'הכנסה' if tx.type == 'income' else 'הוצאה' }}</span></td>
+            <td class="amount {{ tx.type }}">{% if tx.type == 'expense' %}-{% endif %}₪{{ "%.2f"|format(tx.amount) }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('main.delete_transaction', tx_id=tx.id) }}"
+                      onsubmit="return confirm('למחוק עסקה זו?')">
+                    <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>לא נמצאו עסקאות.</p>
+    <a href="{{ url_for('main.add_transaction') }}" class="btn btn-primary">הוסף עסקה</a>
+</div>
+{% endif %}
+{% endblock %}

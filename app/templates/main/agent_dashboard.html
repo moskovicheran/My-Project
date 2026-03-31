@@ -1,0 +1,362 @@
+{% extends 'base.html' %}
+{% block title %}דשבורד סוכן{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>שלום, {{ current_user.username }}</h1>
+        <p class="subtitle">
+            <span class="role-badge role-agent">סוכן</span>
+            {% for sa in my_sas %}&nbsp;{{ sa.club }}{% endfor %}
+            {% if managed_club %}&nbsp;| מנהל {{ managed_club.name }}{% endif %}
+        </p>
+    </div>
+</div>
+
+{# ── Stats Cards ── #}
+<div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">שחקנים</div>
+        <div class="stat-value">{{ player_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Hands</div>
+        <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">רייק כולל</div>
+        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card {% if net_rake > 0 %}income{% endif %}">
+        <div class="stat-label">רייק נטו שלי</div>
+        <div class="stat-value">{{ "%.2f"|format(net_rake) }}</div>
+    </div>
+    <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">P&L</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+    </div>
+</div>
+
+{% if total_expenses > 0 %}
+<div id="expenseBalloon" style="position:fixed; left:1.5rem; top:5rem; z-index:100; cursor:pointer;" onclick="toggleExpenseDetails()">
+    <div style="background:linear-gradient(135deg, #ef233c, #d90429); color:#fff; border-radius:16px; padding:0.6rem 1rem; box-shadow:0 4px 15px rgba(239,35,60,0.4); text-align:center; min-width:120px;">
+        <div style="font-size:0.7rem; opacity:0.9;">הוצאות שוטפות</div>
+        <div style="font-size:1.3rem; font-weight:700;">{{ "%.2f"|format(total_expenses) }}</div>
+        <div style="font-size:0.65rem; opacity:0.8;">{{ expense_charges|length }} חיובים</div>
+    </div>
+</div>
+
+<div id="expenseDetails" style="display:none; position:fixed; left:1.5rem; top:10rem; z-index:100; background:#fff; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:1rem; max-width:320px; max-height:300px; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <strong style="color:#ef233c;">פירוט הוצאות</strong>
+        <span onclick="toggleExpenseDetails()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
+    </div>
+    {% for c in expense_charges %}
+    <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid #f0f0f0; font-size:0.85rem;">
+        <span>{{ c.expense.description }}</span>
+        <span style="color:#ef233c; font-weight:600;">{{ "%.2f"|format(c.charge_amount) }}</span>
+    </div>
+    {% endfor %}
+    <div style="display:flex; justify-content:space-between; padding:0.5rem 0 0; font-size:0.9rem; font-weight:700;">
+        <span>סה"כ</span>
+        <span style="color:#ef233c;">{{ "%.2f"|format(total_expenses) }}</span>
+    </div>
+</div>
+
+<script>
+function toggleExpenseDetails() {
+    var el = document.getElementById('expenseDetails');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endif %}
+
+{# ── Managed Club ── #}
+{% if managed_club %}
+<div class="section" style="margin-bottom:1.5rem; border-right:4px solid #2e7d32;">
+    <h2 class="section-title" style="color:#2e7d32;">מועדון {{ managed_club.name }}</h2>
+
+    {# Club summary stats #}
+    <div class="stats-grid stats-4" style="margin-bottom:1rem;">
+        <div class="stat-card income" style="padding:0.8rem;">
+            <div class="stat-label">Rake מועדון</div>
+            <div class="stat-value" style="font-size:1.3rem;">{{ "%.2f"|format(managed_club.total_rake|default(0)) }}</div>
+        </div>
+        <div class="stat-card" style="padding:0.8rem;">
+            <div class="stat-label">מועדון מקבל ({{ club_keeps_pct }}%)</div>
+            <div class="stat-value" style="font-size:1.3rem;">{{ "%.2f"|format((managed_club.total_rake|default(0)) * club_keeps_pct / 100) }}</div>
+        </div>
+        <div class="stat-card income" style="padding:0.8rem;">
+            <div class="stat-label">נשאר לי ({{ 100 - club_keeps_pct }}%)</div>
+            <div class="stat-value" style="font-size:1.3rem;">{{ "%.2f"|format(club_net_rake) }}</div>
+        </div>
+        <div class="stat-card {% if managed_club.total_pnl|default(0) >= 0 %}income{% else %}expense{% endif %}" style="padding:0.8rem;">
+            <div class="stat-label">P&L מועדון</div>
+            <div class="stat-value" style="font-size:1.3rem;">{% if managed_club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(managed_club.total_pnl|default(0)) }}</div>
+        </div>
+    </div>
+
+    {# Club members with full details #}
+    {% for sa_id, sa in managed_club.super_agents.items() %}
+    <div style="margin-bottom:1rem; padding:0.6rem 0; border-bottom:1px solid #e8e8e8;">
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+            <span class="role-badge role-sa">SA</span>
+            <strong>{{ sa.nick }}</strong>
+            <span class="muted small">{{ sa.id }}</span>
+        </div>
+
+        {% for ag_id, agent in sa.agents.items() %}
+        <div style="margin-right:1.5rem; margin-bottom:0.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
+                <span class="role-badge role-agent">Agent</span>
+                <strong>{{ agent.nick }}</strong>
+            </div>
+            <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem; margin-right:0.5rem;">
+                {% for m in agent.members %}
+                <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                    <span class="chip-name">{{ m.nickname }}</span>
+                    <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if sa.direct_members %}
+        <div style="margin-right:1.5rem; margin-top:0.3rem;">
+            <div class="muted small" style="margin-bottom:0.3rem;">ישיר</div>
+            <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+                {% for m in sa.direct_members %}
+                <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                    <span class="chip-name">{{ m.nickname }}</span>
+                    <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if managed_club.no_sa_members %}
+    <div style="padding:0.5rem 0; border-top:1px dashed #ddd;">
+        <div class="muted small" style="margin-bottom:0.3rem;">ללא SA</div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for m in managed_club.no_sa_members %}
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                <span class="chip-name">{{ m.nickname }}</span>
+                <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# ── My Agents & Players (per SA entry) ── #}
+{% for my_sa in my_sas %}
+
+{% if my_sas|length > 1 %}
+<div style="margin-bottom:0.5rem;">
+    <span class="muted" style="font-size:0.9rem;">{{ my_sa.club }}</span>
+</div>
+{% endif %}
+
+{% for ag_id, ag in my_sa.agents.items() %}
+<div class="section" style="margin-bottom:1rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <div>
+            <span class="role-badge role-agent">Agent</span>
+            <strong>{{ ag.nick }}</strong>
+            <span class="muted small">{{ ag.id }}</span>
+        </div>
+        <div style="display:flex; gap:0.4rem;">
+            <span class="summary-chip chip-win">R {{ "%.2f"|format(ag.total_rake) }}</span>
+            <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                P&L {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
+            </span>
+            <span class="summary-chip">H {{ "{:,}".format(ag.total_hands|int) }}</span>
+        </div>
+    </div>
+    <table class="table table-sm">
+        <thead>
+            <tr><th>שחקן</th><th>תפקיד</th><th>Hands</th><th>Rake</th><th>P&L</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for m in ag.members %}
+            <tr>
+                <td><strong>{{ m.nickname }}</strong> <span class="muted small">{{ m.player_id }}</span></td>
+                <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
+                <td>{{ m.hands|int }}</td>
+                <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                </td>
+                <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
+            </tr>
+            <tr class="record-row" style="display:none;">
+                <td colspan="6" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="2"><strong>סה"כ</strong></td>
+                <td><strong>{{ "{:,}".format(ag.total_hands|int) }}</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
+                <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endfor %}
+
+{% if my_sa.direct %}
+<div class="section" style="margin-bottom:1rem;">
+    <h2 class="section-title">שחקנים ישירים</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr><th>שחקן</th><th>תפקיד</th><th>Hands</th><th>Rake</th><th>P&L</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for m in my_sa.direct %}
+            <tr>
+                <td><strong>{{ m.nickname }}</strong> <span class="muted small">{{ m.player_id }}</span></td>
+                <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
+                <td>{{ m.hands|int }}</td>
+                <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                </td>
+                <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
+            </tr>
+            <tr class="record-row" style="display:none;">
+                <td colspan="6" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endfor %}
+
+{# ── Child SAs (SAs managed by this agent) ── #}
+{% if child_sas %}
+{% for cs in child_sas %}
+<div class="section" style="margin-bottom:1rem; border-right:4px solid #4361ee; padding-right:1rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <div>
+            <span class="role-badge role-sa">Super Agent</span>
+            <strong style="font-size:1.05rem;">{{ cs.sa_nick }}</strong>
+            <span class="muted small">{{ cs.sa_id }} @ {{ cs.club }}</span>
+        </div>
+        <div style="display:flex; gap:0.4rem;">
+            <span class="summary-chip chip-win">R {{ "%.2f"|format(cs.total_rake) }}</span>
+            <span class="summary-chip {% if cs.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                P&L {% if cs.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cs.total_pnl) }}
+            </span>
+            <span class="summary-chip">H {{ "{:,}".format(cs.total_hands|int) }}</span>
+        </div>
+    </div>
+
+    {% for ag_id, ag in cs.agents.items() %}
+    <div style="margin-right:1rem; margin-bottom:0.5rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
+            <span class="role-badge role-agent">Agent</span>
+            <strong>{{ ag.nick }}</strong>
+            <span class="summary-chip chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+        </div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for m in ag.members %}
+            <span class="member-chip {% if m.pnl > 0 %}win{% elif m.pnl < 0 %}lose{% endif %}">
+                <span class="chip-name">{{ m.nickname }}</span>
+                <span class="chip-pnl">{% if m.pnl > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl) }}</span>
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if cs.direct %}
+    <div style="margin-right:1rem; margin-top:0.5rem; border-top:1px dashed #ddd; padding-top:0.5rem;">
+        <div class="muted small" style="margin-bottom:0.3rem;">ישיר</div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for m in cs.direct %}
+            <span class="member-chip {% if m.pnl > 0 %}win{% elif m.pnl < 0 %}lose{% endif %}">
+                <span class="chip-name">{{ m.nickname }}</span>
+                <span class="chip-pnl">{% if m.pnl > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl) }}</span>
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if not my_sas and not child_sas and not managed_club %}
+<div class="section">
+    <div class="empty-state">
+        <p>לא נמצאו נתונים עבור הסוכן שלך.</p>
+        <p class="muted">ודא שה-Player ID שלך ({{ current_user.player_id }}) תואם ל-Super Agent ID בקובץ.</p>
+    </div>
+</div>
+{% endif %}
+
+<style>
+.record-container {
+    background: #f8f9fa;
+    padding: 0.6rem 1rem;
+    border-top: 2px solid #eef0ff;
+}
+.record-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+.record-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; }
+.record-table .rec-plus { color: #2ec4b6; font-weight: 600; }
+.record-table .rec-minus { color: #ef233c; font-weight: 600; }
+.record-total { font-weight: 700; font-size: 0.9rem; padding-top: 0.4rem; border-top: 2px solid #ddd; }
+</style>
+
+<script>
+function toggleRecord(btn, playerId) {
+    var row = btn.closest('tr').nextElementSibling;
+    if (row.style.display !== 'none') {
+        row.style.display = 'none';
+        btn.textContent = 'רקורד';
+        return;
+    }
+    row.style.display = '';
+    btn.textContent = 'סגור';
+    var container = document.getElementById('record-' + playerId);
+    if (container.innerHTML) return;
+    container.innerHTML = '<span class="muted small">טוען...</span>';
+    fetch('/api/player-record/' + playerId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.sessions.length) {
+                container.innerHTML = '<span class="muted small">אין משחקים</span>';
+                return;
+            }
+            var html = '<table class="record-table">';
+            data.sessions.forEach(function(s) {
+                var cls = s.pnl >= 0 ? 'rec-plus' : 'rec-minus';
+                var sign = s.pnl > 0 ? '+' : '';
+                html += '<tr><td class="muted">' + s.game + '</td>';
+                html += '<td>' + s.table + '</td>';
+                html += '<td>' + s.blinds + '</td>';
+                html += '<td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
+            });
+            var totalCls = data.total_pnl >= 0 ? 'rec-plus' : 'rec-minus';
+            var totalSign = data.total_pnl > 0 ? '+' : '';
+            html += '<tr><td colspan="3" class="record-total">סה"כ</td>';
+            html += '<td class="record-total ' + totalCls + '">' + totalSign + data.total_pnl.toFixed(2) + '</td></tr>';
+            html += '</table>';
+            container.innerHTML = html;
+        });
+}
+</script>
+{% endblock %}
