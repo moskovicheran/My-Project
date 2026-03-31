@@ -35,8 +35,31 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        # Migrations
+        import sqlalchemy
+        def _try_add_col(col, ddl):
+            try:
+                db.session.execute(sqlalchemy.text(f"SELECT {col} FROM users LIMIT 1"))
+            except Exception:
+                db.session.rollback()
+                db.session.execute(sqlalchemy.text(ddl))
+                db.session.commit()
+        _try_add_col('role', "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'admin'")
+        _try_add_col('player_id', "ALTER TABLE users ADD COLUMN player_id VARCHAR(20)")
+        # MoneyTransfer migrations
+        def _try_add_col_table(table, col, ddl):
+            try:
+                db.session.execute(sqlalchemy.text(f"SELECT {col} FROM {table} LIMIT 1"))
+            except Exception:
+                db.session.rollback()
+                db.session.execute(sqlalchemy.text(ddl))
+                db.session.commit()
+        _try_add_col_table('money_transfers', 'from_player_id',
+                           "ALTER TABLE money_transfers ADD COLUMN from_player_id VARCHAR(20) NOT NULL DEFAULT ''")
+        _try_add_col_table('money_transfers', 'to_player_id',
+                           "ALTER TABLE money_transfers ADD COLUMN to_player_id VARCHAR(20) NOT NULL DEFAULT ''")
 
-        # Load active excel file if exists
+        # Load active excel file - if _active.txt exists use it, otherwise keep default
         active_file = os.path.join(os.path.dirname(__file__), '..', 'uploads', '_active.txt')
         from app.union_data import set_excel_path
         if os.path.exists(active_file):
@@ -45,6 +68,6 @@ def create_app():
             if path and os.path.exists(path):
                 set_excel_path(path)
             else:
-                set_excel_path('')
+                set_excel_path('')  # Reset state - no file
 
     return app

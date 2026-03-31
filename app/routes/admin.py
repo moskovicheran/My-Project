@@ -377,3 +377,46 @@ def expenses():
     return render_template('admin/expenses.html',
                            expenses=all_expenses, charges=recent_charges,
                            agents_count=agents_count)
+
+
+@admin_bp.route('/top-players')
+@admin_required
+def top_players():
+    from app.union_data import get_top_members
+    top_winners, top_losers = get_top_members(10)
+
+    # Top by rake
+    from app.union_data import _read_sheets, _num
+    sheets = _read_sheets()
+    all_players = []
+    if 'Union Member Statistics' in sheets:
+        df = sheets['Union Member Statistics']
+        current_club = ''
+        for i in range(6, len(df)):
+            row = df.iloc[i]
+            if '(ID:' in str(row.iloc[0]):
+                current_club = str(row.iloc[0]).split(' (ID:')[0]
+            nickname = str(row.iloc[9])
+            if nickname in ('nan', '-'):
+                continue
+            all_players.append({
+                'player_id': str(row.iloc[8]),
+                'nickname': nickname,
+                'club': current_club,
+                'pnl': _num(row.iloc[37]),
+                'rake': _num(row.iloc[64]),
+                'hands': _num(row.iloc[151]),
+            })
+
+    top_rake = sorted(all_players, key=lambda x: x['rake'], reverse=True)[:10]
+    top_active = sorted(all_players, key=lambda x: x['hands'], reverse=True)[:10]
+
+    biggest_winner = top_winners[0]['pnl_total'] if top_winners else 0
+    biggest_loser = top_losers[0]['pnl_total'] if top_losers else 0
+
+    return render_template('admin/top_players.html',
+                           top_winners=top_winners, top_losers=top_losers,
+                           top_rake=top_rake, top_active=top_active,
+                           total_players=len(all_players),
+                           biggest_winner=biggest_winner,
+                           biggest_loser=biggest_loser)
