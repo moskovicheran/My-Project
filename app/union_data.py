@@ -65,9 +65,9 @@ def get_all_clubs():
 
 def get_all_members():
     """Returns list of all unique members: [{player_id, nickname, role, club, sa_nick, agent_nick}]."""
-    if not get_excel_path() or not os.path.exists(get_excel_path()):
-        return []
     sheets = _read_sheets()
+    if 'Union Member Statistics' not in sheets:
+        return []
     df = sheets['Union Member Statistics']
     members = []
     seen = set()
