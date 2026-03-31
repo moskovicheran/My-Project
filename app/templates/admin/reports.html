@@ -1,0 +1,215 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}דוחות - לוח בקרה{% endblock %}
+
+{% block content %}
+
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">דוחות לפי תאריך</h2>
+
+    <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:flex-start;">
+
+        {# Calendar #}
+        <div style="min-width:280px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <button onclick="changeMonth(-1)" class="btn btn-outline btn-sm">→</button>
+                <strong id="calMonthLabel" style="font-size:1rem;"></strong>
+                <button onclick="changeMonth(1)" class="btn btn-outline btn-sm">←</button>
+            </div>
+            <div id="calendar" style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center;"></div>
+        </div>
+
+        {# Filters #}
+        <div style="flex:1; min-width:250px;">
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.8rem; flex-wrap:wrap;">
+                <div>
+                    <label class="muted small" style="display:block; margin-bottom:0.2rem;">מתאריך</label>
+                    <input type="date" id="fromDate" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit;">
+                </div>
+                <div>
+                    <label class="muted small" style="display:block; margin-bottom:0.2rem;">עד תאריך</label>
+                    <input type="date" id="toDate" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit;">
+                </div>
+                <div>
+                    <label class="muted small" style="display:block; margin-bottom:0.2rem;">שחקן (אופציונלי)</label>
+                    <select id="playerFilter" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; max-width:200px;">
+                        <option value="">כל השחקנים</option>
+                        {% for m in members %}
+                        <option value="{{ m.player_id }}">{{ m.nickname }} ({{ m.club }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button onclick="loadReport()" class="btn btn-primary">הצג דוח</button>
+            <span id="reportInfo" class="muted small" style="margin-right:0.5rem;"></span>
+        </div>
+    </div>
+</div>
+
+{# Summary cards #}
+<div id="summaryCards" style="display:none;" class="stats-grid stats-4" style="margin-bottom:1rem;">
+    <div class="stat-card">
+        <div class="stat-label">ימים</div>
+        <div class="stat-value" id="sumDays">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">שחקנים</div>
+        <div class="stat-value" id="sumPlayers">0</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">Rake</div>
+        <div class="stat-value" id="sumRake">0</div>
+    </div>
+    <div class="stat-card" id="sumPnlCard">
+        <div class="stat-label">P&L</div>
+        <div class="stat-value" id="sumPnl">0</div>
+    </div>
+</div>
+
+{# Results table #}
+<div class="section" id="reportResults" style="display:none;">
+    <h2 class="section-title" id="reportTitle">תוצאות</h2>
+    <div style="overflow-x:auto;">
+        <table class="table table-sm">
+            <thead>
+                <tr><th>#</th><th>שחקן</th><th>קלאב</th><th>Hands</th><th>Rake</th><th>P&L</th></tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.cal-day {
+    padding: 0.4rem 0.2rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.cal-day:hover { background: #e0e4ef; }
+.cal-day.has-data { background: #eef0ff; color: #4361ee; font-weight: 600; }
+.cal-day.selected { background: #4361ee; color: #fff; }
+.cal-day.in-range { background: #c8d4ff; color: #1a1a2e; }
+.cal-day.empty { cursor: default; }
+.cal-day.empty:hover { background: transparent; }
+.cal-header { font-size: 0.7rem; color: #888; font-weight: 600; padding: 0.3rem 0; }
+body.dark .cal-day:hover { background: #333; }
+body.dark .cal-day.has-data { background: #252545; color: #7b8cff; }
+body.dark .cal-day.selected { background: #4361ee; color: #fff; }
+body.dark .cal-day.in-range { background: #333355; color: #ddd; }
+</style>
+
+<script>
+var dataDates = [];
+var calYear, calMonth;
+var selectedFrom = null, selectedTo = null;
+
+// Load dates with data
+fetch('/api/report-dates').then(r => r.json()).then(d => {
+    dataDates = d.dates;
+    var now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth();
+    renderCalendar();
+});
+
+function renderCalendar() {
+    var cal = document.getElementById('calendar');
+    var label = document.getElementById('calMonthLabel');
+    var months = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+    label.textContent = months[calMonth] + ' ' + calYear;
+
+    var days = ['א','ב','ג','ד','ה','ו','ש'];
+    var html = '';
+    days.forEach(d => { html += '<div class="cal-header">' + d + '</div>'; });
+
+    var first = new Date(calYear, calMonth, 1);
+    var lastDay = new Date(calYear, calMonth + 1, 0).getDate();
+    var startDay = first.getDay();
+
+    for (var i = 0; i < startDay; i++) html += '<div class="cal-day empty"></div>';
+
+    for (var d = 1; d <= lastDay; d++) {
+        var dateStr = calYear + '-' + String(calMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        var hasData = dataDates.indexOf(dateStr) >= 0;
+        var isSelected = (selectedFrom === dateStr || selectedTo === dateStr);
+        var inRange = false;
+        if (selectedFrom && selectedTo) {
+            inRange = dateStr >= selectedFrom && dateStr <= selectedTo;
+        }
+        var cls = 'cal-day';
+        if (hasData) cls += ' has-data';
+        if (isSelected) cls += ' selected';
+        else if (inRange) cls += ' in-range';
+        html += '<div class="' + cls + '" onclick="selectDate(\'' + dateStr + '\')">' + d + '</div>';
+    }
+    cal.innerHTML = html;
+}
+
+function changeMonth(dir) {
+    calMonth += dir;
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+    if (calMonth > 11) { calMonth = 0; calYear++; }
+    renderCalendar();
+}
+
+function selectDate(dateStr) {
+    if (!selectedFrom || (selectedFrom && selectedTo)) {
+        selectedFrom = dateStr;
+        selectedTo = null;
+    } else {
+        if (dateStr < selectedFrom) {
+            selectedTo = selectedFrom;
+            selectedFrom = dateStr;
+        } else {
+            selectedTo = dateStr;
+        }
+    }
+    document.getElementById('fromDate').value = selectedFrom || '';
+    document.getElementById('toDate').value = selectedTo || selectedFrom || '';
+    renderCalendar();
+}
+
+function loadReport() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    var pid = document.getElementById('playerFilter').value;
+    if (!from || !to) { alert('יש לבחור תאריכים'); return; }
+
+    selectedFrom = from;
+    selectedTo = to;
+    renderCalendar();
+
+    var url = '/api/report?from=' + from + '&to=' + to;
+    if (pid) url += '&player_id=' + pid;
+
+    document.getElementById('reportInfo').textContent = 'טוען...';
+
+    fetch(url).then(r => r.json()).then(data => {
+        document.getElementById('summaryCards').style.display = 'grid';
+        document.getElementById('reportResults').style.display = 'block';
+        document.getElementById('sumDays').textContent = data.days;
+        document.getElementById('sumPlayers').textContent = data.players.length;
+        document.getElementById('sumRake').textContent = data.totals.rake.toFixed(2);
+        document.getElementById('sumPnl').textContent = (data.totals.pnl > 0 ? '+' : '') + data.totals.pnl.toFixed(2);
+        var pnlCard = document.getElementById('sumPnlCard');
+        pnlCard.className = 'stat-card ' + (data.totals.pnl >= 0 ? 'income' : 'expense');
+        document.getElementById('reportTitle').textContent = 'תוצאות (' + data.players.length + ' שחקנים, ' + from + ' עד ' + to + ')';
+        document.getElementById('reportInfo').textContent = '';
+
+        var html = '';
+        data.players.forEach(function(p, i) {
+            var pnlCls = p.pnl >= 0 ? 'income' : 'expense';
+            var sign = p.pnl > 0 ? '+' : '';
+            html += '<tr><td>' + (i+1) + '</td>';
+            html += '<td><a href="/union/player/' + p.player_id + '" class="player-link"><strong>' + p.nickname + '</strong></a></td>';
+            html += '<td class="muted">' + p.club + '</td>';
+            html += '<td>' + p.hands.toLocaleString() + '</td>';
+            html += '<td class="amount income">' + p.rake.toFixed(2) + '</td>';
+            html += '<td class="amount ' + pnlCls + '">' + sign + p.pnl.toFixed(2) + '</td></tr>';
+        });
+        document.getElementById('reportBody').innerHTML = html;
+    });
+}
+</script>
+{% endblock %}

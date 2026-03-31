@@ -131,6 +131,36 @@ def dashboard():
                            balance=balance)
 
 
+@main_bp.route('/agent/reports')
+@login_required
+def agent_reports():
+    if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.union_data import get_super_agent_tables
+    from app.models import SAHierarchy
+
+    sa_id = current_user.player_id
+    sa_tables = get_super_agent_tables()
+    my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
+    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+    child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
+
+    my_players = []
+    my_player_ids = []
+    for sa in my_sas + child_sas:
+        for m in sa['direct']:
+            my_players.append({'player_id': m['player_id'], 'nickname': m['nickname']})
+            my_player_ids.append(m['player_id'])
+        for ag in sa['agents'].values():
+            for m in ag['members']:
+                my_players.append({'player_id': m['player_id'], 'nickname': m['nickname']})
+                my_player_ids.append(m['player_id'])
+
+    return render_template('main/agent_reports.html',
+                           players=my_players, player_ids=my_player_ids)
+
+
 @main_bp.route('/agent/transfers', methods=['GET', 'POST'])
 @login_required
 def agent_transfers():
@@ -224,6 +254,84 @@ def agent_transfers():
     return render_template('main/agent_transfers.html',
                            players=my_players, balances=balances,
                            transfers=my_transfers)
+
+
+@main_bp.route('/api/report')
+@login_required
+def report_api():
+    from app.models import DailyPlayerStats, DailyUpload
+    from datetime import datetime
+    from sqlalchemy import func
+
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    player_id = request.args.get('player_id', '')
+
+    if not from_date or not to_date:
+        return jsonify({'error': 'missing dates'}), 400
+
+    try:
+        fd = datetime.strptime(from_date, '%Y-%m-%d').date()
+        td = datetime.strptime(to_date, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'invalid date format'}), 400
+
+    # Get upload IDs in range
+    uploads = DailyUpload.query.filter(
+        DailyUpload.upload_date >= fd,
+        DailyUpload.upload_date <= td
+    ).all()
+    upload_ids = [u.id for u in uploads]
+
+    if not upload_ids:
+        return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0})
+
+    query = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id,
+        func.max(DailyPlayerStats.nickname),
+        func.max(DailyPlayerStats.club),
+        func.sum(DailyPlayerStats.pnl),
+        func.sum(DailyPlayerStats.rake),
+        func.sum(DailyPlayerStats.hands),
+    ).filter(DailyPlayerStats.upload_id.in_(upload_ids))
+
+    if player_id:
+        query = query.filter(DailyPlayerStats.player_id == player_id)
+
+    query = query.group_by(DailyPlayerStats.player_id)
+    results = query.all()
+
+    players = []
+    total_pnl = 0
+    total_rake = 0
+    total_hands = 0
+    for pid, nick, club, pnl, rake, hands in results:
+        p = round(float(pnl or 0), 2)
+        r = round(float(rake or 0), 2)
+        h = int(hands or 0)
+        players.append({'player_id': pid, 'nickname': nick, 'club': club,
+                        'pnl': p, 'rake': r, 'hands': h})
+        total_pnl += p
+        total_rake += r
+        total_hands += h
+
+    players.sort(key=lambda x: x['pnl'], reverse=True)
+
+    return jsonify({
+        'players': players,
+        'totals': {'pnl': round(total_pnl, 2), 'rake': round(total_rake, 2), 'hands': total_hands},
+        'days': len(upload_ids)
+    })
+
+
+@main_bp.route('/api/report-dates')
+@login_required
+def report_dates_api():
+    """Return list of dates that have upload data."""
+    from app.models import DailyUpload
+    uploads = DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all()
+    dates = [u[0].strftime('%Y-%m-%d') for u in uploads]
+    return jsonify({'dates': dates})
 
 
 @main_bp.route('/api/player-record/<player_id>')

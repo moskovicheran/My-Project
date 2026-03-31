@@ -18,6 +18,7 @@
             <a href="{{ url_for('main.dashboard') }}" class="nav-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}">דשבורד</a>
             {% if current_user.role == 'agent' %}
             <a href="{{ url_for('main.agent_transfers') }}" class="nav-link {% if request.endpoint == 'main.agent_transfers' %}active{% endif %}">העברת כספים</a>
+            <a href="{{ url_for('main.agent_reports') }}" class="nav-link {% if request.endpoint == 'main.agent_reports' %}active{% endif %}">דוחות</a>
             {% endif %}
             {% if current_user.role == 'admin' %}
             <a href="{{ url_for('union.players') }}" class="nav-link {% if request.endpoint in ['union.players', 'union.player_detail', 'union.ring_games', 'union.mtts'] %}active{% endif %}">שחקנים וטבלאות</a>

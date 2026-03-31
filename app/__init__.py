@@ -59,6 +59,16 @@ def create_app():
         _try_add_col_table('money_transfers', 'to_player_id',
                            "ALTER TABLE money_transfers ADD COLUMN to_player_id VARCHAR(20) NOT NULL DEFAULT ''")
 
+        # Cleanup data older than 60 days
+        from datetime import datetime, timedelta
+        from app.models import DailyUpload, DailyPlayerStats
+        cutoff = datetime.utcnow().date() - timedelta(days=60)
+        old_uploads = DailyUpload.query.filter(DailyUpload.upload_date < cutoff).all()
+        if old_uploads:
+            for u in old_uploads:
+                db.session.delete(u)  # cascade deletes DailyPlayerStats
+            db.session.commit()
+
         # Load active excel file - if _active.txt exists use it, otherwise keep default
         active_file = os.path.join(os.path.dirname(__file__), '..', 'uploads', '_active.txt')
         from app.union_data import set_excel_path

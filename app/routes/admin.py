@@ -420,3 +420,11 @@ def top_players():
                            total_players=len(all_players),
                            biggest_winner=biggest_winner,
                            biggest_loser=biggest_loser)
+
+
+@admin_bp.route('/reports')
+@admin_required
+def reports():
+    from app.union_data import get_all_members
+    members = get_all_members()
+    return render_template('admin/reports.html', members=members)
