@@ -53,6 +53,54 @@
     {% endif %}
 </div>
 
+{# ═══════ Section 2: SA → Club ═══════ #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">שיוך Super Agent → מועדון</h2>
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <input type="hidden" name="action" value="set_club">
+        <div style="flex:1; min-width:200px; position:relative;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Super Agent</label>
+            <input type="hidden" name="sa_id" id="clubSaInput">
+            <input type="text" id="clubSaSearch" placeholder="הקלד שם SA..." autocomplete="off"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;"
+                   oninput="filterSA('clubSa')" onfocus="filterSA('clubSa')">
+            <div id="clubSaDropdown" class="sa-autocomplete" style="display:none;"></div>
+        </div>
+        <div style="flex:1; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">מועדון</label>
+            <select name="club_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר מועדון...</option>
+                {% for c in all_clubs %}
+                <option value="{{ c.club_id }}">{{ c.name }} ({{ c.club_id }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">שייך מועדון</button>
+    </form>
+
+    {% if configs %}
+    <table class="table table-sm">
+        <thead><tr><th>Super Agent</th><th>מועדון</th><th></th></tr></thead>
+        <tbody>
+            {% for cfg in configs %}
+            {% if cfg.managed_club_name %}
+            <tr>
+                <td><strong>{{ cfg.sa_nick }}</strong> <span class="muted small">{{ cfg.sa_id }}</span></td>
+                <td><strong>{{ cfg.managed_club_name }}</strong></td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך?');">
+                        <input type="hidden" name="action" value="delete_config">
+                        <input type="hidden" name="config_id" value="{{ cfg.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
 
 {# ═══════ Section 3: Rake Config (Clubs / Agents / Players) ═══════ #}
 <div class="section" style="margin-bottom:1.5rem;">
@@ -250,10 +298,12 @@ function selectSA(type, id, label) {
 }
 
 document.addEventListener('click', function(e) {
-    if (!e.target.closest('#parentSaSearch') && !e.target.closest('#parentSaDropdown'))
-        document.getElementById('parentSaDropdown').style.display = 'none';
-    if (!e.target.closest('#childSaSearch') && !e.target.closest('#childSaDropdown'))
-        document.getElementById('childSaDropdown').style.display = 'none';
+    ['parent', 'child', 'clubSa'].forEach(function(type) {
+        var search = document.getElementById(type + 'SaSearch');
+        var dd = document.getElementById(type + 'SaDropdown');
+        if (search && dd && !e.target.closest('#' + type + 'SaSearch') && !e.target.closest('#' + type + 'SaDropdown'))
+            dd.style.display = 'none';
+    });
 });
 </script>
 {% endblock %}
