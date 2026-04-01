@@ -414,11 +414,11 @@ def export_agent_account():
 @main_bp.route('/export/agent/players')
 @login_required
 def export_agent_players():
-    """Export all agent's players with P&L and rake."""
+    """Export all agent's players, agents, SAs, clubs with rake % and totals."""
     if current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats
+    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats, RakeConfig
     from app.union_data import get_members_hierarchy
     from sqlalchemy import func as sqlfunc
 
@@ -427,43 +427,141 @@ def export_agent_players():
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     all_sa_ids.extend(child_sa_ids)
 
-    # All players under SAs
+    # Nickname map
+    all_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+
+    sheets = {}
+
+    # ── Sheet 1: My Players (direct) ──
     players = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
-        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.sa_id),
+        sqlfunc.max(DailyPlayerStats.agent_id),
+        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.hands),
     ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry'
     ).group_by(DailyPlayerStats.player_id).all()
 
-    rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-             'P&L': round(float(p[3] or 0), 2), 'Rake': round(float(p[4] or 0), 2),
-             'Hands': int(p[5] or 0)} for p in players]
-    rows.sort(key=lambda x: x['Rake'], reverse=True)
+    player_rows = []
+    for p in players:
+        sa_name = all_nicks.get(p[3], p[3]) if p[3] and p[3] != '-' else ''
+        ag_name = all_nicks.get(p[4], p[4]) if p[4] and p[4] != '-' else ''
+        player_rows.append({
+            'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+            'Super Agent': sa_name, 'Agent': ag_name,
+            'P&L': round(float(p[5] or 0), 2),
+            'Rake': round(float(p[6] or 0), 2),
+            'Hands': int(p[7] or 0),
+        })
+    player_rows.sort(key=lambda x: x['Rake'], reverse=True)
+    # Add totals row
+    if player_rows:
+        player_rows.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'Super Agent': '', 'Agent': '',
+            'P&L': round(sum(r['P&L'] for r in player_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in player_rows), 2),
+            'Hands': sum(r['Hands'] for r in player_rows),
+        })
+    sheets['שחקנים'] = player_rows
 
-    # Also add managed club players
+    # ── Sheet 2: My Agents ──
+    agent_stats = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.agent_id,
+        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.hands), sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+    ).filter(
+        DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry',
+        DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id != '-'
+    ).group_by(DailyPlayerStats.agent_id).all()
+
+    agent_rows = []
+    for ag in agent_stats:
+        ag_name = all_nicks.get(ag[0], ag[0])
+        rc = RakeConfig.query.filter_by(entity_type='agent', entity_id=ag[0]).first()
+        rake_pct = rc.rake_percent if rc else 0
+        rake = round(float(ag[2] or 0), 2)
+        agent_rows.append({
+            'סוכן': ag_name, 'ID': ag[0], 'שחקנים': int(ag[4] or 0),
+            'P&L': round(float(ag[1] or 0), 2), 'Rake': rake,
+            'אחוז רייק %': rake_pct,
+            'Hands': int(ag[3] or 0),
+        })
+    agent_rows.sort(key=lambda x: x['Rake'], reverse=True)
+    if agent_rows:
+        agent_rows.append({
+            'סוכן': 'סה"כ', 'ID': '', 'שחקנים': sum(r['שחקנים'] for r in agent_rows),
+            'P&L': round(sum(r['P&L'] for r in agent_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in agent_rows), 2),
+            'אחוז רייק %': '', 'Hands': sum(r['Hands'] for r in agent_rows),
+        })
+    sheets['סוכנים'] = agent_rows
+
+    # ── Sheet 3: My Super Agents ──
+    sa_rows = []
+    for csa_id in child_sa_ids:
+        sa_data = DailyPlayerStats.query.with_entities(
+            sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.hands), sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+        ).filter(DailyPlayerStats.sa_id == csa_id, DailyPlayerStats.role != 'Name Entry').first()
+        sa_name = all_nicks.get(csa_id, csa_id)
+        rc = RakeConfig.query.filter_by(entity_type='agent', entity_id=csa_id).first()
+        rake_pct = rc.rake_percent if rc else 0
+        rake = round(float(sa_data[1] or 0), 2)
+        sa_rows.append({
+            'Super Agent': sa_name, 'ID': csa_id, 'שחקנים': int(sa_data[3] or 0),
+            'P&L': round(float(sa_data[0] or 0), 2), 'Rake': rake,
+            'אחוז רייק %': rake_pct,
+            'Hands': int(sa_data[2] or 0),
+        })
+    sa_rows.sort(key=lambda x: x['Rake'], reverse=True)
+    if sa_rows:
+        sa_rows.append({
+            'Super Agent': 'סה"כ', 'ID': '', 'שחקנים': sum(r['שחקנים'] for r in sa_rows),
+            'P&L': round(sum(r['P&L'] for r in sa_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
+            'אחוז רייק %': '', 'Hands': sum(r['Hands'] for r in sa_rows),
+        })
+    if sa_rows:
+        sheets['Super Agents'] = sa_rows
+
+    # ── Sheet 4: My Clubs ──
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
-        existing_pids = {r['ID'] for r in rows}
+        club_rows = []
         for cfg in rake_cfgs:
             name = club_id_to_name.get(cfg.managed_club_id)
-            if name:
-                cp = DailyPlayerStats.query.with_entities(
-                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-                    sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
-                    sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
-                ).filter(DailyPlayerStats.club == name, DailyPlayerStats.role != 'Name Entry'
-                ).group_by(DailyPlayerStats.player_id).all()
-                for p in cp:
-                    if p[0] not in existing_pids:
-                        rows.append({'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-                                     'P&L': round(float(p[3] or 0), 2),
-                                     'Rake': round(float(p[4] or 0), 2),
-                                     'Hands': int(p[5] or 0)})
-                        existing_pids.add(p[0])
+            if not name:
+                continue
+            cr = DailyPlayerStats.query.with_entities(
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands), sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+            ).filter(DailyPlayerStats.club == name, DailyPlayerStats.role != 'Name Entry').first()
+            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+            keeps = club_rc.rake_percent if club_rc else 0
+            rake = round(float(cr[1] or 0), 2)
+            net = round(rake * (100 - keeps) / 100, 2)
+            club_rows.append({
+                'מועדון': name, 'שחקנים': int(cr[3] or 0),
+                'P&L': round(float(cr[0] or 0), 2), 'Rake': rake,
+                'מועדון מקבל %': keeps, 'נטו שלי': net,
+                'Hands': int(cr[2] or 0),
+            })
+        club_rows.sort(key=lambda x: x['Rake'], reverse=True)
+        if club_rows:
+            club_rows.append({
+                'מועדון': 'סה"כ', 'שחקנים': sum(r['שחקנים'] for r in club_rows),
+                'P&L': round(sum(r['P&L'] for r in club_rows), 2),
+                'Rake': round(sum(r['Rake'] for r in club_rows), 2),
+                'מועדון מקבל %': '', 'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
+                'Hands': sum(r['Hands'] for r in club_rows),
+            })
+        sheets['מועדונים'] = club_rows
 
-    return _make_excel({'שחקנים': rows}, f'{current_user.username}_players.xlsx')
+    return _make_excel(sheets, f'{current_user.username}_players.xlsx')
 
 
 @main_bp.route('/export/agent/club/<club_id>')
