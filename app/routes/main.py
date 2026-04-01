@@ -102,34 +102,78 @@ def dashboard():
         }
         my_sas = [my_sa_combined]
 
-        # Managed clubs (multiple)
+        # Managed clubs (multiple) - built from cumulative DB data
         rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
         rake_pct = rake_cfgs[0].rake_percent if rake_cfgs else 0
         managed_clubs = []
         club_net_rake = 0
         club_keeps_pct = 0
         if rake_cfgs:
+            # Get club names from hierarchy (for club_id -> name mapping)
             clubs_data, _ = get_members_hierarchy()
-            club_map = {c['club_id']: c for c in clubs_data}
+            club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+
             for cfg in rake_cfgs:
-                club = club_map.get(cfg.managed_club_id)
-                if club:
-                    club_cumulative = DailyPlayerStats.query.with_entities(
-                        sqlfunc.sum(DailyPlayerStats.rake),
-                        sqlfunc.sum(DailyPlayerStats.pnl),
-                    ).filter(DailyPlayerStats.club == club['name']).first()
-                    club_rake = round(float(club_cumulative[0] or 0), 2)
-                    club_pnl = round(float(club_cumulative[1] or 0), 2)
-                    club['total_rake'] = club_rake
-                    club['total_pnl'] = club_pnl
-                    total_rake += club_rake
-                    total_pnl += club_pnl
-                    club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
-                    keeps_pct = club_rc.rake_percent if club_rc else 0
-                    net = round(club_rake * (100 - keeps_pct) / 100, 2)
-                    club_net_rake += net
-                    club_keeps_pct = keeps_pct
-                    managed_clubs.append(club)
+                club_name = club_id_to_name.get(cfg.managed_club_id, '')
+                if not club_name:
+                    continue
+
+                # Get ALL players in this club from cumulative DB
+                club_players_db = DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id,
+                    sqlfunc.max(DailyPlayerStats.nickname),
+                    sqlfunc.max(DailyPlayerStats.sa_id),
+                    sqlfunc.max(DailyPlayerStats.agent_id),
+                    sqlfunc.sum(DailyPlayerStats.pnl),
+                    sqlfunc.sum(DailyPlayerStats.rake),
+                ).filter(DailyPlayerStats.club == club_name
+                ).group_by(DailyPlayerStats.player_id).all()
+
+                # Build SA structure from DB data
+                club_sas = {}
+                no_sa = []
+                club_rake = 0
+                club_pnl = 0
+                for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val in club_players_db:
+                    p = round(float(pnl_val or 0), 2)
+                    r = round(float(rake_val or 0), 2)
+                    club_rake += r
+                    club_pnl += p
+                    member = {'player_id': pid, 'nickname': nick, 'pnl_total': p, 'rake_total': r}
+
+                    if sa_id_val and sa_id_val != '-':
+                        if sa_id_val not in club_sas:
+                            club_sas[sa_id_val] = {'nick': sa_id_val, 'id': sa_id_val,
+                                                    'agents': {}, 'direct_members': []}
+                        sa = club_sas[sa_id_val]
+                        # Try to get SA nick from the player data
+                        if sa['nick'] == sa_id_val and pid == sa_id_val:
+                            sa['nick'] = nick
+                        if ag_id_val and ag_id_val != '-' and ag_id_val != sa_id_val:
+                            if ag_id_val not in sa['agents']:
+                                sa['agents'][ag_id_val] = {'nick': ag_id_val, 'members': []}
+                            sa['agents'][ag_id_val]['members'].append(member)
+                        else:
+                            sa['direct_members'].append(member)
+                    else:
+                        no_sa.append(member)
+
+                club_rake = round(club_rake, 2)
+                club_pnl = round(club_pnl, 2)
+
+                club_obj = {
+                    'name': club_name, 'club_id': cfg.managed_club_id,
+                    'total_rake': club_rake, 'total_pnl': club_pnl,
+                    'super_agents': club_sas, 'no_sa_members': no_sa,
+                }
+                total_rake += club_rake
+                total_pnl += club_pnl
+                club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+                keeps_pct = club_rc.rake_percent if club_rc else 0
+                net = round(club_rake * (100 - keeps_pct) / 100, 2)
+                club_net_rake += net
+                club_keeps_pct = keeps_pct
+                managed_clubs.append(club_obj)
 
         # Sort managed clubs by rake (high to low)
         managed_clubs.sort(key=lambda c: c.get('total_rake', 0), reverse=True)
