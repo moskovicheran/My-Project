@@ -70,14 +70,33 @@ def players():
 @union_bp.route('/player/<player_id>')
 @login_required
 def player_detail(player_id):
+    from app.union_data import get_cumulative_stats
     member_info, sessions, club_entries = get_player_detail(player_id)
     if not member_info:
         return render_template('union/player_detail.html',
                                member=None, sessions=[], club_entries=[],
                                player_id=player_id)
-    total_rake = sum(s['rake'] for s in sessions)
-    total_pnl = sum(s['pnl'] for s in sessions)
-    total_hands = sum(s['hands'] for s in sessions)
+
+    # Use cumulative data from DB instead of single file
+    cumulative = get_cumulative_stats([player_id])
+    if player_id in cumulative:
+        cs = cumulative[player_id]
+        total_rake = cs['rake']
+        total_pnl = cs['pnl']
+        total_hands = cs['hands']
+        # Update club entries with cumulative data
+        if club_entries:
+            # Scale proportionally or just show cumulative total
+            club_entries = [{'club': cs.get('club', club_entries[0].get('club', '')),
+                            'pnl_total': cs['pnl'], 'rake_total': cs['rake'],
+                            'hands_total': cs['hands'],
+                            'sa_nick': club_entries[0].get('sa_nick', '-'),
+                            'agent_nick': club_entries[0].get('agent_nick', '-')}]
+    else:
+        total_rake = sum(s['rake'] for s in sessions)
+        total_pnl = sum(s['pnl'] for s in sessions)
+        total_hands = sum(s['hands'] for s in sessions)
+
     return render_template('union/player_detail.html',
                            member=member_info,
                            sessions=sessions,
