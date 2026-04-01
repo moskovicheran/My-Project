@@ -8,24 +8,22 @@
     <h2 class="section-title">שיוך Super Agent → Super Agent</h2>
     <form method="POST" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap; margin-bottom:1rem;">
         <input type="hidden" name="action" value="add_hierarchy">
-        <div style="flex:1; min-width:200px;">
+        <div style="flex:1; min-width:200px; position:relative;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">SA ראשי (אב)</label>
-            <select name="parent_sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-                <option value="">בחר...</option>
-                {% for sa in all_sa %}
-                <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
-                {% endfor %}
-            </select>
+            <input type="hidden" name="parent_sa_id" id="parentSaInput">
+            <input type="text" id="parentSaSearch" placeholder="הקלד שם..." autocomplete="off"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;"
+                   oninput="filterSA('parent')" onfocus="filterSA('parent')">
+            <div id="parentSaDropdown" class="sa-autocomplete" style="display:none;"></div>
         </div>
         <div style="font-size:1.3rem; color:#888; padding-bottom:0.3rem;">←</div>
-        <div style="flex:1; min-width:200px;">
+        <div style="flex:1; min-width:200px; position:relative;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">SA משויך (בן)</label>
-            <select name="child_sa_id" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-                <option value="">בחר...</option>
-                {% for sa in all_sa %}
-                <option value="{{ sa.id }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
-                {% endfor %}
-            </select>
+            <input type="hidden" name="child_sa_id" id="childSaInput">
+            <input type="text" id="childSaSearch" placeholder="הקלד שם..." autocomplete="off"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;"
+                   oninput="filterSA('child')" onfocus="filterSA('child')">
+            <div id="childSaDropdown" class="sa-autocomplete" style="display:none;"></div>
         </div>
         <button type="submit" class="btn btn-primary">שייך</button>
     </form>
@@ -287,4 +285,58 @@ function switchRakeEntity(type) {
     </table>
 </div>
 
+<style>
+.sa-autocomplete {
+    position: absolute; top: 100%; right: 0; left: 0;
+    background: #fff; border: 1px solid #ddd; border-radius: 0 0 8px 8px;
+    max-height: 200px; overflow-y: auto; z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.sa-autocomplete .sa-item {
+    padding: 0.45rem 0.8rem; cursor: pointer; font-size: 0.85rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+.sa-autocomplete .sa-item:hover { background: #eef0ff; }
+body.dark .sa-autocomplete { background: #1e1e2e; border-color: #444; }
+body.dark .sa-autocomplete .sa-item { border-bottom-color: #333; color: #ddd; }
+body.dark .sa-autocomplete .sa-item:hover { background: #252545; }
+</style>
+
+<script>
+var allSA = [
+    {% for sa in all_sa %}
+    {id: "{{ sa.id }}", label: "{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}"},
+    {% endfor %}
+];
+
+function filterSA(type) {
+    var input = document.getElementById(type + 'SaSearch');
+    var dropdown = document.getElementById(type + 'SaDropdown');
+    var query = input.value.trim().toLowerCase();
+    if (query.length < 1) { dropdown.style.display = 'none'; return; }
+    var filtered = allSA.filter(function(s) {
+        return s.label.toLowerCase().indexOf(query) >= 0;
+    }).slice(0, 10);
+    if (!filtered.length) { dropdown.style.display = 'none'; return; }
+    var html = '';
+    filtered.forEach(function(s) {
+        html += '<div class="sa-item" onclick="selectSA(\'' + type + '\',\'' + s.id + '\',\'' + s.label.replace(/'/g, "\\'") + '\')">' + s.label + '</div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+}
+
+function selectSA(type, id, label) {
+    document.getElementById(type + 'SaInput').value = id;
+    document.getElementById(type + 'SaSearch').value = label;
+    document.getElementById(type + 'SaDropdown').style.display = 'none';
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#parentSaSearch') && !e.target.closest('#parentSaDropdown'))
+        document.getElementById('parentSaDropdown').style.display = 'none';
+    if (!e.target.closest('#childSaSearch') && !e.target.closest('#childSaDropdown'))
+        document.getElementById('childSaDropdown').style.display = 'none';
+});
+</script>
 {% endblock %}
