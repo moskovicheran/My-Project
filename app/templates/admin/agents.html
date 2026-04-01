@@ -63,7 +63,7 @@
             <input type="hidden" name="sa_id" id="clubSaInput">
             <input type="text" id="clubSaSearch" placeholder="הקלד שם SA..." autocomplete="off"
                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;"
-                   oninput="filterSA('clubSa')" onfocus="filterSA('clubSa')">
+                   oninput="filterClubSA()" onfocus="filterClubSA()">
             <div id="clubSaDropdown" class="sa-autocomplete" style="display:none;"></div>
         </div>
         <div style="flex:1; min-width:200px;">
@@ -295,6 +295,28 @@ function selectSA(type, id, label) {
     document.getElementById(type + 'SaInput').value = id;
     document.getElementById(type + 'SaSearch').value = label;
     document.getElementById(type + 'SaDropdown').style.display = 'none';
+}
+
+function filterClubSA() {
+    var input = document.getElementById('clubSaSearch');
+    var dropdown = document.getElementById('clubSaDropdown');
+    var query = input.value.trim().toLowerCase();
+    if (query.length < 1) { dropdown.style.display = 'none'; return; }
+    var filtered = allSA.filter(function(s) {
+        return s.label.toLowerCase().indexOf(query) >= 0;
+    }).slice(0, 10);
+    if (!filtered.length) { dropdown.style.display = 'none'; return; }
+    var html = '';
+    filtered.forEach(function(s) {
+        html += '<div class="sa-item" onclick="selectClubSA(\'' + s.id + '\',\'' + s.label.replace(/'/g, "\\'") + '\')">' + s.label + '</div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+}
+function selectClubSA(id, label) {
+    document.getElementById('clubSaInput').value = id;
+    document.getElementById('clubSaSearch').value = label;
+    document.getElementById('clubSaDropdown').style.display = 'none';
 }
 
 document.addEventListener('click', function(e) {
