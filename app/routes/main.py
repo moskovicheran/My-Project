@@ -118,7 +118,7 @@ def dashboard():
                 if not club_name:
                     continue
 
-                # Build ID → nickname map from all DB data
+                # Build ID → nickname map from cumulative DB (includes SA/Agent name entries)
                 all_nicknames = dict(DailyPlayerStats.query.with_entities(
                     DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
                 ).group_by(DailyPlayerStats.player_id).all())

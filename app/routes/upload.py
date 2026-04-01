@@ -51,6 +51,7 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
 
     # Collect all rows first
     rows = []
+    sa_agent_names = {}  # id -> nickname for SAs and Agents
     current_club = ''
     for i in range(6, len(df)):
         row = df.iloc[i]
@@ -74,8 +75,15 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             hands = 0
 
         sa_id_val = str(row.iloc[2]) if str(row.iloc[2]) != 'nan' else ''
+        sa_nick_val = str(row.iloc[3]) if str(row.iloc[3]) != 'nan' else ''
         agent_id_val = str(row.iloc[4]) if str(row.iloc[4]) != 'nan' else ''
+        agent_nick_val = str(row.iloc[5]) if str(row.iloc[5]) != 'nan' else ''
         role_val = str(row.iloc[7]) if str(row.iloc[7]) != 'nan' else ''
+        # Track SA/Agent names
+        if sa_id_val and sa_id_val != '-' and sa_nick_val and sa_nick_val != '-':
+            sa_agent_names[sa_id_val] = sa_nick_val
+        if agent_id_val and agent_id_val != '-' and agent_nick_val and agent_nick_val != '-':
+            sa_agent_names[agent_id_val] = agent_nick_val
         rows.append({
             'upload_id': upload_id, 'player_id': player_id,
             'nickname': nickname, 'club': current_club,
@@ -83,6 +91,17 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             'pnl': round(pnl, 2), 'rake': round(rake, 2),
             'hands': round(hands, 0),
         })
+
+    # Add SA/Agent name entries (0 stats, just for name resolution)
+    existing_pids = {r['player_id'] for r in rows}
+    for eid, enick in sa_agent_names.items():
+        if eid not in existing_pids:
+            rows.append({
+                'upload_id': upload_id, 'player_id': eid,
+                'nickname': enick, 'club': '',
+                'sa_id': '', 'agent_id': '', 'role': 'Name Entry',
+                'pnl': 0, 'rake': 0, 'hands': 0,
+            })
 
     # Bulk insert all at once (much faster for cloud DB)
     if rows:
