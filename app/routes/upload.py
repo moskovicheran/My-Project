@@ -90,11 +90,14 @@ def index():
         filename = secure_filename(file.filename)
         file_bytes = file.read()
 
-        # Save Excel bytes to DB (works on Vercel + local)
-        from app.models import db as _db, ActiveExcelData
-        ActiveExcelData.query.delete()  # keep only latest
-        _db.session.add(ActiveExcelData(filename=filename, file_data=file_bytes))
-        _db.session.commit()
+        # Save Excel as active file in DB (for structure/hierarchy reading)
+        try:
+            from app.models import db as _db, ActiveExcelData
+            ActiveExcelData.query.delete()
+            _db.session.add(ActiveExcelData(filename=filename, file_data=file_bytes))
+            _db.session.commit()
+        except Exception:
+            _db.session.rollback()
 
         # Also try to save locally (works on local dev, fails silently on Vercel)
         try:
@@ -110,7 +113,7 @@ def index():
         except Exception:
             pass
 
-        # Parse and store cumulative stats (works everywhere - saves to DB)
+        # Parse and store CUMULATIVE stats (adds to existing, never deletes)
         player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
 
         flash(f'הקובץ "{filename}" הועלה — {player_count} שחקנים נוספו למצטבר.', 'success')
