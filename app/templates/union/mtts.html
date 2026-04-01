@@ -51,17 +51,22 @@
         </thead>
         <tbody>
             {% for t in mtts %}
-            <tr>
+            <tr style="cursor:pointer;" onclick="toggleMttPlayers(this, '{{ t.title|e }}')">
                 <td><strong>{{ t.title }}</strong></td>
                 <td><span class="badge badge-game">{{ t.game_type }}</span></td>
                 <td>{{ t.buyin }}</td>
                 <td>{{ t.fee }}</td>
                 <td class="muted">{{ t.reentry }}</td>
                 <td>{{ "{:,}".format(t.gtd|int) if t.gtd else '-' }}</td>
-                <td>{{ t.entries }}</td>
+                <td>{{ t.entries|int }}</td>
                 <td class="amount income">{{ "%.2f"|format(t.prize_pool) }}</td>
                 <td class="muted">{{ t.start }}</td>
                 <td class="muted">{{ t.duration }}</td>
+            </tr>
+            <tr class="mtt-detail-row" style="display:none;">
+                <td colspan="10" style="padding:0;">
+                    <div class="mtt-players-container" style="background:#f8f9fa; padding:0.6rem 1rem;"></div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -75,4 +80,46 @@
         </tfoot>
     </table>
 </div>
+
+<style>
+.mtt-players-container table { width:100%; font-size:0.85rem; border-collapse:collapse; }
+.mtt-players-container td { padding:0.3rem 0.5rem; border-bottom:1px solid #eee; }
+.mtt-players-container .winner { color:#2ec4b6; font-weight:600; }
+.mtt-players-container .loser { color:#ef233c; font-weight:600; }
+body.dark .mtt-players-container { background:#252535 !important; }
+body.dark .mtt-players-container td { border-bottom-color:#333; }
+</style>
+
+<script>
+function toggleMttPlayers(row, title) {
+    var detailRow = row.nextElementSibling;
+    if (detailRow.style.display !== 'none') {
+        detailRow.style.display = 'none';
+        return;
+    }
+    detailRow.style.display = '';
+    var container = detailRow.querySelector('.mtt-players-container');
+    if (container.dataset.loaded) return;
+    container.innerHTML = '<span class="muted small">טוען...</span>';
+    fetch('/api/tournament-players?title=' + encodeURIComponent(title))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.players.length) {
+                container.innerHTML = '<span class="muted small">אין נתוני שחקנים</span>';
+                return;
+            }
+            var html = '<table><tr><th style="text-align:right;">#</th><th style="text-align:right;">שחקן</th><th style="text-align:left;">P&L</th></tr>';
+            data.players.forEach(function(p, i) {
+                var cls = p.pnl > 0 ? 'winner' : (p.pnl < 0 ? 'loser' : '');
+                var sign = p.pnl > 0 ? '+' : '';
+                html += '<tr><td>' + (i+1) + '</td>';
+                html += '<td><a href="/union/player/' + p.player_id + '" class="player-link"><strong>' + p.nickname + '</strong></a></td>';
+                html += '<td class="' + cls + '">' + sign + p.pnl.toFixed(2) + '</td></tr>';
+            });
+            html += '</table>';
+            container.innerHTML = html;
+            container.dataset.loaded = '1';
+        });
+}
+</script>
 {% endblock %}

@@ -833,6 +833,32 @@ def report_dates_api():
     return jsonify({'dates': dates})
 
 
+@main_bp.route('/api/tournament-players')
+@login_required
+def tournament_players_api():
+    """Return players who played in a specific tournament."""
+    from app.models import PlayerSession
+    title = request.args.get('title', '')
+    if not title:
+        return jsonify({'players': []})
+    sessions = PlayerSession.query.filter_by(table_name=title, game_type='MTT').all()
+    players = []
+    for s in sessions:
+        players.append({
+            'player_id': s.player_id,
+            'pnl': round(s.pnl, 2),
+        })
+    # Get nicknames
+    from app.models import DailyPlayerStats
+    nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, func.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+    for p in players:
+        p['nickname'] = nicks.get(p['player_id'], p['player_id'])
+    players.sort(key=lambda x: x['pnl'], reverse=True)
+    return jsonify({'players': players})
+
+
 @main_bp.route('/api/player-record/<player_id>')
 @login_required
 def player_record_api(player_id):
