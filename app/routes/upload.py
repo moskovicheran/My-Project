@@ -75,7 +75,7 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
         )
 
     db.session.commit()
-    return count
+    return len(rows)
 
 
 @upload_bp.route('/', methods=['GET', 'POST'])
