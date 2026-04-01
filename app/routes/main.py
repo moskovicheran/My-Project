@@ -118,6 +118,11 @@ def dashboard():
                 if not club_name:
                     continue
 
+                # Build ID → nickname map from all DB data
+                all_nicknames = dict(DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+                ).group_by(DailyPlayerStats.player_id).all())
+
                 # Get ALL players in this club from cumulative DB
                 club_players_db = DailyPlayerStats.query.with_entities(
                     DailyPlayerStats.player_id,
@@ -143,15 +148,14 @@ def dashboard():
 
                     if sa_id_val and sa_id_val != '-':
                         if sa_id_val not in club_sas:
-                            club_sas[sa_id_val] = {'nick': sa_id_val, 'id': sa_id_val,
+                            sa_nick = all_nicknames.get(sa_id_val, sa_id_val)
+                            club_sas[sa_id_val] = {'nick': sa_nick, 'id': sa_id_val,
                                                     'agents': {}, 'direct_members': []}
                         sa = club_sas[sa_id_val]
-                        # Try to get SA nick from the player data
-                        if sa['nick'] == sa_id_val and pid == sa_id_val:
-                            sa['nick'] = nick
                         if ag_id_val and ag_id_val != '-' and ag_id_val != sa_id_val:
                             if ag_id_val not in sa['agents']:
-                                sa['agents'][ag_id_val] = {'nick': ag_id_val, 'members': []}
+                                ag_nick = all_nicknames.get(ag_id_val, ag_id_val)
+                                sa['agents'][ag_id_val] = {'nick': ag_nick, 'members': []}
                             sa['agents'][ag_id_val]['members'].append(member)
                         else:
                             sa['direct_members'].append(member)
