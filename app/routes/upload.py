@@ -31,7 +31,20 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
         return 0
 
     df = sheets['Union Member Statistics']
-    upload = DailyUpload(filename=filename, upload_date=date.today())
+
+    # Try to extract date from Excel (Union Overview period)
+    upload_date = date.today()
+    try:
+        if 'Union Overview' in sheets:
+            period_str = str(sheets['Union Overview'].iloc[2, 0])  # "Period : 2026-03-31 ~ ..."
+            date_part = period_str.replace('Period : ', '').strip().split(' ')[0].split('~')[0].strip()
+            if len(date_part) == 10:
+                from datetime import datetime
+                upload_date = datetime.strptime(date_part, '%Y-%m-%d').date()
+    except Exception:
+        pass
+
+    upload = DailyUpload(filename=filename, upload_date=upload_date)
     db.session.add(upload)
     db.session.flush()
     upload_id = upload.id

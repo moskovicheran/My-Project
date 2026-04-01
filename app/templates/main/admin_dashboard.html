@@ -5,7 +5,7 @@
 <div class="page-header">
     <div>
         <h1>סקירה</h1>
-        <p class="subtitle">{{ meta.union_name }} | {{ meta.period }}</p>
+        <p class="subtitle">{{ meta.union_name }} | תקופה: {{ meta.period }}</p>
     </div>
 </div>
 
@@ -38,12 +38,12 @@
         <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Total Fee (Union)</div>
+        <div class="stat-label">Total Rake</div>
         <div class="stat-value">{{ "%.2f"|format(total.total_fee) }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">תקופה</div>
-        <div class="stat-value small-val">{{ meta.period }}</div>
+        <div class="stat-label">העלאות</div>
+        <div class="stat-value">{{ tables_count }}</div>
     </div>
 </div>
 

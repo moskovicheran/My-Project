@@ -644,6 +644,14 @@ def get_cumulative_totals():
 
     uploads_count = DailyUpload.query.count()
 
+    # Date range from uploads
+    date_range = DailyUpload.query.with_entities(
+        func.min(DailyUpload.upload_date),
+        func.max(DailyUpload.upload_date),
+    ).first()
+    first_date = date_range[0].strftime('%d/%m/%Y') if date_range[0] else '-'
+    last_date = date_range[1].strftime('%d/%m/%Y') if date_range[1] else '-'
+
     # Per-club totals
     club_stats = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.club,
@@ -671,6 +679,7 @@ def get_cumulative_totals():
         'total_players': int(stats[3] or 0),
         'uploads_count': uploads_count,
         'clubs': clubs,
+        'period': f'{first_date} — {last_date}' if first_date != last_date else first_date,
     }
 
 

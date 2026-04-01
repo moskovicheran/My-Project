@@ -24,6 +24,7 @@ def dashboard():
         from app.union_data import get_union_overview, get_cumulative_totals
         meta, _, _ = get_union_overview()
         ct = get_cumulative_totals()
+        meta['period'] = ct['period']
         return render_template('main/admin_dashboard.html',
                                meta=meta, clubs=ct['clubs'],
                                total={'active_players': ct['total_players'],
