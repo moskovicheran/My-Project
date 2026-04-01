@@ -32,18 +32,11 @@ def mtts():
     # Try cumulative DB first
     db_mtts = TournamentStats.query.all()
     if db_mtts:
-        # Aggregate by title (same tournament from multiple uploads)
-        agg = {}
-        for t in db_mtts:
-            key = t.title
-            if key not in agg:
-                agg[key] = {'title': t.title, 'game_type': t.game_type,
-                           'buyin': t.buyin, 'fee': t.fee, 'reentry': t.reentry,
-                           'gtd': t.gtd, 'entries': 0, 'prize_pool': 0,
-                           'start': t.start, 'duration': t.duration}
-            agg[key]['entries'] += t.entries
-            agg[key]['prize_pool'] += t.prize_pool
-        mtt_list = list(agg.values())
+        # Each tournament as separate row
+        mtt_list = [{'title': t.title, 'game_type': t.game_type,
+                     'buyin': t.buyin, 'fee': t.fee, 'reentry': t.reentry,
+                     'gtd': t.gtd, 'entries': t.entries, 'prize_pool': t.prize_pool,
+                     'start': t.start, 'duration': t.duration} for t in db_mtts]
         total_entries = sum(m['entries'] for m in mtt_list)
         total_prize = round(sum(m['prize_pool'] for m in mtt_list), 2)
         total_rake = round(sum(m['fee'] * m['entries'] for m in mtt_list if m['fee'] > 0), 2)
