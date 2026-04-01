@@ -96,53 +96,76 @@ function toggleExpenseDetails() {
         </div>
     </div>
 
-    {# Club members with full details #}
-    {% for sa_id, sa in managed_club.super_agents.items() %}
-    <div style="margin-bottom:1rem; padding:0.6rem 0; border-bottom:1px solid #e8e8e8;">
+    {# ── Super Agents ── #}
+    {% set all_sas = managed_club.super_agents.values()|list %}
+    {% if all_sas %}
+    <div style="margin-bottom:1rem;">
         <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-            <span class="role-badge role-sa">SA</span>
-            <strong>{{ sa.nick }}</strong>
-            <span class="muted small">{{ sa.id }}</span>
+            <span class="role-badge role-sa" style="font-size:0.85rem;">Super Agents</span>
+            <span class="muted small">({{ all_sas|length }})</span>
         </div>
-
-        {% for ag_id, agent in sa.agents.items() %}
-        <div style="margin-right:1.5rem; margin-bottom:0.5rem;">
-            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
-                <span class="role-badge role-agent">Agent</span>
-                <strong>{{ agent.nick }}</strong>
-            </div>
-            <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem; margin-right:0.5rem;">
-                {% for m in agent.members %}
-                <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
-                    <span class="chip-name">{{ m.nickname }}</span>
-                    <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
-
-        {% if sa.direct_members %}
-        <div style="margin-right:1.5rem; margin-top:0.3rem;">
-            <div class="muted small" style="margin-bottom:0.3rem;">ישיר</div>
-            <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-                {% for m in sa.direct_members %}
-                <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
-                    <span class="chip-name">{{ m.nickname }}</span>
-                    <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    {% endfor %}
-
-    {% if managed_club.no_sa_members %}
-    <div style="padding:0.5rem 0; border-top:1px dashed #ddd;">
-        <div class="muted small" style="margin-bottom:0.3rem;">ללא SA</div>
         <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-            {% for m in managed_club.no_sa_members %}
+            {% for sa in all_sas %}
+            <span class="member-chip" style="background:#eef0ff; border-color:#4361ee; color:#4361ee;">
+                <span class="chip-name">{{ sa.nick }}</span>
+                <span class="muted small">{{ sa.id }}</span>
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Agents ── #}
+    {% set all_agents = [] %}
+    {% for sa in all_sas %}
+        {% for ag_id, agent in sa.agents.items() %}
+            {% if all_agents.append({'nick': agent.nick, 'id': ag_id, 'members': agent.members}) %}{% endif %}
+        {% endfor %}
+    {% endfor %}
+    {% if all_agents %}
+    <div style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+            <span class="role-badge role-agent" style="font-size:0.85rem;">סוכנים</span>
+            <span class="muted small">({{ all_agents|length }})</span>
+        </div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for ag in all_agents %}
+            <span class="member-chip" style="background:#fff3e0; border-color:#e65100; color:#e65100;">
+                <span class="chip-name">{{ ag.nick }}</span>
+                <span class="muted small">({{ ag.members|length }})</span>
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Players ── #}
+    {% set all_players = [] %}
+    {% for sa in all_sas %}
+        {% for ag_id, agent in sa.agents.items() %}
+            {% for m in agent.members %}
+                {% if all_players.append(m) %}{% endif %}
+            {% endfor %}
+        {% endfor %}
+        {% if sa.direct_members %}
+            {% for m in sa.direct_members %}
+                {% if all_players.append(m) %}{% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+    {% if managed_club.no_sa_members %}
+        {% for m in managed_club.no_sa_members %}
+            {% if all_players.append(m) %}{% endif %}
+        {% endfor %}
+    {% endif %}
+    {% if all_players %}
+    <div style="margin-bottom:0.5rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+            <span class="role-badge role-player" style="font-size:0.85rem;">שחקנים</span>
+            <span class="muted small">({{ all_players|length }})</span>
+        </div>
+        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+            {% for m in all_players %}
             <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
                 <span class="chip-name">{{ m.nickname }}</span>
                 <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
