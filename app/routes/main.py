@@ -239,28 +239,54 @@ def agent_reports():
     if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.union_data import get_super_agent_tables
-    from app.models import SAHierarchy
+    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
 
     sa_id = current_user.player_id
-    sa_tables = get_super_agent_tables()
-    my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
+
+    # Collect ALL player IDs in the box: direct SA players + child SAs + managed clubs
+    all_sa_ids = [sa_id]
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
-    child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
+    all_sa_ids.extend(child_sa_ids)
+
+    # Players under my SAs (from cumulative DB)
+    sa_players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(
+        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
 
     my_players = []
-    my_player_ids = []
-    for sa in my_sas + child_sas:
-        for m in sa['direct']:
-            my_players.append({'player_id': m['player_id'], 'nickname': m['nickname']})
-            my_player_ids.append(m['player_id'])
-        for ag in sa['agents'].values():
-            for m in ag['members']:
-                my_players.append({'player_id': m['player_id'], 'nickname': m['nickname']})
-                my_player_ids.append(m['player_id'])
+    my_player_ids = set()
+    for pid, nick in sa_players:
+        my_players.append({'player_id': pid, 'nickname': nick})
+        my_player_ids.add(pid)
+
+    # Players from managed clubs
+    from app.union_data import get_members_hierarchy
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+    if rake_cfgs:
+        clubs_data, _ = get_members_hierarchy()
+        club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        for cfg in rake_cfgs:
+            club_name = club_id_to_name.get(cfg.managed_club_id)
+            if club_name:
+                club_players = DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+                ).filter(
+                    DailyPlayerStats.club == club_name,
+                    DailyPlayerStats.role != 'Name Entry'
+                ).group_by(DailyPlayerStats.player_id).all()
+                for pid, nick in club_players:
+                    if pid not in my_player_ids:
+                        my_players.append({'player_id': pid, 'nickname': nick})
+                        my_player_ids.add(pid)
+
+    my_players.sort(key=lambda x: x['nickname'].lower())
 
     return render_template('main/agent_reports.html',
-                           players=my_players, player_ids=my_player_ids)
+                           players=my_players, player_ids=list(my_player_ids))
 
 
 @main_bp.route('/agent/transfers', methods=['GET', 'POST'])
