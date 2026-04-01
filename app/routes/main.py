@@ -1,5 +1,6 @@
+import io
 from datetime import date
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
 from sqlalchemy import func
 from app.models import db, Transaction
@@ -287,6 +288,278 @@ def agent_reports():
 
     return render_template('main/agent_reports.html',
                            players=my_players, player_ids=list(my_player_ids))
+
+
+# ═══════════════════════ EXCEL EXPORTS ═══════════════════════
+
+def _make_excel(sheets_data, filename):
+    """Create Excel file from dict of {sheet_name: [{col: val, ...}]}."""
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for sheet_name, rows in sheets_data.items():
+        ws = wb.create_sheet(title=sheet_name[:31])
+        if not rows:
+            continue
+        # Headers
+        headers = list(rows[0].keys())
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='4361EE', end_color='4361EE', fill_type='solid')
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+        # Data
+        for row_idx, row_data in enumerate(rows, 2):
+            for col_idx, key in enumerate(headers, 1):
+                ws.cell(row=row_idx, column=col_idx, value=row_data.get(key, ''))
+        # Auto-width
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 3, 40)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(output, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@main_bp.route('/export/player/<player_id>')
+@login_required
+def export_player(player_id):
+    """Export player personal report - all games, P&L, record."""
+    from app.union_data import get_cumulative_stats
+    from app.models import PlayerSession
+
+    cs = get_cumulative_stats([player_id]).get(player_id)
+    if not cs:
+        flash('שחקן לא נמצא.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+    session_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
+                     'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
+
+    summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
+                'P&L': cs['pnl'], 'Rake': cs['rake'], 'Hands': cs['hands']}]
+
+    return _make_excel({
+        'סיכום': summary,
+        'רקורד משחקים': session_rows,
+    }, f'{cs["nickname"]}_report.xlsx')
+
+
+@main_bp.route('/export/agent/account')
+@login_required
+def export_agent_account():
+    """Export agent account summary - personal rake, club rake, expenses, net."""
+    if current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+
+    sa_id = current_user.player_id
+
+    # Personal rake
+    personal = DailyPlayerStats.query.with_entities(
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.pnl)
+    ).filter(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.role != 'Name Entry').first()
+    personal_rake = round(float(personal[0] or 0), 2)
+    personal_pnl = round(float(personal[1] or 0), 2)
+
+    # Club rakes
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+    clubs_data, _ = get_members_hierarchy()
+    club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+    club_rows = []
+    total_club_rake = 0
+    for cfg in rake_cfgs:
+        name = club_id_to_name.get(cfg.managed_club_id, '')
+        if name:
+            cr = DailyPlayerStats.query.with_entities(
+                sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.pnl)
+            ).filter(DailyPlayerStats.club == name).first()
+            rake = round(float(cr[0] or 0), 2)
+            pnl = round(float(cr[1] or 0), 2)
+            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+            keeps = club_rc.rake_percent if club_rc else 0
+            net = round(rake * (100 - keeps) / 100, 2)
+            club_rows.append({'מועדון': name, 'Rake': rake, 'P&L': pnl,
+                              'מועדון מקבל %': keeps, 'נטו שלי': net})
+            total_club_rake += net
+
+    # Expenses
+    charges = ExpenseCharge.query.filter_by(agent_player_id=sa_id).all()
+    expense_rows = [{'הוצאה': c.expense.description if c.expense else '', 'סכום': c.charge_amount,
+                     'תאריך': c.created_at.strftime('%d/%m/%Y')} for c in charges]
+    total_expenses = round(sum(c.charge_amount for c in charges), 2)
+
+    summary = [{'סוכן': current_user.username, 'רייק אישי': personal_rake,
+                'רייק מועדונים (נטו)': total_club_rake, 'הוצאות משותפות': total_expenses,
+                'P&L': personal_pnl}]
+
+    sheets = {'סיכום חשבון': summary}
+    if club_rows:
+        sheets['מועדונים'] = club_rows
+    if expense_rows:
+        sheets['הוצאות'] = expense_rows
+    return _make_excel(sheets, f'{current_user.username}_account.xlsx')
+
+
+@main_bp.route('/export/agent/players')
+@login_required
+def export_agent_players():
+    """Export all agent's players with P&L and rake."""
+    if current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+
+    sa_id = current_user.player_id
+    all_sa_ids = [sa_id]
+    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+    all_sa_ids.extend(child_sa_ids)
+
+    # All players under SAs
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+             'P&L': round(float(p[3] or 0), 2), 'Rake': round(float(p[4] or 0), 2),
+             'Hands': int(p[5] or 0)} for p in players]
+    rows.sort(key=lambda x: x['Rake'], reverse=True)
+
+    # Also add managed club players
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+    if rake_cfgs:
+        clubs_data, _ = get_members_hierarchy()
+        club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        existing_pids = {r['ID'] for r in rows}
+        for cfg in rake_cfgs:
+            name = club_id_to_name.get(cfg.managed_club_id)
+            if name:
+                cp = DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                    sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+                    sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+                ).filter(DailyPlayerStats.club == name, DailyPlayerStats.role != 'Name Entry'
+                ).group_by(DailyPlayerStats.player_id).all()
+                for p in cp:
+                    if p[0] not in existing_pids:
+                        rows.append({'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+                                     'P&L': round(float(p[3] or 0), 2),
+                                     'Rake': round(float(p[4] or 0), 2),
+                                     'Hands': int(p[5] or 0)})
+                        existing_pids.add(p[0])
+
+    return _make_excel({'שחקנים': rows}, f'{current_user.username}_players.xlsx')
+
+
+@main_bp.route('/export/agent/club/<club_id>')
+@login_required
+def export_agent_club(club_id):
+    """Export specific club details - SAs, Agents, Players."""
+    if current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+
+    clubs_data, _ = get_members_hierarchy()
+    club_name = None
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            club_name = c['name']
+            break
+    if not club_name:
+        flash('מועדון לא נמצא.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
+        sqlfunc.max(DailyPlayerStats.role), sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    # Build nickname map
+    all_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+
+    rows = [{'שחקן': p[1], 'ID': p[0],
+             'Super Agent': all_nicks.get(p[2], p[2]) if p[2] and p[2] != '-' else '',
+             'Agent': all_nicks.get(p[3], p[3]) if p[3] and p[3] != '-' else '',
+             'תפקיד': p[4], 'P&L': round(float(p[5] or 0), 2),
+             'Rake': round(float(p[6] or 0), 2), 'Hands': int(p[7] or 0)} for p in players]
+    rows.sort(key=lambda x: x['Rake'], reverse=True)
+
+    return _make_excel({club_name: rows}, f'{club_name}_report.xlsx')
+
+
+@main_bp.route('/export/agent/period')
+@login_required
+def export_agent_period():
+    """Export agent data for specific date range."""
+    if current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats, DailyUpload
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+    from datetime import datetime
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    if not from_date or not to_date:
+        flash('יש לבחור תאריכים.', 'danger')
+        return redirect(url_for('main.agent_reports'))
+
+    fd = datetime.strptime(from_date, '%Y-%m-%d').date()
+    td = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+    sa_id = current_user.player_id
+    all_sa_ids = [sa_id]
+    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+    all_sa_ids.extend(child_sa_ids)
+
+    # Get uploads in range
+    uploads = DailyUpload.query.filter(DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
+    upload_ids = [u.id for u in uploads]
+    if not upload_ids:
+        flash('אין נתונים בטווח התאריכים.', 'warning')
+        return redirect(url_for('main.agent_reports'))
+
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(
+        DailyPlayerStats.upload_id.in_(upload_ids),
+        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+             'P&L': round(float(p[3] or 0), 2), 'Rake': round(float(p[4] or 0), 2),
+             'Hands': int(p[5] or 0)} for p in players]
+    rows.sort(key=lambda x: x['Rake'], reverse=True)
+
+    return _make_excel({f'{from_date} - {to_date}': rows},
+                       f'{current_user.username}_{from_date}_{to_date}.xlsx')
 
 
 @main_bp.route('/agent/transfers', methods=['GET', 'POST'])

@@ -11,6 +11,10 @@
             {% if managed_clubs %}&nbsp;| מנהל {% for mc in managed_clubs %}{{ mc.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
         </p>
     </div>
+    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+        <a href="{{ url_for('main.export_agent_account') }}" class="btn btn-outline btn-sm">📥 דוח חשבון</a>
+        <a href="{{ url_for('main.export_agent_players') }}" class="btn btn-outline btn-sm">📥 דוח שחקנים</a>
+    </div>
 </div>
 
 {# ── Stats Cards ── #}

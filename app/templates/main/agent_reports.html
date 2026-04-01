@@ -7,7 +7,10 @@
         <h1>דוחות</h1>
         <p class="subtitle">בחר תאריכים לצפייה בנתוני השחקנים שלך</p>
     </div>
-    <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline">← חזור</a>
+    <div style="display:flex; gap:0.4rem;">
+        <button onclick="exportPeriod()" class="btn btn-outline btn-sm">📥 הורד דוח תקופה</button>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline">← חזור</a>
+    </div>
 </div>
 
 <div class="section" style="margin-bottom:1.5rem;">
@@ -148,6 +151,12 @@ function selectDate(dateStr) {
     document.getElementById('fromDate').value = selectedFrom || '';
     document.getElementById('toDate').value = selectedTo || selectedFrom || '';
     renderCalendar();
+}
+function exportPeriod() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    if (!from || !to) { alert('יש לבחור תאריכים'); return; }
+    window.location.href = '/export/agent/period?from=' + from + '&to=' + to;
 }
 function loadReport() {
     var from = document.getElementById('fromDate').value;
