@@ -20,6 +20,7 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
     """Parse player stats from Excel bytes and store as cumulative daily data."""
     import pandas as pd
     from app.models import db, DailyUpload, DailyPlayerStats
+    from sqlalchemy import text
 
     try:
         sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, header=None)
@@ -33,8 +34,10 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
     upload = DailyUpload(filename=filename, upload_date=date.today())
     db.session.add(upload)
     db.session.flush()
+    upload_id = upload.id
 
-    count = 0
+    # Collect all rows first
+    rows = []
     current_club = ''
     for i in range(6, len(df)):
         row = df.iloc[i]
@@ -57,12 +60,19 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
         except (ValueError, TypeError):
             hands = 0
 
-        stat = DailyPlayerStats(upload_id=upload.id, player_id=player_id,
-                                nickname=nickname, club=current_club,
-                                pnl=round(pnl, 2), rake=round(rake, 2),
-                                hands=round(hands, 0))
-        db.session.add(stat)
-        count += 1
+        rows.append({
+            'upload_id': upload_id, 'player_id': player_id,
+            'nickname': nickname, 'club': current_club,
+            'pnl': round(pnl, 2), 'rake': round(rake, 2),
+            'hands': round(hands, 0),
+        })
+
+    # Bulk insert all at once (much faster for cloud DB)
+    if rows:
+        db.session.execute(
+            DailyPlayerStats.__table__.insert(),
+            rows
+        )
 
     db.session.commit()
     return count
