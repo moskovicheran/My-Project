@@ -325,49 +325,52 @@ def expenses():
     if request.method == 'POST':
         action = request.form.get('action')
 
-        if action == 'add':
-            description = request.form.get('description', '').strip()
-            try:
-                amount = float(request.form.get('amount', 0))
-            except ValueError:
-                amount = 0
-            if description and amount > 0:
-                exp = SharedExpense(user_id=current_user.id, description=description, amount=amount)
-                db.session.add(exp)
-                db.session.commit()
-                flash(f'הוצאה "{description}" ({amount}) נוספה.', 'success')
-            else:
-                flash('יש למלא תיאור וסכום.', 'danger')
-
-        elif action == 'charge':
-            exp_id = request.form.get('expense_id')
-            exp = SharedExpense.query.get(exp_id)
-            if exp and not exp.charged:
-                # Get all agent users
-                agents = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
-                if not agents:
-                    flash('אין סוכנים (מנהלים) במערכת לחייב.', 'warning')
-                else:
-                    share = round(exp.amount / len(agents), 2)
-                    for agent in agents:
-                        charge = ExpenseCharge(expense_id=exp.id,
-                                              agent_player_id=agent.player_id,
-                                              agent_name=agent.username,
-                                              charge_amount=share)
-                        db.session.add(charge)
-                    exp.charged = True
+        try:
+            if action == 'add':
+                description = request.form.get('description', '').strip()
+                try:
+                    amount = float(request.form.get('amount', 0))
+                except ValueError:
+                    amount = 0
+                if description and amount > 0:
+                    exp = SharedExpense(user_id=current_user.id, description=description, amount=amount)
+                    db.session.add(exp)
                     db.session.commit()
-                    flash(f'חויבו {len(agents)} סוכנים, {share} לכל אחד.', 'success')
+                    flash(f'הוצאה ({amount}) נוספה.', 'success')
+                else:
+                    flash('יש למלא תיאור וסכום.', 'danger')
 
-        elif action == 'delete':
-            exp_id = request.form.get('expense_id')
-            exp = SharedExpense.query.get(exp_id)
-            if exp and not exp.charged:
-                db.session.delete(exp)
-                db.session.commit()
-                flash('הוצאה נמחקה.', 'success')
-            elif exp and exp.charged:
-                flash('לא ניתן למחוק הוצאה שכבר חויבה.', 'warning')
+            elif action == 'charge':
+                exp_id = request.form.get('expense_id')
+                exp = SharedExpense.query.get(exp_id)
+                if exp and not exp.charged:
+                    agents = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
+                    if not agents:
+                        flash('אין סוכנים במערכת לחייב.', 'warning')
+                    else:
+                        share = round(exp.amount / len(agents), 2)
+                        for agent in agents:
+                            charge = ExpenseCharge(expense_id=exp.id,
+                                                  agent_player_id=agent.player_id,
+                                                  agent_name=agent.username,
+                                                  charge_amount=share)
+                            db.session.add(charge)
+                        exp.charged = True
+                        db.session.commit()
+                        flash(f'חויבו {len(agents)} סוכנים, {share} לכל אחד.', 'success')
+
+            elif action == 'delete':
+                exp_id = request.form.get('expense_id')
+                exp = SharedExpense.query.get(exp_id)
+                if exp and not exp.charged:
+                    db.session.delete(exp)
+                    db.session.commit()
+                    flash('הוצאה נמחקה.', 'success')
+                elif exp and exp.charged:
+                    flash('לא ניתן למחוק הוצאה שכבר חויבה.', 'warning')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'שגיאה: {str(e)[:100]}', 'danger')
 
         return redirect(url_for('admin.expenses'))
 
