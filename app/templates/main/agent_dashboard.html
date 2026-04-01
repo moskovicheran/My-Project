@@ -73,6 +73,7 @@ function toggleExpenseDetails() {
 
 {# ── Managed Club ── #}
 {% for managed_club in managed_clubs %}
+{% set club_idx = loop.index %}
 <div class="section" style="margin-bottom:1.5rem; border-right:4px solid #2e7d32;">
     <h2 class="section-title" style="color:#2e7d32;">מועדון {{ managed_club.name }}</h2>
 
@@ -96,50 +97,14 @@ function toggleExpenseDetails() {
         </div>
     </div>
 
-    {# ── Super Agents ── #}
+    {# Collect data for categories #}
     {% set all_sas = managed_club.super_agents.values()|list %}
-    {% if all_sas %}
-    <div style="margin-bottom:1rem;">
-        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-            <span class="role-badge role-sa" style="font-size:0.85rem;">Super Agents</span>
-            <span class="muted small">({{ all_sas|length }})</span>
-        </div>
-        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-            {% for sa in all_sas %}
-            <span class="member-chip" style="background:#eef0ff; border-color:#4361ee; color:#4361ee;">
-                <span class="chip-name">{{ sa.nick }}</span>
-                <span class="muted small">{{ sa.id }}</span>
-            </span>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    {# ── Agents ── #}
     {% set all_agents = [] %}
     {% for sa in all_sas %}
         {% for ag_id, agent in sa.agents.items() %}
             {% if all_agents.append({'nick': agent.nick, 'id': ag_id, 'members': agent.members}) %}{% endif %}
         {% endfor %}
     {% endfor %}
-    {% if all_agents %}
-    <div style="margin-bottom:1rem;">
-        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-            <span class="role-badge role-agent" style="font-size:0.85rem;">סוכנים</span>
-            <span class="muted small">({{ all_agents|length }})</span>
-        </div>
-        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-            {% for ag in all_agents %}
-            <span class="member-chip" style="background:#fff3e0; border-color:#e65100; color:#e65100;">
-                <span class="chip-name">{{ ag.nick }}</span>
-                <span class="muted small">({{ ag.members|length }})</span>
-            </span>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    {# ── Players ── #}
     {% set all_players = [] %}
     {% for sa in all_sas %}
         {% for ag_id, agent in sa.agents.items() %}
@@ -158,22 +123,113 @@ function toggleExpenseDetails() {
             {% if all_players.append(m) %}{% endif %}
         {% endfor %}
     {% endif %}
-    {% if all_players %}
-    <div style="margin-bottom:0.5rem;">
-        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-            <span class="role-badge role-player" style="font-size:0.85rem;">שחקנים</span>
-            <span class="muted small">({{ all_players|length }})</span>
+
+    {# Sidebar + Content layout #}
+    <div style="display:flex; gap:1rem; min-height:200px;">
+        {# Sidebar #}
+        <div style="min-width:140px; border-left:1px solid #e8e8e8; padding-left:0.8rem;">
+            <div class="club-cat-btn active" onclick="showClubCat({{ club_idx }}, 'all')" id="cat-{{ club_idx }}-all"
+                 style="padding:0.5rem 0.8rem; margin-bottom:0.3rem; border-radius:8px; cursor:pointer; font-size:0.88rem; font-weight:500;">
+                הכל ({{ all_sas|length + all_agents|length + all_players|length }})
+            </div>
+            <div class="club-cat-btn" onclick="showClubCat({{ club_idx }}, 'sas')" id="cat-{{ club_idx }}-sas"
+                 style="padding:0.5rem 0.8rem; margin-bottom:0.3rem; border-radius:8px; cursor:pointer; font-size:0.88rem;">
+                <span class="role-badge role-sa" style="font-size:0.7rem;">SA</span> Super Agents ({{ all_sas|length }})
+            </div>
+            <div class="club-cat-btn" onclick="showClubCat({{ club_idx }}, 'agents')" id="cat-{{ club_idx }}-agents"
+                 style="padding:0.5rem 0.8rem; margin-bottom:0.3rem; border-radius:8px; cursor:pointer; font-size:0.88rem;">
+                <span class="role-badge role-agent" style="font-size:0.7rem;">Agent</span> סוכנים ({{ all_agents|length }})
+            </div>
+            <div class="club-cat-btn" onclick="showClubCat({{ club_idx }}, 'players')" id="cat-{{ club_idx }}-players"
+                 style="padding:0.5rem 0.8rem; margin-bottom:0.3rem; border-radius:8px; cursor:pointer; font-size:0.88rem;">
+                <span class="role-badge role-player" style="font-size:0.7rem;">Player</span> שחקנים ({{ all_players|length }})
+            </div>
         </div>
-        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-            {% for m in all_players %}
-            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
-                <span class="chip-name">{{ m.nickname }}</span>
-                <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
-            </a>
-            {% endfor %}
+
+        {# Content area #}
+        <div style="flex:1;">
+            {# All #}
+            <div class="club-cat-content" id="content-{{ club_idx }}-all">
+                {% if all_sas %}
+                <div style="margin-bottom:0.8rem;">
+                    <div class="muted small" style="margin-bottom:0.3rem;">Super Agents</div>
+                    <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+                        {% for sa in all_sas %}
+                        <span class="member-chip" style="background:#eef0ff; border-color:#4361ee; color:#4361ee;">{{ sa.nick }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% if all_agents %}
+                <div style="margin-bottom:0.8rem;">
+                    <div class="muted small" style="margin-bottom:0.3rem;">סוכנים</div>
+                    <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+                        {% for ag in all_agents %}
+                        <span class="member-chip" style="background:#fff3e0; border-color:#e65100; color:#e65100;">{{ ag.nick }} ({{ ag.members|length }})</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% if all_players %}
+                <div>
+                    <div class="muted small" style="margin-bottom:0.3rem;">שחקנים</div>
+                    <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+                        {% for m in all_players %}
+                        <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                            <span class="chip-name">{{ m.nickname }}</span>
+                            <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            {# Super Agents only #}
+            <div class="club-cat-content" id="content-{{ club_idx }}-sas" style="display:none;">
+                {% for sa in all_sas %}
+                <div style="padding:0.5rem 0; border-bottom:1px solid #f0f0f0; display:flex; align-items:center; gap:0.5rem;">
+                    <span class="role-badge role-sa">SA</span>
+                    <strong>{{ sa.nick }}</strong>
+                    <span class="muted small">{{ sa.id }}</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            {# Agents only #}
+            <div class="club-cat-content" id="content-{{ club_idx }}-agents" style="display:none;">
+                {% for ag in all_agents %}
+                <div style="padding:0.5rem 0; border-bottom:1px solid #f0f0f0;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
+                        <span class="role-badge role-agent">Agent</span>
+                        <strong>{{ ag.nick }}</strong>
+                        <span class="muted small">{{ ag.members|length }} שחקנים</span>
+                    </div>
+                    <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.3rem; margin-right:1rem;">
+                        {% for m in ag.members %}
+                        <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}" style="font-size:0.78rem;">
+                            <span class="chip-name">{{ m.nickname }}</span>
+                            <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {# Players only #}
+            <div class="club-cat-content" id="content-{{ club_idx }}-players" style="display:none;">
+                <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
+                    {% for m in all_players %}
+                    <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+                        <span class="chip-name">{{ m.nickname }}</span>
+                        <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl_total) }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
-    {% endif %}
 </div>
 {% endfor %}
 
@@ -332,6 +388,12 @@ function toggleExpenseDetails() {
 {% endif %}
 
 <style>
+.club-cat-btn { color: #555; transition: all 0.15s; }
+.club-cat-btn:hover { background: #f0f2f5; }
+.club-cat-btn.active { background: #4361ee; color: #fff; border-radius: 8px; }
+body.dark .club-cat-btn:hover { background: #333; }
+body.dark .club-cat-btn.active { background: #4361ee; color: #fff; }
+
 .record-container {
     background: #f8f9fa;
     padding: 0.6rem 1rem;
@@ -345,6 +407,18 @@ function toggleExpenseDetails() {
 </style>
 
 <script>
+function showClubCat(clubIdx, cat) {
+    // Hide all content panels for this club
+    var panels = document.querySelectorAll('[id^="content-' + clubIdx + '-"]');
+    panels.forEach(function(p) { p.style.display = 'none'; });
+    // Deactivate all buttons
+    var btns = document.querySelectorAll('[id^="cat-' + clubIdx + '-"]');
+    btns.forEach(function(b) { b.classList.remove('active'); });
+    // Show selected
+    document.getElementById('content-' + clubIdx + '-' + cat).style.display = 'block';
+    document.getElementById('cat-' + clubIdx + '-' + cat).classList.add('active');
+}
+
 function toggleRecord(btn, playerId) {
     var row = btn.closest('tr').nextElementSibling;
     if (row.style.display !== 'none') {
