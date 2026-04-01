@@ -183,6 +183,23 @@ class DailyPlayerStats(db.Model):
     hands = db.Column(db.Float, default=0)
 
 
+class TournamentStats(db.Model):
+    __tablename__ = 'tournament_stats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    game_type = db.Column(db.String(30), default='')
+    buyin = db.Column(db.Float, default=0)
+    fee = db.Column(db.Float, default=0)
+    reentry = db.Column(db.String(20), default='')
+    gtd = db.Column(db.Float, default=0)
+    entries = db.Column(db.Float, default=0)
+    prize_pool = db.Column(db.Float, default=0)
+    start = db.Column(db.String(20), default='')
+    duration = db.Column(db.String(20), default='')
+
+
 class PlayerSession(db.Model):
     __tablename__ = 'player_sessions'
 

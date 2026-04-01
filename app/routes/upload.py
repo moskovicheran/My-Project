@@ -172,6 +172,42 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
     if sessions:
         db.session.execute(PlayerSession.__table__.insert(), sessions)
 
+    # Parse MTT Statistics (tournament list)
+    from app.models import TournamentStats
+    if 'Union MTT Statistics' in sheets:
+        mtt_df = sheets['Union MTT Statistics']
+        tournaments = []
+        for i in range(6, len(mtt_df)):
+            row = mtt_df.iloc[i]
+            title = str(row.iloc[2])
+            if title in ('nan', 'TOTAL'):
+                continue
+            club_name = str(row.iloc[1])
+            if club_name in ('nan', 'TOTAL'):
+                continue
+            try:
+                buyin = float(row.iloc[8]) if str(row.iloc[8]) != 'nan' else 0
+                fee = float(row.iloc[9]) if str(row.iloc[9]) != 'nan' else 0
+                entries = float(row.iloc[17]) if str(row.iloc[17]) != 'nan' else 0
+                gtd = float(row.iloc[11]) if str(row.iloc[11]) != 'nan' else 0
+                prize_pool = float(row.iloc[26]) if str(row.iloc[26]) != 'nan' else 0
+            except (ValueError, TypeError):
+                continue
+            game_type = str(row.iloc[4]) if str(row.iloc[4]) != 'nan' else ''
+            reentry = str(row.iloc[10]) if str(row.iloc[10]) != 'nan' else ''
+            start = str(row.iloc[14])[:16] if str(row.iloc[14]) != 'nan' else ''
+            duration = str(row.iloc[16]) if str(row.iloc[16]) != 'nan' else ''
+            tournaments.append({
+                'upload_id': upload_id, 'title': title[:200],
+                'game_type': game_type, 'buyin': round(buyin, 2),
+                'fee': round(fee, 2), 'reentry': reentry,
+                'gtd': round(gtd, 2), 'entries': round(entries, 0),
+                'prize_pool': round(prize_pool, 2), 'start': start,
+                'duration': duration,
+            })
+        if tournaments:
+            db.session.execute(TournamentStats.__table__.insert(), tournaments)
+
     db.session.commit()
     return len(rows)
 
@@ -292,9 +328,10 @@ def reset():
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
-    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession
+    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession, TournamentStats
 
     # Clear all data from DB
+    TournamentStats.query.delete()
     PlayerSession.query.delete()
     ActiveExcelData.query.delete()
     DailyPlayerStats.query.delete()

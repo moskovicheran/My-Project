@@ -26,6 +26,31 @@ def ring_games():
 @union_bp.route('/mtts')
 @login_required
 def mtts():
+    from app.models import TournamentStats
+    from sqlalchemy import func as sqlfunc
+
+    # Try cumulative DB first
+    db_mtts = TournamentStats.query.all()
+    if db_mtts:
+        # Aggregate by title (same tournament from multiple uploads)
+        agg = {}
+        for t in db_mtts:
+            key = t.title
+            if key not in agg:
+                agg[key] = {'title': t.title, 'game_type': t.game_type,
+                           'buyin': t.buyin, 'fee': t.fee, 'reentry': t.reentry,
+                           'gtd': t.gtd, 'entries': 0, 'prize_pool': 0,
+                           'start': t.start, 'duration': t.duration}
+            agg[key]['entries'] += t.entries
+            agg[key]['prize_pool'] += t.prize_pool
+        mtt_list = list(agg.values())
+        total_entries = sum(m['entries'] for m in mtt_list)
+        total_prize = round(sum(m['prize_pool'] for m in mtt_list), 2)
+        total_rake = round(sum(m['fee'] * m['entries'] for m in mtt_list if m['fee'] > 0), 2)
+        totals = {'entries': int(total_entries), 'prize_pool': total_prize, 'total_buyin': 0, 'total_rake': total_rake}
+        return render_template('union/mtts.html', mtts=mtt_list, totals=totals)
+
+    # Fallback to Excel
     mtt_list, totals = get_mtts()
     return render_template('union/mtts.html', mtts=mtt_list, totals=totals)
 
