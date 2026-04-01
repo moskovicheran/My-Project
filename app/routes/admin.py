@@ -182,9 +182,22 @@ def agents():
         if action == 'add_hierarchy':
             parent_id = request.form.get('parent_sa_id')
             child_id = request.form.get('child_sa_id')
+            force = request.form.get('force') == '1'
             if parent_id and child_id and parent_id != child_id:
-                if SAHierarchy.query.filter_by(child_sa_id=child_id).first():
-                    flash('Super Agent זה כבר משויך למישהו אחר.', 'warning')
+                existing = SAHierarchy.query.filter_by(child_sa_id=child_id).first()
+                if existing and existing.parent_sa_id != parent_id:
+                    if force:
+                        existing.parent_sa_id = parent_id
+                        db.session.commit()
+                        flash(f'SA הועבר בהצלחה.', 'success')
+                    else:
+                        # Return info about current assignment for JS confirm
+                        sa_map = {sa['id']: sa['nick'] for sa in get_all_super_agents()}
+                        old_parent = sa_map.get(existing.parent_sa_id, existing.parent_sa_id)
+                        child_name = sa_map.get(child_id, child_id)
+                        flash(f'TRANSFER_CONFIRM:SA:{child_id}:{parent_id}:{child_name} כבר משויך ל-{old_parent}. להעביר?', 'warning')
+                elif existing and existing.parent_sa_id == parent_id:
+                    flash('שיוך זה כבר קיים.', 'warning')
                 else:
                     db.session.add(SAHierarchy(parent_sa_id=parent_id, child_sa_id=child_id))
                     db.session.commit()
@@ -199,15 +212,25 @@ def agents():
                 db.session.commit()
                 flash('שיוך SA → SA נמחק.', 'success')
 
-        # SA → Club mapping (multiple clubs per SA allowed)
+        # SA → Club mapping
         elif action == 'set_club':
             sa_id = request.form.get('sa_id')
             club_id = request.form.get('club_id', '').strip()
+            force = request.form.get('force') == '1'
             if sa_id and club_id:
-                # Check if this exact SA+Club combo already exists
-                existing = SARakeConfig.query.filter_by(sa_id=sa_id, managed_club_id=club_id).first()
-                if existing:
+                # Check if this club is already assigned to another SA
+                existing_other = SARakeConfig.query.filter_by(managed_club_id=club_id).filter(SARakeConfig.sa_id != sa_id).first()
+                existing_same = SARakeConfig.query.filter_by(sa_id=sa_id, managed_club_id=club_id).first()
+                if existing_same:
                     flash('שיוך זה כבר קיים.', 'warning')
+                elif existing_other and not force:
+                    sa_map = {sa['id']: sa['nick'] for sa in get_all_super_agents()}
+                    old_sa = sa_map.get(existing_other.sa_id, existing_other.sa_id)
+                    flash(f'TRANSFER_CONFIRM:CLUB:{club_id}:{sa_id}:מועדון זה כבר משויך ל-{old_sa}. להעביר?', 'warning')
+                elif existing_other and force:
+                    existing_other.sa_id = sa_id
+                    db.session.commit()
+                    flash('מועדון הועבר בהצלחה.', 'success')
                 else:
                     db.session.add(SARakeConfig(sa_id=sa_id, rake_percent=0, managed_club_id=club_id))
                     db.session.commit()

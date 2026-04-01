@@ -203,6 +203,38 @@ function switchRakeEntity(type) {
     player.style.display = type === 'player' ? '' : 'none';
     player.disabled = type !== 'player';
 }
+
+// Handle transfer confirmations from flash messages
+document.addEventListener('DOMContentLoaded', function() {
+    var alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        var text = alert.textContent.trim();
+        if (text.startsWith('TRANSFER_CONFIRM:')) {
+            var parts = text.split(':');
+            // parts: [TRANSFER_CONFIRM, type, entity_id, target_sa_id, message]
+            var type = parts[1];
+            var entityId = parts[2];
+            var targetId = parts[3];
+            var message = parts.slice(4).join(':');
+            alert.innerHTML = '<strong>' + message + '</strong> ' +
+                '<button class="btn btn-primary btn-sm" style="margin-right:0.5rem;" onclick="doTransfer(\'' + type + '\',\'' + entityId + '\',\'' + targetId + '\')">כן, העבר</button>' +
+                '<button class="btn btn-outline btn-sm" onclick="this.parentElement.remove()">ביטול</button>';
+        }
+    });
+});
+
+function doTransfer(type, entityId, targetId) {
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.style.display = 'none';
+    if (type === 'SA') {
+        form.innerHTML = '<input name="action" value="add_hierarchy"><input name="child_sa_id" value="' + entityId + '"><input name="parent_sa_id" value="' + targetId + '"><input name="force" value="1">';
+    } else {
+        form.innerHTML = '<input name="action" value="set_club"><input name="club_id" value="' + entityId + '"><input name="sa_id" value="' + targetId + '"><input name="force" value="1">';
+    }
+    document.body.appendChild(form);
+    form.submit();
+}
 </script>
 
 {# ═══════ Section 4: SA Balance Summary ═══════ #}
