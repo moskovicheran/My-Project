@@ -76,6 +76,30 @@ def get_all_members():
         row = df.iloc[i]
         if '(ID:' in str(row.iloc[0]):
             current_club = str(row.iloc[0]).split(' (ID:')[0]
+
+        # Add Super Agent if not seen
+        sa_id = str(row.iloc[2])
+        sa_nick = str(row.iloc[3])
+        if sa_id not in ('-', 'nan') and sa_id not in seen:
+            seen.add(sa_id)
+            members.append({
+                'player_id': sa_id, 'nickname': sa_nick,
+                'role': 'Super Agent', 'club': current_club,
+                'sa_nick': '-', 'agent_nick': '-',
+            })
+
+        # Add Agent if not seen
+        ag_id = str(row.iloc[4])
+        ag_nick = str(row.iloc[5])
+        if ag_id not in ('-', 'nan') and ag_id not in seen:
+            seen.add(ag_id)
+            members.append({
+                'player_id': ag_id, 'nickname': ag_nick,
+                'role': 'Agent', 'club': current_club,
+                'sa_nick': sa_nick, 'agent_nick': '-',
+            })
+
+        # Add Player
         pid = str(row.iloc[8])
         nickname = str(row.iloc[9])
         if nickname in ('nan', '-') or pid in seen:
@@ -86,8 +110,8 @@ def get_all_members():
             'nickname': nickname,
             'role': str(row.iloc[7]),
             'club': current_club,
-            'sa_nick': str(row.iloc[3]),
-            'agent_nick': str(row.iloc[5]),
+            'sa_nick': sa_nick if sa_nick not in ('nan', '-') else '-',
+            'agent_nick': ag_nick if ag_nick not in ('nan', '-') else '-',
         })
     return sorted(members, key=lambda x: x['nickname'].lower())
 

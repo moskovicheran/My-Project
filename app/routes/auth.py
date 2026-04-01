@@ -165,21 +165,10 @@ def users():
 
         return redirect(url_for('auth.users'))
 
-    from app.union_data import get_all_members, get_all_clubs, get_all_super_agents
+    from app.union_data import get_all_members, get_all_clubs
     all_users = User.query.order_by(User.created_at.desc()).all()
     members = get_all_members()
-    super_agents = get_all_super_agents()
     clubs = get_all_clubs()
-    # Merge SA into members list (they might not appear as players)
-    member_ids = {m['player_id'] for m in members}
-    for sa in super_agents:
-        if sa['id'] not in member_ids:
-            members.append({
-                'player_id': sa['id'], 'nickname': sa['nick'],
-                'role': 'Super Agent', 'club': sa['club'],
-                'sa_nick': '-', 'agent_nick': '-',
-            })
-    members.sort(key=lambda x: x['nickname'].lower())
     existing_pids = {u.player_id for u in all_users if u.player_id}
     available_members = [m for m in members if m['player_id'] not in existing_pids]
     available_clubs = [c for c in clubs if c['club_id'] not in existing_pids]
