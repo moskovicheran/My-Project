@@ -183,95 +183,86 @@ function toggleExpenseDetails() {
 {% endif %}
 
 
-{# ── My Agents & Players (per SA entry) ── #}
+{# ── My Agents ── #}
 {% for my_sa in my_sas %}
+{% if my_sa.agents or my_sa.direct %}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+        <span>🤝</span> My Agents <span class="muted small">({{ my_sa.agents|length }})</span>
+    </h2>
 
-{% if my_sas|length > 1 %}
-<div style="margin-bottom:0.5rem;">
-    <span class="muted" style="font-size:0.9rem;">{{ my_sa.club }}</span>
-</div>
-{% endif %}
-
-{% for ag_id, ag in my_sa.agents.items() %}
-<div class="section" style="margin-bottom:1rem;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-        <div>
-            <span class="role-badge role-agent">Agent</span>
-            <strong>{{ ag.nick }}</strong>
-            <span class="muted small">{{ ag.id }}</span>
+    {% for ag_id, ag in my_sa.agents.items() %}
+    <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
+        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
+                <span class="role-badge role-agent">Agent</span>
+                <strong>{{ ag.nick }}</strong>
+                <span class="muted small">{{ ag.members|length }} שחקנים</span>
+            </div>
+            <div style="display:flex; gap:0.4rem;">
+                <span class="summary-chip chip-win">R {{ "%.2f"|format(ag.total_rake) }}</span>
+                <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                    P&L {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
+                </span>
+            </div>
         </div>
-        <div style="display:flex; gap:0.4rem;">
-            <span class="summary-chip chip-win">R {{ "%.2f"|format(ag.total_rake) }}</span>
-            <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
-            </span>
-            <span class="summary-chip">H {{ "{:,}".format(ag.total_hands|int) }}</span>
+        <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
+            <table class="table table-sm" style="margin:0;">
+                <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                <tbody>
+                    {% for m in ag.members %}
+                    <tr>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
+                        <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                        <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
+                            {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                        </td>
+                        <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
+                    </tr>
+                    <tr class="record-row" style="display:none;">
+                        <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
-    <table class="table table-sm">
-        <thead>
-            <tr><th>שחקן</th><th>תפקיד</th><th>Hands</th><th>Rake</th><th>P&L</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for m in ag.members %}
-            <tr>
-                <td><strong>{{ m.nickname }}</strong> <span class="muted small">{{ m.player_id }}</span></td>
-                <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
-                <td>{{ m.hands|int }}</td>
-                <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
-                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
-                </td>
-                <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
-            </tr>
-            <tr class="record-row" style="display:none;">
-                <td colspan="6" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr class="total-row">
-                <td colspan="2"><strong>סה"כ</strong></td>
-                <td><strong>{{ "{:,}".format(ag.total_hands|int) }}</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
-                <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
-                </td>
-                <td></td>
-            </tr>
-        </tfoot>
-    </table>
-</div>
-{% endfor %}
+    {% endfor %}
 
-{% if my_sa.direct %}
-<div class="section" style="margin-bottom:1rem;">
-    <h2 class="section-title">שחקנים ישירים</h2>
-    <table class="table table-sm">
-        <thead>
-            <tr><th>שחקן</th><th>תפקיד</th><th>Hands</th><th>Rake</th><th>P&L</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for m in my_sa.direct %}
-            <tr>
-                <td><strong>{{ m.nickname }}</strong> <span class="muted small">{{ m.player_id }}</span></td>
-                <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
-                <td>{{ m.hands|int }}</td>
-                <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
-                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
-                </td>
-                <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
-            </tr>
-            <tr class="record-row" style="display:none;">
-                <td colspan="6" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {% if my_sa.direct %}
+    <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
+        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
+                <strong>שחקנים ישירים</strong>
+                <span class="muted small">{{ my_sa.direct|length }} שחקנים</span>
+            </div>
+        </div>
+        <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
+            <table class="table table-sm" style="margin:0;">
+                <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                <tbody>
+                    {% for m in my_sa.direct %}
+                    <tr>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
+                        <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                        <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
+                            {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                        </td>
+                        <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
+                    </tr>
+                    <tr class="record-row" style="display:none;">
+                        <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
-
 {% endfor %}
 
 {# ── Child SAs (SAs managed by this agent) ── #}
