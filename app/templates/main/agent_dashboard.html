@@ -74,10 +74,16 @@ function toggleExpenseDetails() {
 {# ── Managed Club ── #}
 {# ── My Clubs ── #}
 {% if managed_clubs %}
-<div class="section" style="margin-bottom:1.5rem;">
-    <h2 class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
-        <span>🏠</span> My Clubs <span class="muted small">({{ managed_clubs|length }})</span>
-    </h2>
+<div class="section accordion-section" style="margin-bottom:1.5rem;">
+    <div class="accordion-header" onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; padding:0.8rem 1rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
+            <span style="font-size:1.1rem;">🏠</span>
+            <strong style="font-size:1.05rem;">My Clubs</strong>
+            <span class="muted small">({{ managed_clubs|length }})</span>
+        </div>
+    </div>
+    <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
     {% for managed_club in managed_clubs %}
     <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
@@ -179,6 +185,7 @@ function toggleExpenseDetails() {
         </div>
     </div>
     {% endfor %}
+    </div>
 </div>
 {% endif %}
 
@@ -186,10 +193,16 @@ function toggleExpenseDetails() {
 {# ── My Agents ── #}
 {% for my_sa in my_sas %}
 {% if my_sa.agents or my_sa.direct %}
-<div class="section" style="margin-bottom:1.5rem;">
-    <h2 class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
-        <span>🤝</span> My Agents <span class="muted small">({{ my_sa.agents|length }})</span>
-    </h2>
+<div class="section accordion-section" style="margin-bottom:1.5rem;">
+    <div class="accordion-header" onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; padding:0.8rem 1rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
+            <span style="font-size:1.1rem;">🤝</span>
+            <strong style="font-size:1.05rem;">My Agents</strong>
+            <span class="muted small">({{ my_sa.agents|length }})</span>
+        </div>
+    </div>
+    <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
     {% for ag_id, ag in my_sa.agents.items() %}
     <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
@@ -261,6 +274,7 @@ function toggleExpenseDetails() {
         </div>
     </div>
     {% endif %}
+    </div>
 </div>
 {% endif %}
 {% endfor %}
