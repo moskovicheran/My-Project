@@ -86,7 +86,7 @@ class SARakeConfig(db.Model):
     __tablename__ = 'sa_rake_config'
 
     id = db.Column(db.Integer, primary_key=True)
-    sa_id = db.Column(db.String(20), unique=True, nullable=False)
+    sa_id = db.Column(db.String(20), nullable=False)
     rake_percent = db.Column(db.Float, nullable=False, default=0)
     managed_club_id = db.Column(db.String(20), nullable=True)
 

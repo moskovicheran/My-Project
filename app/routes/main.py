@@ -102,33 +102,34 @@ def dashboard():
         }
         my_sas = [my_sa_combined]
 
-        # Managed club
-        rake_cfg = SARakeConfig.query.filter_by(sa_id=sa_id).first()
-        rake_pct = rake_cfg.rake_percent if rake_cfg else 0
-        managed_club_id = rake_cfg.managed_club_id if rake_cfg else None
-        managed_club_data = None
+        # Managed clubs (multiple)
+        rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+        rake_pct = rake_cfgs[0].rake_percent if rake_cfgs else 0
+        managed_clubs = []
         club_net_rake = 0
         club_keeps_pct = 0
-        if managed_club_id:
+        if rake_cfgs:
             clubs_data, _ = get_members_hierarchy()
-            for club in clubs_data:
-                if club['club_id'] == managed_club_id:
-                    managed_club_data = club
-                    break
-            if managed_club_data:
-                club_cumulative = DailyPlayerStats.query.with_entities(
-                    sqlfunc.sum(DailyPlayerStats.rake),
-                    sqlfunc.sum(DailyPlayerStats.pnl),
-                ).filter(DailyPlayerStats.club == managed_club_data['name']).first()
-                club_rake = round(float(club_cumulative[0] or 0), 2)
-                club_pnl = round(float(club_cumulative[1] or 0), 2)
-                managed_club_data['total_rake'] = club_rake
-                managed_club_data['total_pnl'] = club_pnl
-                total_rake += club_rake
-                total_pnl += club_pnl
-                club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=managed_club_id).first()
-                club_keeps_pct = club_rc.rake_percent if club_rc else 0
-                club_net_rake = round(club_rake * (100 - club_keeps_pct) / 100, 2)
+            club_map = {c['club_id']: c for c in clubs_data}
+            for cfg in rake_cfgs:
+                club = club_map.get(cfg.managed_club_id)
+                if club:
+                    club_cumulative = DailyPlayerStats.query.with_entities(
+                        sqlfunc.sum(DailyPlayerStats.rake),
+                        sqlfunc.sum(DailyPlayerStats.pnl),
+                    ).filter(DailyPlayerStats.club == club['name']).first()
+                    club_rake = round(float(club_cumulative[0] or 0), 2)
+                    club_pnl = round(float(club_cumulative[1] or 0), 2)
+                    club['total_rake'] = club_rake
+                    club['total_pnl'] = club_pnl
+                    total_rake += club_rake
+                    total_pnl += club_pnl
+                    club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+                    keeps_pct = club_rc.rake_percent if club_rc else 0
+                    net = round(club_rake * (100 - keeps_pct) / 100, 2)
+                    club_net_rake += net
+                    club_keeps_pct = keeps_pct
+                    managed_clubs.append(club)
 
         sa_net_rake = round(my_sa_combined['total_rake'] * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
@@ -141,7 +142,7 @@ def dashboard():
 
         return render_template('main/agent_dashboard.html',
                                my_sas=my_sas, child_sas=child_sas,
-                               managed_club=managed_club_data,
+                               managed_clubs=managed_clubs,
                                total_rake=total_rake, total_pnl=total_pnl,
                                total_hands=int(total_hands), net_rake=net_rake,
                                net_rake_after_expenses=net_rake_after_expenses,
@@ -149,7 +150,7 @@ def dashboard():
                                expense_charges=expense_charges,
                                rake_pct=rake_pct, player_count=player_count,
                                club_net_rake=club_net_rake,
-                               club_keeps_pct=club_keeps_pct if managed_club_data else 0)
+                               club_keeps_pct=club_keeps_pct)
 
     transactions = (Transaction.query
                     .filter_by(user_id=current_user.id)

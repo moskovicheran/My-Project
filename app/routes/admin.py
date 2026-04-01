@@ -199,18 +199,21 @@ def agents():
                 db.session.commit()
                 flash('שיוך SA → SA נמחק.', 'success')
 
-        # SA → Club mapping
+        # SA → Club mapping (multiple clubs per SA allowed)
         elif action == 'set_club':
             sa_id = request.form.get('sa_id')
             club_id = request.form.get('club_id', '').strip()
-            if sa_id:
-                config = SARakeConfig.query.filter_by(sa_id=sa_id).first()
-                if not config:
-                    config = SARakeConfig(sa_id=sa_id, rake_percent=0)
-                    db.session.add(config)
-                config.managed_club_id = club_id if club_id else None
-                db.session.commit()
-                flash('שיוך SA → מועדון עודכן.', 'success')
+            if sa_id and club_id:
+                # Check if this exact SA+Club combo already exists
+                existing = SARakeConfig.query.filter_by(sa_id=sa_id, managed_club_id=club_id).first()
+                if existing:
+                    flash('שיוך זה כבר קיים.', 'warning')
+                else:
+                    db.session.add(SARakeConfig(sa_id=sa_id, rake_percent=0, managed_club_id=club_id))
+                    db.session.commit()
+                    flash('שיוך SA → מועדון נוסף.', 'success')
+            else:
+                flash('יש לבחור SA ומועדון.', 'warning')
 
         # Rake %
         elif action == 'set_rake':

@@ -8,7 +8,7 @@
         <p class="subtitle">
             <span class="role-badge role-agent">סוכן</span>
             {% for sa in my_sas %}&nbsp;{{ sa.club }}{% endfor %}
-            {% if managed_club %}&nbsp;| מנהל {{ managed_club.name }}{% endif %}
+            {% if managed_clubs %}&nbsp;| מנהל {% for mc in managed_clubs %}{{ mc.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
         </p>
     </div>
 </div>
@@ -72,7 +72,7 @@ function toggleExpenseDetails() {
 {% endif %}
 
 {# ── Managed Club ── #}
-{% if managed_club %}
+{% for managed_club in managed_clubs %}
 <div class="section" style="margin-bottom:1.5rem; border-right:4px solid #2e7d32;">
     <h2 class="section-title" style="color:#2e7d32;">מועדון {{ managed_club.name }}</h2>
 
@@ -152,7 +152,7 @@ function toggleExpenseDetails() {
     </div>
     {% endif %}
 </div>
-{% endif %}
+{% endfor %}
 
 {# ── My Agents & Players (per SA entry) ── #}
 {% for my_sa in my_sas %}
@@ -299,7 +299,7 @@ function toggleExpenseDetails() {
 {% endfor %}
 {% endif %}
 
-{% if not my_sas and not child_sas and not managed_club %}
+{% if not my_sas and not child_sas and not managed_clubs %}
 <div class="section">
     <div class="empty-state">
         <p>לא נמצאו נתונים עבור הסוכן שלך.</p>
