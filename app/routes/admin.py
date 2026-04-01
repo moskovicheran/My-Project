@@ -21,17 +21,18 @@ def admin_required(f):
 @admin_bp.route('/')
 @admin_required
 def overview():
-    from app.union_data import get_union_overview, get_ring_game_detail
-    meta, clubs, total = get_union_overview()
-    tables = get_ring_game_detail()
-    total_rake = round(sum(p['rake'] for t in tables for p in t['players']), 2)
-    total_pnl = round(sum(p['pnl'] for t in tables for p in t['players']), 2)
-    total_hands = sum(p['hands'] for t in tables for p in t['players'])
+    from app.union_data import get_union_overview, get_cumulative_totals
+    meta, _, _ = get_union_overview()
+    ct = get_cumulative_totals()
+    meta['period'] = ct['period']
     return render_template('admin/overview.html',
-                           meta=meta, clubs=clubs, total=total,
-                           tables_count=len(tables),
-                           total_rake=total_rake, total_pnl=total_pnl,
-                           total_hands=int(total_hands))
+                           meta=meta, clubs=ct['clubs'],
+                           total={'active_players': ct['total_players'],
+                                  'total_hands': ct['total_hands'],
+                                  'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
+                           tables_count=ct['uploads_count'],
+                           total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
+                           total_hands=ct['total_hands'])
 
 
 @admin_bp.route('/transfers', methods=['GET', 'POST'])
@@ -133,34 +134,32 @@ def users():
 @admin_bp.route('/rake')
 @admin_required
 def rake():
-    from app.union_data import get_ring_game_detail, get_union_overview
-    _, clubs, _ = get_union_overview()
-    tables = get_ring_game_detail()
-
-    # Rake by club
+    from app.union_data import get_cumulative_totals
+    ct = get_cumulative_totals()
     club_rake = {}
-    for t in tables:
-        for p in t['players']:
-            club = p['club_name']
-            if club not in club_rake:
-                club_rake[club] = {'rake': 0, 'pnl': 0, 'hands': 0, 'sessions': 0}
-            club_rake[club]['rake'] = round(club_rake[club]['rake'] + p['rake'], 2)
-            club_rake[club]['pnl'] = round(club_rake[club]['pnl'] + p['pnl'], 2)
-            club_rake[club]['hands'] += int(p['hands'])
-        for club in set(p['club_name'] for p in t['players']):
-            club_rake[club]['sessions'] += 1
-
-    total_rake = round(sum(c['rake'] for c in club_rake.values()), 2)
-    total_pnl = round(sum(c['pnl'] for c in club_rake.values()), 2)
+    for c in ct['clubs']:
+        club_rake[c['club_name']] = {
+            'rake': c['total_fee'], 'pnl': c['pnl'],
+            'hands': c['total_hands'], 'sessions': c['active_players'],
+        }
     return render_template('admin/rake.html', club_rake=club_rake,
-                           total_rake=total_rake, total_pnl=total_pnl)
+                           total_rake=ct['total_rake'], total_pnl=ct['total_pnl'])
 
 
 @admin_bp.route('/clubs')
 @admin_required
 def clubs():
-    from app.union_data import get_members_hierarchy
+    from app.union_data import get_members_hierarchy, get_cumulative_totals
     clubs, grand = get_members_hierarchy()
+    ct = get_cumulative_totals()
+    grand = {'rake': ct['total_rake'], 'pnl': ct['total_pnl']}
+    # Update club totals from cumulative
+    club_totals = {c['club_name']: c for c in ct['clubs']}
+    for club in clubs:
+        ct_club = club_totals.get(club['name'])
+        if ct_club:
+            club['total_rake'] = ct_club['total_fee']
+            club['total_pnl'] = ct_club['pnl']
     return render_template('admin/clubs.html', clubs=clubs, grand=grand)
 
 
@@ -322,14 +321,22 @@ def agents():
             'managed_club_name': club_map.get(cfg.managed_club_id, ''),
         })
 
-    # SA stats from Excel
-    sa_tables = get_super_agent_tables()
+    # SA stats from cumulative DB
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+    sa_stats_db = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.sa_id,
+        sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-', DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.sa_id).all()
     sa_stats = {}
-    for sa in sa_tables:
-        sa_stats[sa['sa_id']] = {
-            'total_rake': sa['total_rake'],
-            'total_pnl': sa['total_pnl'],
-            'total_hands': sa['total_hands'],
+    for sid, pnl, rake, hands in sa_stats_db:
+        sa_stats[sid] = {
+            'total_rake': round(float(rake or 0), 2),
+            'total_pnl': round(float(pnl or 0), 2),
+            'total_hands': int(hands or 0),
         }
 
     # Rake configs for clubs/agents/players
@@ -411,37 +418,30 @@ def expenses():
 @admin_bp.route('/top-players')
 @admin_required
 def top_players():
-    from app.union_data import get_top_members
-    top_winners, top_losers = get_top_members(10)
+    from app.union_data import get_cumulative_stats
 
-    # Top by rake
-    from app.union_data import _read_sheets, _num
-    sheets = _read_sheets()
+    # Get all cumulative stats from DB
+    all_cumulative = get_cumulative_stats()
     all_players = []
-    if 'Union Member Statistics' in sheets:
-        df = sheets['Union Member Statistics']
-        current_club = ''
-        for i in range(6, len(df)):
-            row = df.iloc[i]
-            if '(ID:' in str(row.iloc[0]):
-                current_club = str(row.iloc[0]).split(' (ID:')[0]
-            nickname = str(row.iloc[9])
-            if nickname in ('nan', '-'):
-                continue
-            all_players.append({
-                'player_id': str(row.iloc[8]),
-                'nickname': nickname,
-                'club': current_club,
-                'pnl': _num(row.iloc[37]),
-                'rake': _num(row.iloc[64]),
-                'hands': _num(row.iloc[151]),
-            })
+    for pid, cs in all_cumulative.items():
+        if cs.get('hands', 0) == 0 and cs.get('pnl', 0) == 0:
+            continue  # Skip name-only entries
+        all_players.append({
+            'player_id': pid, 'member_id': pid,
+            'nickname': cs['nickname'],
+            'club': cs['club'],
+            'pnl': cs['pnl'], 'pnl_total': cs['pnl'],
+            'rake': cs['rake'], 'rake_total': cs['rake'],
+            'hands': cs['hands'], 'hands_total': cs['hands'],
+        })
 
+    top_winners = sorted(all_players, key=lambda x: x['pnl'], reverse=True)[:10]
+    top_losers = sorted(all_players, key=lambda x: x['pnl'])[:10]
     top_rake = sorted(all_players, key=lambda x: x['rake'], reverse=True)[:10]
     top_active = sorted(all_players, key=lambda x: x['hands'], reverse=True)[:10]
 
-    biggest_winner = top_winners[0]['pnl_total'] if top_winners else 0
-    biggest_loser = top_losers[0]['pnl_total'] if top_losers else 0
+    biggest_winner = top_winners[0]['pnl'] if top_winners else 0
+    biggest_loser = top_losers[0]['pnl'] if top_losers else 0
 
     return render_template('admin/top_players.html',
                            top_winners=top_winners, top_losers=top_losers,
