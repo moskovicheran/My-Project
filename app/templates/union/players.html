@@ -58,10 +58,18 @@
 
 {% for club in clubs %}
 <div class="section club-block" style="padding: 0; overflow: hidden;">
-    <div class="club-title" style="padding: 1rem 1.25rem; border-bottom: 1px solid #e8e8e8;">
-        <span class="club-icon">🏠</span>
-        <strong>{{ club.name }}</strong>
-        <span class="muted">(ID: {{ club.club_id }})</span>
+    <div class="club-title" style="padding: 1rem 1.25rem; border-bottom: 1px solid #e8e8e8; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="club-icon">🏠</span>
+            <strong>{{ club.name }}</strong>
+            <span class="muted">(ID: {{ club.club_id }})</span>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+            <span class="summary-chip chip-win">Rake {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
+            <span class="summary-chip {% if club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                P&L {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
+            </span>
+        </div>
     </div>
 
     <div style="padding: 0.5rem 0;">
