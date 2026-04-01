@@ -98,81 +98,76 @@ function toggleExpenseDetails() {
         <div class="accordion-body" style="display:none; padding:0.8rem 1rem;">
             {# Super Agents #}
             {% set club_sas = managed_club.super_agents.values()|list %}
-            {% if club_sas %}
-            <div style="margin-bottom:1rem;">
-                <div style="font-weight:600; font-size:0.9rem; margin-bottom:0.5rem; color:#4361ee;">Super Agents ({{ club_sas|length }})</div>
-                <table class="table table-sm">
-                    <thead><tr><th>שם</th><th>ID</th><th>סוכנים</th><th>שחקנים</th></tr></thead>
-                    <tbody>
-                        {% for sa in club_sas %}
-                        {% set sa_player_count = sa.direct_members|length if sa.direct_members else 0 %}
-                        {% for ag_id, ag in sa.agents.items() %}{% set sa_player_count = sa_player_count + ag.members|length %}{% endfor %}
-                        <tr>
-                            <td><strong>{{ sa.nick }}</strong></td>
-                            <td class="muted">{{ sa.id }}</td>
-                            <td>{{ sa.agents|length }}</td>
-                            <td>{{ sa_player_count }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endif %}
-
-            {# Agents #}
-            {% set club_agents = [] %}
             {% for sa in club_sas %}
-                {% for ag_id, agent in sa.agents.items() %}
-                    {% if club_agents.append({'nick': agent.nick, 'id': ag_id, 'members': agent.members, 'sa': sa.nick}) %}{% endif %}
-                {% endfor %}
-            {% endfor %}
-            {% if club_agents %}
-            <div style="margin-bottom:1rem;">
-                <div style="font-weight:600; font-size:0.9rem; margin-bottom:0.5rem; color:#e65100;">Agents ({{ club_agents|length }})</div>
-                <table class="table table-sm">
-                    <thead><tr><th>שם</th><th>Super Agent</th><th>שחקנים</th></tr></thead>
-                    <tbody>
-                        {% for ag in club_agents %}
-                        <tr>
-                            <td><strong>{{ ag.nick }}</strong></td>
-                            <td class="muted">{{ ag.sa }}</td>
-                            <td>{{ ag.members|length }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endif %}
-
-            {# Players #}
-            {% set club_players = [] %}
-            {% for sa in club_sas %}
-                {% for ag_id, agent in sa.agents.items() %}
-                    {% for m in agent.members %}
-                        {% if club_players.append(m) %}{% endif %}
+            <div style="margin-bottom:0.5rem; border:1px solid #eee; border-radius:8px; overflow:hidden;">
+                <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.8rem; cursor:pointer; background:#f8f9fa;">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.7rem;">▶</span>
+                        <span class="role-badge role-sa">SA</span>
+                        <strong>{{ sa.nick }}</strong>
+                        <span class="muted small">{{ sa.id }}</span>
+                    </div>
+                    <span class="muted small">{{ sa.agents|length }} סוכנים</span>
+                </div>
+                <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
+                    {# Agents under this SA #}
+                    {% for ag_id, agent in sa.agents.items() %}
+                    <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:6px; overflow:hidden;">
+                        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; cursor:pointer;">
+                            <div style="display:flex; align-items:center; gap:0.4rem;">
+                                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">▶</span>
+                                <span class="role-badge role-agent">Agent</span>
+                                <strong style="font-size:0.9rem;">{{ agent.nick }}</strong>
+                            </div>
+                            <span class="muted small">{{ agent.members|length }} שחקנים</span>
+                        </div>
+                        <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
+                            <table class="table table-sm" style="margin:0;">
+                                <tbody>
+                                    {% for m in agent.members %}
+                                    <tr>
+                                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                     {% endfor %}
-                {% endfor %}
-                {% if sa.direct_members %}
-                    {% for m in sa.direct_members %}{% if club_players.append(m) %}{% endif %}{% endfor %}
-                {% endif %}
+                    {# Direct members under SA #}
+                    {% if sa.direct_members %}
+                    <div style="padding:0.4rem 0; border-top:1px dashed #ddd; margin-top:0.3rem;">
+                        <div class="muted small" style="margin-bottom:0.3rem;">שחקנים ישירים</div>
+                        <table class="table table-sm" style="margin:0;">
+                            <tbody>
+                                {% for m in sa.direct_members %}
+                                <tr>
+                                    <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                        {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
             {% endfor %}
+            {# No SA members #}
             {% if managed_club.no_sa_members %}
-                {% for m in managed_club.no_sa_members %}{% if club_players.append(m) %}{% endif %}{% endfor %}
-            {% endif %}
-            {% if club_players %}
-            <div>
-                <div style="font-weight:600; font-size:0.9rem; margin-bottom:0.5rem; color:#555;">Players ({{ club_players|length }})</div>
-                <table class="table table-sm">
-                    <thead><tr><th>שחקן</th><th>P&L</th></tr></thead>
+            <div style="padding:0.4rem 0; border-top:1px dashed #ddd; margin-top:0.3rem;">
+                <div class="muted small" style="margin-bottom:0.3rem;">ללא SA</div>
+                <table class="table table-sm" style="margin:0;">
                     <tbody>
-                        {% for m in club_players %}
+                        {% for m in managed_club.no_sa_members %}
                         <tr>
-                            <td>
-                                <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">
-                                    <strong>{{ m.nickname }}</strong>
-                                </a>
-                            </td>
-                            <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
+                            <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                            <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
                                 {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                             </td>
                         </tr>
