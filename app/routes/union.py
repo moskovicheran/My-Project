@@ -112,6 +112,21 @@ def player_detail(player_id):
         total_pnl = sum(s['pnl'] for s in sessions)
         total_hands = sum(s['hands'] for s in sessions)
 
+    # Load sessions from DB (cumulative, all uploads)
+    from app.models import PlayerSession
+    db_sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+    if db_sessions:
+        sessions = []
+        for s in db_sessions:
+            sessions.append({
+                'table_name': s.table_name,
+                'game_type': s.game_type,
+                'blinds': s.blinds or '',
+                'club_name': '',
+                'buyin': 0, 'cashout': 0, 'hands': 0, 'rake': 0,
+                'pnl': round(s.pnl, 2),
+            })
+
     return render_template('union/player_detail.html',
                            member=member_info,
                            sessions=sessions,

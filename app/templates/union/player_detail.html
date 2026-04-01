@@ -84,9 +84,9 @@
 </div>
 {% endif %}
 
-{# ── Ring Game Sessions ── #}
+{# ── Game Sessions ── #}
 <div class="section">
-    <h2 class="section-title">Ring Game Sessions ({{ sessions|length }})</h2>
+    <h2 class="section-title">רקורד משחקים ({{ sessions|length }})</h2>
     {% if sessions %}
     <table class="table table-sm">
         <thead>
@@ -94,11 +94,6 @@
                 <th>Table</th>
                 <th>Game</th>
                 <th>Blinds</th>
-                <th>קלאב</th>
-                <th>Buy-in</th>
-                <th>Cashout</th>
-                <th>Hands</th>
-                <th>Rake</th>
                 <th>P&L</th>
             </tr>
         </thead>
@@ -108,11 +103,6 @@
                 <td><strong>{{ s.table_name }}</strong></td>
                 <td><span class="badge badge-game">{{ s.game_type }}</span></td>
                 <td>{{ s.blinds }}</td>
-                <td class="muted">{{ s.club_name if s.club_name else s.club }}</td>
-                <td>{{ "%.2f"|format(s.buyin) }}</td>
-                <td>{{ "%.2f"|format(s.cashout) }}</td>
-                <td>{{ s.hands|int }}</td>
-                <td class="amount income">{{ "%.2f"|format(s.rake) }}</td>
                 <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
                     {% if s.pnl > 0 %}+{% endif %}{{ "%.2f"|format(s.pnl) }}
                 </td>
@@ -121,9 +111,7 @@
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="6"><strong>TOTAL</strong></td>
-                <td><strong>{{ "{:,}".format(total_hands|int) }}</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(total_rake) }}</strong></td>
+                <td colspan="3"><strong>סה"כ</strong></td>
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
                     <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
                 </td>
@@ -132,7 +120,7 @@
     </table>
     {% else %}
     <div class="empty-state">
-        <p>לא נמצאו משחקי Ring Game לשחקן זה.</p>
+        <p>לא נמצאו משחקים לשחקן זה.</p>
     </div>
     {% endif %}
 </div>
