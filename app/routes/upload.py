@@ -100,37 +100,40 @@ def index():
         filename = secure_filename(file.filename)
         file_bytes = file.read()
 
+        from app.models import db as _db
+
+        # Step 1: Parse and store CUMULATIVE stats FIRST (most important)
         try:
-            # Save Excel as active file in DB (for structure/hierarchy reading)
-            from app.models import db as _db, ActiveExcelData
+            player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
+        except Exception as e:
+            _db.session.rollback()
+            flash(f'שגיאה בפרסינג: {str(e)[:150]}', 'danger')
+            return redirect(url_for('upload.index'))
+
+        # Step 2: Save Excel as active file in DB (for structure reading)
+        try:
+            from app.models import ActiveExcelData
             ActiveExcelData.query.delete()
             _db.session.add(ActiveExcelData(filename=filename, file_data=file_bytes))
             _db.session.commit()
+        except Exception:
+            _db.session.rollback()
 
-            # Also try to save locally (works on local dev, fails silently on Vercel)
-            try:
-                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-                filepath = os.path.join(UPLOAD_FOLDER, filename)
-                with open(filepath, 'wb') as f:
-                    f.write(file_bytes)
-                session['uploaded_file'] = filepath
-                with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
-                    f.write(filepath)
-                from app.union_data import set_excel_path
-                set_excel_path(filepath)
-            except Exception:
-                pass
+        # Step 3: Try to save locally (works on local dev only)
+        try:
+            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            with open(filepath, 'wb') as f:
+                f.write(file_bytes)
+            session['uploaded_file'] = filepath
+            with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+                f.write(filepath)
+            from app.union_data import set_excel_path
+            set_excel_path(filepath)
+        except Exception:
+            pass
 
-            # Parse and store CUMULATIVE stats (adds to existing, never deletes)
-            player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
-
-            flash(f'הקובץ "{filename}" הועלה — {player_count} שחקנים נוספו למצטבר.', 'success')
-        except Exception as e:
-            try:
-                _db.session.rollback()
-            except Exception:
-                pass
-            flash(f'שגיאה בהעלאה: {str(e)[:150]}', 'danger')
+        flash(f'הקובץ "{filename}" הועלה — {player_count} שחקנים נוספו למצטבר.', 'success')
         return redirect(url_for('upload.index'))
 
     uploaded = session.get('uploaded_file')
