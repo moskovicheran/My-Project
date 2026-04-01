@@ -439,41 +439,17 @@ def report_dates_api():
 @main_bp.route('/api/player-record/<player_id>')
 @login_required
 def player_record_api(player_id):
-    from app.union_data import get_ring_game_detail, _read_sheets, _num
+    from app.models import PlayerSession
+    # Read ALL sessions from cumulative DB
+    db_sessions = PlayerSession.query.filter_by(player_id=player_id).all()
     sessions = []
-
-    # Ring games
-    for table in get_ring_game_detail():
-        for p in table['players']:
-            if p['player_id'] == player_id:
-                sessions.append({
-                    'table': table['table_name'],
-                    'game': table['game_type'],
-                    'blinds': table['blinds'],
-                    'pnl': p['pnl'],
-                })
-
-    # MTT tournaments
-    sheets = _read_sheets()
-    if 'Union MTT Detail' in sheets:
-        df = sheets['Union MTT Detail']
-        current_tournament = ''
-        for i in range(len(df)):
-            col0 = str(df.iloc[i, 0])
-            if col0.startswith('Table Name :'):
-                try:
-                    current_tournament = col0.split('Table Name : ')[1].split(' , Creator')[0].strip()
-                except Exception:
-                    current_tournament = col0
-            if str(df.iloc[i, 2]) == player_id:
-                pnl = _num(df.iloc[i, 16])  # P&L column
-                sessions.append({
-                    'table': current_tournament[:40],
-                    'game': 'MTT',
-                    'blinds': '',
-                    'pnl': pnl,
-                })
-
+    for s in db_sessions:
+        sessions.append({
+            'table': s.table_name,
+            'game': s.game_type,
+            'blinds': s.blinds or '',
+            'pnl': round(s.pnl, 2),
+        })
     total_pnl = round(sum(s['pnl'] for s in sessions), 2)
     return jsonify({'sessions': sessions, 'total_pnl': total_pnl})
 

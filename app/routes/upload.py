@@ -110,6 +110,68 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             rows
         )
 
+    # Parse and store game sessions (Ring + MTT)
+    from app.models import PlayerSession
+    sessions = []
+
+    # Ring Game sessions
+    if 'Union Ring Game Detail' in sheets:
+        rdf = sheets['Union Ring Game Detail']
+        current_table = ''
+        current_game = ''
+        current_blinds = ''
+        for i in range(len(rdf)):
+            col0 = str(rdf.iloc[i, 0])
+            if col0.startswith('Table Name :'):
+                try:
+                    current_table = col0.split('Table Name : ')[1].split(' , Creator')[0].strip()
+                except Exception:
+                    current_table = col0
+            elif col0.startswith('Table Information :'):
+                try:
+                    current_game = col0.split('Game : ')[1].split(' ,')[0].strip()
+                    current_blinds = col0.split('Blinds : ')[1].split(' ,')[0].strip()
+                except Exception:
+                    pass
+            else:
+                pid = str(rdf.iloc[i, 2]) if rdf.shape[1] > 2 else ''
+                if '-' in pid and len(pid) == 9:
+                    try:
+                        pnl_val = float(rdf.iloc[i, 13]) if rdf.shape[1] > 13 and str(rdf.iloc[i, 13]) != 'nan' else 0
+                    except (ValueError, TypeError):
+                        pnl_val = 0
+                    sessions.append({
+                        'upload_id': upload_id, 'player_id': pid,
+                        'game_type': current_game or 'Ring', 'table_name': current_table,
+                        'blinds': current_blinds, 'pnl': round(pnl_val, 2),
+                    })
+
+    # MTT sessions
+    if 'Union MTT Detail' in sheets:
+        mdf = sheets['Union MTT Detail']
+        current_tournament = ''
+        for i in range(len(mdf)):
+            col0 = str(mdf.iloc[i, 0])
+            if col0.startswith('Table Name :'):
+                try:
+                    current_tournament = col0.split('Table Name : ')[1].split(' , Creator')[0].strip()
+                except Exception:
+                    current_tournament = col0
+            pid = str(mdf.iloc[i, 2]) if mdf.shape[1] > 2 else ''
+            if '-' in pid and len(pid) == 9:
+                try:
+                    pnl_val = float(mdf.iloc[i, 16]) if mdf.shape[1] > 16 and str(mdf.iloc[i, 16]) != 'nan' else 0
+                except (ValueError, TypeError):
+                    pnl_val = 0
+                sessions.append({
+                    'upload_id': upload_id, 'player_id': pid,
+                    'game_type': 'MTT', 'table_name': current_tournament[:200],
+                    'blinds': '', 'pnl': round(pnl_val, 2),
+                })
+
+    if sessions:
+        db.session.execute(PlayerSession.__table__.insert(), sessions)
+
     db.session.commit()
     return len(rows)
 
@@ -230,11 +292,11 @@ def reset():
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
-    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData
+    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession
 
     # Clear all data from DB
+    PlayerSession.query.delete()
     ActiveExcelData.query.delete()
-    # Clear cumulative data from DB
     DailyPlayerStats.query.delete()
     DailyUpload.query.delete()
     db.session.commit()

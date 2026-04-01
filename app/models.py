@@ -182,5 +182,17 @@ class DailyPlayerStats(db.Model):
     rake = db.Column(db.Float, default=0)
     hands = db.Column(db.Float, default=0)
 
+
+class PlayerSession(db.Model):
+    __tablename__ = 'player_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False)
+    player_id = db.Column(db.String(20), nullable=False)
+    game_type = db.Column(db.String(20), nullable=False)  # 'Ring', 'MTT'
+    table_name = db.Column(db.String(200), nullable=False)
+    blinds = db.Column(db.String(20), default='')
+    pnl = db.Column(db.Float, default=0)
+
     def __repr__(self):
         return f'<DailyPlayerStats {self.nickname} pnl={self.pnl}>'
