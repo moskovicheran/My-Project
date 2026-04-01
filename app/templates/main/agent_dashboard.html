@@ -279,58 +279,88 @@ function toggleExpenseDetails() {
 {% endif %}
 {% endfor %}
 
-{# ── Child SAs (SAs managed by this agent) ── #}
+{# ── My Super Agents ── #}
 {% if child_sas %}
-{% for cs in child_sas %}
-<div class="section" style="margin-bottom:1rem; border-right:4px solid #4361ee; padding-right:1rem;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-        <div>
-            <span class="role-badge role-sa">Super Agent</span>
-            <strong style="font-size:1.05rem;">{{ cs.sa_nick }}</strong>
-            <span class="muted small">{{ cs.sa_id }} @ {{ cs.club }}</span>
-        </div>
-        <div style="display:flex; gap:0.4rem;">
-            <span class="summary-chip chip-win">R {{ "%.2f"|format(cs.total_rake) }}</span>
-            <span class="summary-chip {% if cs.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if cs.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cs.total_pnl) }}
-            </span>
-            <span class="summary-chip">H {{ "{:,}".format(cs.total_hands|int) }}</span>
+<div class="section accordion-section" style="margin-bottom:1.5rem;">
+    <div class="accordion-header" onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; padding:0.8rem 1rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
+            <span style="font-size:1.1rem;">👤</span>
+            <strong style="font-size:1.05rem;">My Super Agents</strong>
+            <span class="muted small">({{ child_sas|length }})</span>
         </div>
     </div>
+    <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
-    {% for ag_id, ag in cs.agents.items() %}
-    <div style="margin-right:1rem; margin-bottom:0.5rem;">
-        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.3rem;">
-            <span class="role-badge role-agent">Agent</span>
-            <strong>{{ ag.nick }}</strong>
-            <span class="summary-chip chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+    {% for cs in child_sas %}
+    <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
+        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
+                <span class="role-badge role-sa">Super Agent</span>
+                <strong>{{ cs.sa_nick }}</strong>
+                <span class="muted small">{{ cs.sa_id }} @ {{ cs.club }}</span>
+            </div>
+            <div style="display:flex; gap:0.4rem;">
+                <span class="summary-chip chip-win">R {{ "%.2f"|format(cs.total_rake) }}</span>
+                <span class="summary-chip {% if cs.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                    P&L {% if cs.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cs.total_pnl) }}
+                </span>
+                <span class="summary-chip">H {{ "{:,}".format(cs.total_hands|int) }}</span>
+            </div>
         </div>
-        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-            {% for m in ag.members %}
-            <span class="member-chip {% if m.pnl > 0 %}win{% elif m.pnl < 0 %}lose{% endif %}">
-                <span class="chip-name">{{ m.nickname }}</span>
-                <span class="chip-pnl">{% if m.pnl > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl) }}</span>
-            </span>
+        <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
+            {% for ag_id, ag in cs.agents.items() %}
+            <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:6px; overflow:hidden;">
+                <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; cursor:pointer;">
+                    <div style="display:flex; align-items:center; gap:0.4rem;">
+                        <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">▶</span>
+                        <span class="role-badge role-agent">Agent</span>
+                        <strong style="font-size:0.9rem;">{{ ag.nick }}</strong>
+                        <span class="muted small">{{ ag.members|length }} שחקנים</span>
+                    </div>
+                    <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+                </div>
+                <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
+                    <table class="table table-sm" style="margin:0;">
+                        <tbody>
+                            {% for m in ag.members %}
+                            <tr>
+                                <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                    {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             {% endfor %}
+
+            {% if cs.direct %}
+            <div style="padding:0.4rem 0; border-top:1px dashed #ddd; margin-top:0.3rem;">
+                <div class="muted small" style="margin-bottom:0.3rem;">שחקנים ישירים</div>
+                <table class="table table-sm" style="margin:0;">
+                    <tbody>
+                        {% for m in cs.direct %}
+                        <tr>
+                            <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                            <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
 
-    {% if cs.direct %}
-    <div style="margin-right:1rem; margin-top:0.5rem; border-top:1px dashed #ddd; padding-top:0.5rem;">
-        <div class="muted small" style="margin-bottom:0.3rem;">ישיר</div>
-        <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
-            {% for m in cs.direct %}
-            <span class="member-chip {% if m.pnl > 0 %}win{% elif m.pnl < 0 %}lose{% endif %}">
-                <span class="chip-name">{{ m.nickname }}</span>
-                <span class="chip-pnl">{% if m.pnl > 0 %}+{% endif %}{{ "%.0f"|format(m.pnl) }}</span>
-            </span>
-            {% endfor %}
-        </div>
     </div>
-    {% endif %}
 </div>
-{% endfor %}
 {% endif %}
 
 {% if not my_sas and not child_sas and not managed_clubs %}
