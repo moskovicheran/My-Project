@@ -127,13 +127,19 @@ def users():
             if error:
                 flash(error, 'danger')
             else:
-                user = User(username=username, email=f'{player_id}@player.local',
-                           player_id=player_id, role=role)
-                user.set_password(password)
-                db.session.add(user)
-                db.session.commit()
-                role_name = {'admin': 'מנהל', 'agent': 'סוכן', 'player': 'שחקן', 'club': 'מועדון'}[role]
-                flash(f'משתמש {username} ({role_name}) נוצר בהצלחה.', 'success')
+                try:
+                    import uuid
+                    unique_email = f'{player_id}-{uuid.uuid4().hex[:6]}@player.local'
+                    user = User(username=username, email=unique_email,
+                               player_id=player_id, role=role)
+                    user.set_password(password)
+                    db.session.add(user)
+                    db.session.commit()
+                    role_name = {'admin': 'מנהל', 'agent': 'סוכן', 'player': 'שחקן', 'club': 'מועדון'}[role]
+                    flash(f'משתמש {username} ({role_name}) נוצר בהצלחה.', 'success')
+                except Exception as e:
+                    db.session.rollback()
+                    flash(f'שגיאה ביצירת משתמש: {str(e)[:100]}', 'danger')
 
         elif action == 'delete':
             user_id = request.form.get('user_id')
