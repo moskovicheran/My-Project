@@ -630,6 +630,50 @@ def get_cumulative_stats(player_ids=None):
     return result
 
 
+def get_cumulative_totals():
+    """Returns cumulative totals across all uploads for dashboard."""
+    from app.models import DailyPlayerStats, DailyUpload
+    from sqlalchemy import func
+
+    stats = DailyPlayerStats.query.with_entities(
+        func.sum(DailyPlayerStats.pnl),
+        func.sum(DailyPlayerStats.rake),
+        func.sum(DailyPlayerStats.hands),
+        func.count(func.distinct(DailyPlayerStats.player_id)),
+    ).first()
+
+    uploads_count = DailyUpload.query.count()
+
+    # Per-club totals
+    club_stats = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.club,
+        func.sum(DailyPlayerStats.pnl),
+        func.sum(DailyPlayerStats.rake),
+        func.sum(DailyPlayerStats.hands),
+        func.count(func.distinct(DailyPlayerStats.player_id)),
+    ).group_by(DailyPlayerStats.club).all()
+
+    clubs = []
+    for club_name, pnl, rake, hands, players in club_stats:
+        if club_name:
+            clubs.append({
+                'club_name': club_name,
+                'pnl': round(float(pnl or 0), 2),
+                'total_fee': round(float(rake or 0), 2),
+                'total_hands': int(hands or 0),
+                'active_players': int(players or 0),
+            })
+
+    return {
+        'total_pnl': round(float(stats[0] or 0), 2),
+        'total_rake': round(float(stats[1] or 0), 2),
+        'total_hands': int(stats[2] or 0),
+        'total_players': int(stats[3] or 0),
+        'uploads_count': uploads_count,
+        'clubs': clubs,
+    }
+
+
 def get_player_balance(player_id):
     """Returns current balance: cumulative P&L + incoming transfers - outgoing transfers."""
     from app.models import MoneyTransfer

@@ -21,17 +21,17 @@ def index():
 @login_required
 def dashboard():
     if hasattr(current_user, 'role') and current_user.role == 'admin':
-        from app.union_data import get_union_overview, get_ring_game_detail
-        meta, clubs, total = get_union_overview()
-        tables = get_ring_game_detail()
-        total_rake = round(sum(p['rake'] for t in tables for p in t['players']), 2)
-        total_pnl = round(sum(p['pnl'] for t in tables for p in t['players']), 2)
-        total_hands = sum(p['hands'] for t in tables for p in t['players'])
+        from app.union_data import get_union_overview, get_cumulative_totals
+        meta, _, _ = get_union_overview()
+        ct = get_cumulative_totals()
         return render_template('main/admin_dashboard.html',
-                               meta=meta, clubs=clubs, total=total,
-                               tables_count=len(tables),
-                               total_rake=total_rake, total_pnl=total_pnl,
-                               total_hands=int(total_hands))
+                               meta=meta, clubs=ct['clubs'],
+                               total={'active_players': ct['total_players'],
+                                      'total_hands': ct['total_hands'],
+                                      'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
+                               tables_count=ct['uploads_count'],
+                               total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
+                               total_hands=ct['total_hands'])
 
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy
