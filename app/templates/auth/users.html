@@ -24,14 +24,13 @@
         <input type="hidden" name="action" value="add">
         <input type="hidden" name="user_type" value="member">
 
-        <div style="flex:2; min-width:250px;">
+        <div style="flex:2; min-width:250px; position:relative;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">בחר שחקן / סוכן</label>
-            <select name="member_key" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-                <option value="">בחר מהרשימה...</option>
-                {% for m in members %}
-                <option value="{{ m.player_id }}|{{ m.nickname }}">{{ m.nickname }} ({{ m.player_id }}) - {{ m.club }} - {{ m.role }}</option>
-                {% endfor %}
-            </select>
+            <input type="hidden" name="member_key" id="memberKeyInput">
+            <input type="text" id="memberSearch" placeholder="הקלד שם לחיפוש..." autocomplete="off"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;"
+                   oninput="filterMembers()" onfocus="filterMembers()">
+            <div id="memberDropdown" class="autocomplete-dropdown" style="display:none;"></div>
         </div>
 
         <div style="min-width:120px;">
@@ -142,5 +141,80 @@ function switchTab(type) {
     document.getElementById('tab-member').classList.toggle('active', type === 'member');
     document.getElementById('tab-club').classList.toggle('active', type === 'club');
 }
+
+// Autocomplete for member search
+var allMembers = [
+    {% for m in members %}
+    {key: "{{ m.player_id }}|{{ m.nickname }}", label: "{{ m.nickname }} ({{ m.player_id }}) - {{ m.club }} - {{ m.role }}"},
+    {% endfor %}
+];
+
+function filterMembers() {
+    var input = document.getElementById('memberSearch');
+    var dropdown = document.getElementById('memberDropdown');
+    var query = input.value.trim().toLowerCase();
+
+    if (query.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    var filtered = allMembers.filter(function(m) {
+        return m.label.toLowerCase().indexOf(query) >= 0;
+    }).slice(0, 15);
+
+    if (filtered.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    var html = '';
+    filtered.forEach(function(m) {
+        html += '<div class="autocomplete-item" onclick="selectMember(\'' + m.key.replace(/'/g, "\\'") + '\', \'' + m.label.replace(/'/g, "\\'") + '\')">' + m.label + '</div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+}
+
+function selectMember(key, label) {
+    document.getElementById('memberKeyInput').value = key;
+    document.getElementById('memberSearch').value = label;
+    document.getElementById('memberDropdown').style.display = 'none';
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#memberSearch') && !e.target.closest('#memberDropdown')) {
+        document.getElementById('memberDropdown').style.display = 'none';
+    }
+});
 </script>
+
+<style>
+.autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 0 0 8px 8px;
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.autocomplete-item {
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+    font-size: 0.88rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+.autocomplete-item:hover {
+    background: #eef0ff;
+}
+body.dark .autocomplete-dropdown { background: #1e1e2e; border-color: #444; }
+body.dark .autocomplete-item { border-bottom-color: #333; color: #ddd; }
+body.dark .autocomplete-item:hover { background: #252545; }
+</style>
 {% endblock %}
