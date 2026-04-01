@@ -132,6 +132,18 @@ class ExpenseCharge(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class LoginLog(db.Model):
+    __tablename__ = 'login_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    username = db.Column(db.String(64), nullable=False)
+    role = db.Column(db.String(20))
+    ip_address = db.Column(db.String(50))
+    user_agent = db.Column(db.String(300))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class ActiveExcelData(db.Model):
     __tablename__ = 'active_excel_data'
 

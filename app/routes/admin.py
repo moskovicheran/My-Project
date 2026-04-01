@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from functools import wraps
 from app.models import (db, AdminNote, MoneyTransfer, SAHierarchy, SARakeConfig,
-                        RakeConfig, SharedExpense, ExpenseCharge, User)
+                        RakeConfig, SharedExpense, ExpenseCharge, User, LoginLog)
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -431,3 +431,10 @@ def reports():
     from app.union_data import get_all_members
     members = get_all_members()
     return render_template('admin/reports.html', members=members)
+
+
+@admin_bp.route('/logins')
+@admin_required
+def logins():
+    logs = LoginLog.query.order_by(LoginLog.created_at.desc()).limit(100).all()
+    return render_template('admin/logins.html', logs=logs)

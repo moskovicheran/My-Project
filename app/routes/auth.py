@@ -73,6 +73,20 @@ def login():
             flash('שם משתמש או סיסמה שגויים.', 'danger')
         else:
             login_user(user, remember=remember)
+            # Log the login
+            try:
+                from app.models import LoginLog
+                log = LoginLog(
+                    user_id=user.id,
+                    username=user.username,
+                    role=user.role,
+                    ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+                    user_agent=str(request.user_agent)[:300],
+                )
+                db.session.add(log)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             next_page = request.args.get('next')
             return redirect(next_page or url_for('main.dashboard'))
 

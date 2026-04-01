@@ -26,6 +26,7 @@
         <a href="{{ url_for('admin.notes') }}" class="admin-tab {% if request.endpoint == 'admin.notes' %}active{% endif %}">הערות</a>
         <a href="{{ url_for('admin.upload') }}" class="admin-tab">העלאת קובץ יומי</a>
         <a href="{{ url_for('admin.users') }}" class="admin-tab">משתמשים וסיסמאות</a>
+        <a href="{{ url_for('admin.logins') }}" class="admin-tab {% if request.endpoint == 'admin.logins' %}active{% endif %}">התחברויות</a>
         <a href="{{ url_for('admin.rake') }}" class="admin-tab {% if request.endpoint == 'admin.rake' %}active{% endif %}">ניהול רייק</a>
         <a href="{{ url_for('admin.agents') }}" class="admin-tab {% if request.endpoint == 'admin.agents' %}active{% endif %}">שיוך סוכנים</a>
         <a href="{{ url_for('admin.clubs') }}" class="admin-tab {% if request.endpoint == 'admin.clubs' %}active{% endif %}">ניהול מועדונים</a>
