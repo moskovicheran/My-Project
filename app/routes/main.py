@@ -131,6 +131,14 @@ def dashboard():
                     club_keeps_pct = keeps_pct
                     managed_clubs.append(club)
 
+        # Sort managed clubs by rake (high to low)
+        managed_clubs.sort(key=lambda c: c.get('total_rake', 0), reverse=True)
+
+        # Sort agents by rake (high to low)
+        agents_sorted = dict(sorted(my_sa_combined['agents'].items(),
+                                     key=lambda x: x[1].get('total_rake', 0), reverse=True))
+        my_sa_combined['agents'] = agents_sorted
+
         personal_rake = round(my_sa_combined['total_rake'], 2)
         clubs_total_rake = round(sum(c.get('total_rake', 0) for c in managed_clubs), 2)
         sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
