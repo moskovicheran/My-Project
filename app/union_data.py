@@ -267,10 +267,12 @@ def get_mtts():
         })
 
     last = df.iloc[-1]
+    total_rake = round(sum(m['fee'] * m['entries'] for m in mtts if m['fee'] > 0), 2)
     totals = {
         'entries': total_entries,
         'total_buyin': _num(last.iloc[18]),
         'prize_pool': _num(last.iloc[26]),
+        'total_rake': total_rake,
     }
     return mtts, totals
 
