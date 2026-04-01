@@ -73,9 +73,13 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
         except (ValueError, TypeError):
             hands = 0
 
+        sa_id_val = str(row.iloc[2]) if str(row.iloc[2]) != 'nan' else ''
+        agent_id_val = str(row.iloc[4]) if str(row.iloc[4]) != 'nan' else ''
+        role_val = str(row.iloc[7]) if str(row.iloc[7]) != 'nan' else ''
         rows.append({
             'upload_id': upload_id, 'player_id': player_id,
             'nickname': nickname, 'club': current_club,
+            'sa_id': sa_id_val, 'agent_id': agent_id_val, 'role': role_val,
             'pnl': round(pnl, 2), 'rake': round(rake, 2),
             'hands': round(hands, 0),
         })

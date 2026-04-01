@@ -35,102 +35,103 @@ def dashboard():
                                total_hands=ct['total_hands'])
 
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
-        from app.union_data import get_super_agent_tables, get_members_hierarchy, get_cumulative_stats
-        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge
+        from app.union_data import get_super_agent_tables, get_members_hierarchy
+        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats
+        from sqlalchemy import func as sqlfunc
         sa_id = current_user.player_id
+
+        # Get SA structure from Excel (for hierarchy display)
         sa_tables = get_super_agent_tables()
-
-        # Find this SA's data (may appear in multiple clubs)
         my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
-
-        # Find child SAs (SAs managed by this agent)
         child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
         child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
+        all_sa_ids = [sa_id] + child_sa_ids
 
-        # Collect all player IDs under this agent
+        # Get ALL players that ever belonged to this SA from CUMULATIVE DB
+        my_players_db = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id,
+            sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.max(DailyPlayerStats.club),
+            sqlfunc.max(DailyPlayerStats.agent_id),
+            sqlfunc.max(DailyPlayerStats.role),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids)
+        ).group_by(DailyPlayerStats.player_id).all()
+
+        # Build agent structure from DB data
         all_my_player_ids = set()
-        for sa in my_sas + child_sas:
-            for m in sa['direct']:
-                all_my_player_ids.add(m['player_id'])
-            for ag in sa['agents'].values():
-                for m in ag['members']:
-                    all_my_player_ids.add(m['player_id'])
+        agents_map = {}  # agent_id -> {nick, members, totals}
+        direct_players = []
+        for pid, nick, club, ag_id, role, pnl, rake, hands in my_players_db:
+            pnl = round(float(pnl or 0), 2)
+            rake = round(float(rake or 0), 2)
+            hands = int(hands or 0)
+            all_my_player_ids.add(pid)
+            member = {'player_id': pid, 'nickname': nick, 'role': role or 'Player',
+                      'pnl': pnl, 'rake': rake, 'hands': hands}
+            if ag_id and ag_id != '-' and ag_id != sa_id:
+                if ag_id not in agents_map:
+                    agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
+                                         'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
+                agents_map[ag_id]['members'].append(member)
+                agents_map[ag_id]['total_pnl'] += pnl
+                agents_map[ag_id]['total_rake'] += rake
+                agents_map[ag_id]['total_hands'] += hands
+            else:
+                direct_players.append(member)
 
-        # Get CUMULATIVE stats for all my players from DB
-        cumulative = get_cumulative_stats(list(all_my_player_ids)) if all_my_player_ids else {}
-
-        # Override each player's stats with cumulative data
+        # Find agent nicknames from Excel
         for sa in my_sas + child_sas:
-            sa['total_rake'] = 0
-            sa['total_pnl'] = 0
-            sa['total_hands'] = 0
-            for m in sa['direct']:
-                cs = cumulative.get(m['player_id'], {})
-                m['rake'] = cs.get('rake', m.get('rake', 0))
-                m['pnl'] = cs.get('pnl', m.get('pnl', 0))
-                m['hands'] = cs.get('hands', m.get('hands', 0))
-                sa['total_rake'] += m['rake']
-                sa['total_pnl'] += m['pnl']
-                sa['total_hands'] += m['hands']
-            for ag in sa['agents'].values():
-                ag['total_rake'] = 0
-                ag['total_pnl'] = 0
-                ag['total_hands'] = 0
-                for m in ag['members']:
-                    cs = cumulative.get(m['player_id'], {})
-                    m['rake'] = cs.get('rake', m.get('rake', 0))
-                    m['pnl'] = cs.get('pnl', m.get('pnl', 0))
-                    m['hands'] = cs.get('hands', m.get('hands', 0))
-                    ag['total_rake'] += m['rake']
-                    ag['total_pnl'] += m['pnl']
-                    ag['total_hands'] += m['hands']
-                sa['total_rake'] += ag['total_rake']
-                sa['total_pnl'] += ag['total_pnl']
-                sa['total_hands'] += ag['total_hands']
+            for ag_id, ag in sa.get('agents', {}).items():
+                if ag_id in agents_map:
+                    agents_map[ag_id]['nick'] = ag['nick']
+
+        # Build a single SA structure with cumulative data
+        total_rake = sum(m['rake'] for m in direct_players) + sum(a['total_rake'] for a in agents_map.values())
+        total_pnl = sum(m['pnl'] for m in direct_players) + sum(a['total_pnl'] for a in agents_map.values())
+        total_hands = sum(m['hands'] for m in direct_players) + sum(a['total_hands'] for a in agents_map.values())
+
+        # Create a single SA object for template
+        my_sa_combined = {
+            'sa_id': sa_id, 'sa_nick': current_user.username,
+            'club': my_sas[0]['club'] if my_sas else '',
+            'agents': agents_map, 'direct': direct_players,
+            'total_pnl': total_pnl, 'total_rake': total_rake, 'total_hands': total_hands,
+        }
+        my_sas = [my_sa_combined]
 
         # Managed club
         rake_cfg = SARakeConfig.query.filter_by(sa_id=sa_id).first()
         rake_pct = rake_cfg.rake_percent if rake_cfg else 0
         managed_club_id = rake_cfg.managed_club_id if rake_cfg else None
         managed_club_data = None
+        club_net_rake = 0
+        club_keeps_pct = 0
         if managed_club_id:
             clubs_data, _ = get_members_hierarchy()
             for club in clubs_data:
                 if club['club_id'] == managed_club_id:
                     managed_club_data = club
                     break
+            if managed_club_data:
+                club_cumulative = DailyPlayerStats.query.with_entities(
+                    sqlfunc.sum(DailyPlayerStats.rake),
+                    sqlfunc.sum(DailyPlayerStats.pnl),
+                ).filter(DailyPlayerStats.club == managed_club_data['name']).first()
+                club_rake = round(float(club_cumulative[0] or 0), 2)
+                club_pnl = round(float(club_cumulative[1] or 0), 2)
+                managed_club_data['total_rake'] = club_rake
+                managed_club_data['total_pnl'] = club_pnl
+                total_rake += club_rake
+                total_pnl += club_pnl
+                club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=managed_club_id).first()
+                club_keeps_pct = club_rc.rake_percent if club_rc else 0
+                club_net_rake = round(club_rake * (100 - club_keeps_pct) / 100, 2)
 
-        # Totals from cumulative SA data
-        total_rake = sum(s['total_rake'] for s in my_sas) + sum(s['total_rake'] for s in child_sas)
-        total_pnl = sum(s['total_pnl'] for s in my_sas) + sum(s['total_pnl'] for s in child_sas)
-        total_hands = sum(s['total_hands'] for s in my_sas) + sum(s['total_hands'] for s in child_sas)
-
-        # Add managed club totals
-        club_net_rake = 0
-        club_keeps_pct = 0
-        if managed_club_data:
-            # Get cumulative club rake from DB
-            from app.models import DailyPlayerStats
-            from sqlalchemy import func as sqlfunc
-            club_cumulative = DailyPlayerStats.query.with_entities(
-                sqlfunc.sum(DailyPlayerStats.rake),
-                sqlfunc.sum(DailyPlayerStats.pnl),
-            ).filter(DailyPlayerStats.club == managed_club_data['name']).first()
-            club_rake = round(float(club_cumulative[0] or 0), 2)
-            club_pnl = round(float(club_cumulative[1] or 0), 2)
-            managed_club_data['total_rake'] = club_rake
-            managed_club_data['total_pnl'] = club_pnl
-            total_rake += club_rake
-            total_pnl += club_pnl
-            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=managed_club_id).first()
-            club_keeps_pct = club_rc.rake_percent if club_rc else 0
-            club_net_rake = round(club_rake * (100 - club_keeps_pct) / 100, 2)
-
-        sa_net_rake = round(
-            (sum(s['total_rake'] for s in my_sas) + sum(s['total_rake'] for s in child_sas))
-            * rake_pct / 100, 2) if rake_pct else 0
+        sa_net_rake = round(my_sa_combined['total_rake'] * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
-
         player_count = len(all_my_player_ids)
 
         # Expense charges for this agent
