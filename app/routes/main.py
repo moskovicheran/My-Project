@@ -131,7 +131,9 @@ def dashboard():
                     club_keeps_pct = keeps_pct
                     managed_clubs.append(club)
 
-        sa_net_rake = round(my_sa_combined['total_rake'] * rake_pct / 100, 2) if rake_pct else 0
+        personal_rake = round(my_sa_combined['total_rake'], 2)
+        clubs_total_rake = round(sum(c.get('total_rake', 0) for c in managed_clubs), 2)
+        sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
         player_count = len(all_my_player_ids)
 
@@ -145,6 +147,8 @@ def dashboard():
                                managed_clubs=managed_clubs,
                                total_rake=total_rake, total_pnl=total_pnl,
                                total_hands=int(total_hands), net_rake=net_rake,
+                               personal_rake=personal_rake,
+                               clubs_total_rake=clubs_total_rake,
                                net_rake_after_expenses=net_rake_after_expenses,
                                total_expenses=total_expenses,
                                expense_charges=expense_charges,
