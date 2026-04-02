@@ -71,6 +71,8 @@
                         {% endfor %}
                     </tbody>
                     <tfoot>
+                        {% set ag_wins = agent.members|selectattr('pnl_total', 'gt', 0)|sum(attribute='pnl_total') %}
+                        {% set ag_losses = agent.members|selectattr('pnl_total', 'lt', 0)|sum(attribute='pnl_total') %}
                         <tr class="total-row">
                             <td><strong>סה"כ</strong></td>
                             <td class="amount income"><strong>{{ "%.2f"|format(agent.members|sum(attribute='rake_total')) }}</strong></td>
@@ -78,6 +80,12 @@
                             <td class="amount {% if ag_pnl >= 0 %}income{% else %}expense{% endif %}">
                                 <strong>{% if ag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl) }}</strong>
                             </td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(ag_wins) }}</strong></td>
+                            <td></td>
+                            <td class="amount expense" style="font-size:0.8rem;"><strong>חובות: {{ "%.2f"|format(ag_losses) }}</strong></td>
                             <td></td>
                         </tr>
                     </tfoot>
@@ -103,6 +111,8 @@
                     {% endfor %}
                 </tbody>
                 <tfoot>
+                    {% set dm_wins = sa.direct_members|selectattr('pnl_total', 'gt', 0)|sum(attribute='pnl_total') %}
+                    {% set dm_losses = sa.direct_members|selectattr('pnl_total', 'lt', 0)|sum(attribute='pnl_total') %}
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
                         <td class="amount income"><strong>{{ "%.2f"|format(sa.direct_members|sum(attribute='rake_total')) }}</strong></td>
@@ -110,6 +120,12 @@
                         <td class="amount {% if dm_pnl >= 0 %}income{% else %}expense{% endif %}">
                             <strong>{% if dm_pnl > 0 %}+{% endif %}{{ "%.2f"|format(dm_pnl) }}</strong>
                         </td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(dm_wins) }}</strong></td>
+                        <td></td>
+                        <td class="amount expense" style="font-size:0.8rem;"><strong>חובות: {{ "%.2f"|format(dm_losses) }}</strong></td>
                         <td></td>
                     </tr>
                 </tfoot>
@@ -137,6 +153,8 @@
             {% endfor %}
         </tbody>
         <tfoot>
+            {% set nsa_wins = managed_club.no_sa_members|selectattr('pnl_total', 'gt', 0)|sum(attribute='pnl_total') %}
+            {% set nsa_losses = managed_club.no_sa_members|selectattr('pnl_total', 'lt', 0)|sum(attribute='pnl_total') %}
             <tr class="total-row">
                 <td><strong>סה"כ</strong></td>
                 <td class="amount income"><strong>{{ "%.2f"|format(managed_club.no_sa_members|sum(attribute='rake_total')) }}</strong></td>
@@ -144,6 +162,12 @@
                 <td class="amount {% if nsa_pnl >= 0 %}income{% else %}expense{% endif %}">
                     <strong>{% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}</strong>
                 </td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(nsa_wins) }}</strong></td>
+                <td></td>
+                <td class="amount expense" style="font-size:0.8rem;"><strong>חובות: {{ "%.2f"|format(nsa_losses) }}</strong></td>
                 <td></td>
             </tr>
         </tfoot>
