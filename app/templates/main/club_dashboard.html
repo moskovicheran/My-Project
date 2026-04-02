@@ -35,12 +35,11 @@
 
 {# ── Super Agents & Agents (accordion) ── #}
 {% for sa_id, sa in managed_club.super_agents.items() %}
-{% set sa_rake = sa.direct_members|sum(attribute='rake_total') if sa.direct_members else 0 %}
-{% set sa_pnl = sa.direct_members|sum(attribute='pnl_total') if sa.direct_members else 0 %}
-{% for ag_id, agent in sa.agents.items() %}
-    {% set sa_rake = sa_rake + agent.members|sum(attribute='rake_total') %}
-    {% set sa_pnl = sa_pnl + agent.members|sum(attribute='pnl_total') %}
-{% endfor %}
+{% set all_sa_members = [] %}
+{% for ag_id, agent in sa.agents.items() %}{% for m in agent.members %}{% if all_sa_members.append(m) %}{% endif %}{% endfor %}{% endfor %}
+{% if sa.direct_members %}{% for m in sa.direct_members %}{% if all_sa_members.append(m) %}{% endif %}{% endfor %}{% endif %}
+{% set sa_rake = all_sa_members|sum(attribute='rake_total') %}
+{% set sa_pnl = all_sa_members|sum(attribute='pnl_total') %}
 <div style="margin-bottom:0.7rem; border:1px solid #e0e4ef; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
     <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.8rem 1rem; cursor:pointer; background:#fafbfc;">
         <div style="display:flex; align-items:center; gap:0.6rem;">
