@@ -925,6 +925,10 @@ body.dark .admin-header { background: linear-gradient(135deg, #0d0d1a 0%, #11112
     /* Member chips */
     .member-chip { font-size: 0.78rem; padding: 0.2rem 0.5rem; }
 
+    /* Action buttons stack on mobile */
+    .player-actions { display: flex; flex-direction: column; gap: 0.2rem; }
+    .player-actions .btn { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
+
     /* Hide text, show compact */
     .nav-user { display: none; }
 }
