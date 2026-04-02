@@ -23,7 +23,6 @@
             {% if current_user.role == 'admin' %}
             <a href="{{ url_for('union.players') }}" class="nav-link {% if request.endpoint in ['union.players', 'union.player_detail', 'union.ring_games', 'union.mtts'] %}active{% endif %}">שחקנים וטבלאות</a>
             <a href="{{ url_for('main.transactions') }}" class="nav-link {% if request.endpoint in ['main.transactions', 'main.add_transaction'] %}active{% endif %}">עסקאות</a>
-            <a href="{{ url_for('union.overview') }}" class="nav-link {% if request.blueprint == 'union' and request.endpoint not in ['union.players', 'union.player_detail', 'union.ring_games', 'union.mtts'] %}active{% endif %}">Union</a>
             <a href="{{ url_for('upload.index') }}" class="nav-link {% if request.blueprint == 'upload' %}active{% endif %}">העלאת קובץ</a>
             {% endif %}
             <button class="theme-toggle" onclick="toggleDark()" title="מצב כהה">🌙</button>
