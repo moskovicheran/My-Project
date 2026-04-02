@@ -800,70 +800,64 @@ def export_club_report():
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
 
+    import re
     sheets = {}
 
-    # Group by agent
-    agent_groups = {}
-    direct_players = []
+    # Group by SA - each SA gets its own sheet with all their players
+    sa_groups = {}  # sa_id -> [players]
+    no_sa_players = []
     for p in players:
-        ag_id = p[3] if p[3] and p[3] != '-' else None
         sa_id = p[2] if p[2] and p[2] != '-' else None
-        ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
+        ag_id = p[3] if p[3] and p[3] != '-' else None
+        ag_name = all_nicks.get(ag_id, ag_id) if ag_id else ''
         row = {
             'שחקן': p[1], 'ID': p[0],
-            'Super Agent': all_nicks.get(sa_id, sa_id) if sa_id else '',
+            'Agent': ag_name,
             'P&L': round(float(p[4] or 0), 2),
             'Rake': round(float(p[5] or 0), 2),
             'Hands': int(p[6] or 0),
         }
-        if ag_name:
-            if ag_name not in agent_groups:
-                agent_groups[ag_name] = []
-            agent_groups[ag_name].append(row)
+        if sa_id:
+            if sa_id not in sa_groups:
+                sa_groups[sa_id] = []
+            sa_groups[sa_id].append(row)
         else:
-            direct_players.append(row)
+            no_sa_players.append(row)
 
-    # Sheet per agent
-    for ag_name, ag_players in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
-        ag_players.sort(key=lambda x: x['Rake'], reverse=True)
-        ag_players.append({
-            'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '',
-            'P&L': round(sum(r['P&L'] for r in ag_players), 2),
-            'Rake': round(sum(r['Rake'] for r in ag_players), 2),
-            'Hands': sum(r['Hands'] for r in ag_players),
+    # Sheet per SA
+    for sa_id, sa_players in sorted(sa_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+        sa_name = all_nicks.get(sa_id, sa_id)
+        sa_players.sort(key=lambda x: x['Rake'], reverse=True)
+        sa_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'Agent': '',
+            'P&L': round(sum(r['P&L'] for r in sa_players), 2),
+            'Rake': round(sum(r['Rake'] for r in sa_players), 2),
+            'Hands': sum(r['Hands'] for r in sa_players),
         })
-        import re
-        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
-        sheets[safe_name] = ag_players
+        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sa_name)[:31] or 'SA'
+        sheets[safe_name] = sa_players
 
-    # Direct players
-    if direct_players:
-        direct_players.sort(key=lambda x: x['Rake'], reverse=True)
-        direct_players.append({
-            'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '',
-            'P&L': round(sum(r['P&L'] for r in direct_players), 2),
-            'Rake': round(sum(r['Rake'] for r in direct_players), 2),
-            'Hands': sum(r['Hands'] for r in direct_players),
+    # Players without SA
+    if no_sa_players:
+        no_sa_players.sort(key=lambda x: x['Rake'], reverse=True)
+        no_sa_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'Agent': '',
+            'P&L': round(sum(r['P&L'] for r in no_sa_players), 2),
+            'Rake': round(sum(r['Rake'] for r in no_sa_players), 2),
+            'Hands': sum(r['Hands'] for r in no_sa_players),
         })
-        sheets['שחקנים ישירים'] = direct_players
+        sheets['ללא SA'] = no_sa_players
 
-    # Summary sheet
-    sa_stats = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.sa_id, sqlfunc.sum(DailyPlayerStats.pnl),
-        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
-        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
-    ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry',
-             DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-'
-    ).group_by(DailyPlayerStats.sa_id).all()
-
+    # Summary sheet - all SAs
     sa_rows = []
-    for s in sa_stats:
+    for sa_id, sa_players_list in sa_groups.items():
+        real_players = [p for p in sa_players_list if p['שחקן'] != 'סה"כ']
         sa_rows.append({
-            'Super Agent': all_nicks.get(s[0], s[0]), 'ID': s[0],
-            'שחקנים': int(s[4] or 0),
-            'P&L': round(float(s[1] or 0), 2),
-            'Rake': round(float(s[2] or 0), 2),
-            'Hands': int(s[3] or 0),
+            'Super Agent': all_nicks.get(sa_id, sa_id), 'ID': sa_id,
+            'שחקנים': len(real_players),
+            'P&L': round(sum(r['P&L'] for r in real_players), 2),
+            'Rake': round(sum(r['Rake'] for r in real_players), 2),
+            'Hands': sum(r['Hands'] for r in real_players),
         })
     sa_rows.sort(key=lambda x: x['Rake'], reverse=True)
     if sa_rows:
