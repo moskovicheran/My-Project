@@ -446,27 +446,46 @@ def export_agent_players():
     ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry'
     ).group_by(DailyPlayerStats.player_id).all()
 
-    player_rows = []
+    # Group players by agent - each agent gets its own sheet
+    agent_groups = {}  # agent_name -> [players]
+    direct_players = []
     for p in players:
-        sa_name = all_nicks.get(p[3], p[3]) if p[3] and p[3] != '-' else ''
-        ag_name = all_nicks.get(p[4], p[4]) if p[4] and p[4] != '-' else ''
-        player_rows.append({
+        ag_id = p[4] if p[4] and p[4] != '-' else None
+        ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
+        row = {
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-            'Super Agent': sa_name, 'Agent': ag_name,
             'P&L': round(float(p[5] or 0), 2),
             'Rake': round(float(p[6] or 0), 2),
             'Hands': int(p[7] or 0),
+        }
+        if ag_name and ag_name != all_nicks.get(sa_id, sa_id):
+            if ag_name not in agent_groups:
+                agent_groups[ag_name] = []
+            agent_groups[ag_name].append(row)
+        else:
+            direct_players.append(row)
+
+    # Create sheet per agent
+    for ag_name, ag_players in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+        ag_players.sort(key=lambda x: x['Rake'], reverse=True)
+        ag_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+            'P&L': round(sum(r['P&L'] for r in ag_players), 2),
+            'Rake': round(sum(r['Rake'] for r in ag_players), 2),
+            'Hands': sum(r['Hands'] for r in ag_players),
         })
-    player_rows.sort(key=lambda x: x['Rake'], reverse=True)
-    # Add totals row
-    if player_rows:
-        player_rows.append({
-            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'Super Agent': '', 'Agent': '',
-            'P&L': round(sum(r['P&L'] for r in player_rows), 2),
-            'Rake': round(sum(r['Rake'] for r in player_rows), 2),
-            'Hands': sum(r['Hands'] for r in player_rows),
+        sheets[ag_name[:31]] = ag_players
+
+    # Direct players sheet
+    if direct_players:
+        direct_players.sort(key=lambda x: x['Rake'], reverse=True)
+        direct_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+            'P&L': round(sum(r['P&L'] for r in direct_players), 2),
+            'Rake': round(sum(r['Rake'] for r in direct_players), 2),
+            'Hands': sum(r['Hands'] for r in direct_players),
         })
-    sheets['שחקנים'] = player_rows
+        sheets['שחקנים ישירים'] = direct_players
 
     # ── Sheet 2: My Agents ──
     agent_stats = DailyPlayerStats.query.with_entities(
