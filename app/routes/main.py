@@ -301,7 +301,9 @@ def _make_excel(sheets_data, filename):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     for sheet_name, rows in sheets_data.items():
-        ws = wb.create_sheet(title=sheet_name[:31])
+        import re
+        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sheet_name)[:31] or 'Sheet'
+        ws = wb.create_sheet(title=safe_name)
         if not rows:
             continue
         # Headers
