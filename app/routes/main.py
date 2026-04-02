@@ -33,7 +33,9 @@ def dashboard():
                                       'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
                                tables_count=ct['uploads_count'],
                                total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
-                               total_hands=ct['total_hands'])
+                               total_hands=ct['total_hands'],
+                               ring_rake=ct.get('ring_rake', 0),
+                               mtt_rake=ct.get('mtt_rake', 0))
 
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy

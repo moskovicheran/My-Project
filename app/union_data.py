@@ -674,9 +674,34 @@ def get_cumulative_totals():
                 'active_players': int(players or 0),
             })
 
+    # Rake breakdown from sessions (Ring vs MTT)
+    from app.models import PlayerSession
+    ring_rake_total = 0
+    mtt_rake_total = 0
+    try:
+        ring_sessions = PlayerSession.query.with_entities(
+            func.count(PlayerSession.id)
+        ).filter(PlayerSession.game_type != 'MTT').first()
+        mtt_sessions = PlayerSession.query.with_entities(
+            func.count(PlayerSession.id)
+        ).filter(PlayerSession.game_type == 'MTT').first()
+
+        from app.models import TournamentStats
+        mtt_rake_data = TournamentStats.query.with_entities(
+            func.sum(TournamentStats.fee * TournamentStats.entries)
+        ).first()
+        mtt_rake_total = round(float(mtt_rake_data[0] or 0), 2)
+    except Exception:
+        pass
+
+    total_rake = round(float(stats[1] or 0), 2)
+    ring_rake_total = round(total_rake - mtt_rake_total, 2)
+
     return {
         'total_pnl': round(float(stats[0] or 0), 2),
-        'total_rake': round(float(stats[1] or 0), 2),
+        'total_rake': total_rake,
+        'ring_rake': ring_rake_total,
+        'mtt_rake': mtt_rake_total,
         'total_hands': int(stats[2] or 0),
         'total_players': int(stats[3] or 0),
         'uploads_count': uploads_count,

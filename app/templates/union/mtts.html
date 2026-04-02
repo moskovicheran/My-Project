@@ -44,6 +44,7 @@
                 <th>Re-Entry</th>
                 <th>GTD</th>
                 <th>Entries</th>
+                <th>Rake</th>
                 <th>Prize Pool</th>
                 <th>Start</th>
                 <th>Duration</th>
@@ -59,12 +60,13 @@
                 <td class="muted">{{ t.reentry }}</td>
                 <td>{{ "{:,}".format(t.gtd|int) if t.gtd else '-' }}</td>
                 <td>{{ t.entries|int }}</td>
+                <td class="amount income">{{ "%.2f"|format(t.fee * t.entries) }}</td>
                 <td class="amount income">{{ "%.2f"|format(t.prize_pool) }}</td>
                 <td class="muted">{{ t.start }}</td>
                 <td class="muted">{{ t.duration }}</td>
             </tr>
             <tr class="mtt-detail-row" style="display:none;">
-                <td colspan="10" style="padding:0;">
+                <td colspan="11" style="padding:0;">
                     <div class="mtt-players-container" style="background:#f8f9fa; padding:0.6rem 1rem;"></div>
                 </td>
             </tr>
@@ -73,7 +75,7 @@
         <tfoot>
             <tr class="total-row">
                 <td colspan="7"><strong>TOTAL</strong></td>
-                <td><strong>{{ totals.entries }}</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(totals.total_rake) }}</strong></td>
                 <td class="amount income"><strong>{{ "%.2f"|format(totals.prize_pool) }}</strong></td>
                 <td colspan="2"></td>
             </tr>
