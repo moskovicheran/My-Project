@@ -296,6 +296,20 @@ def dashboard():
                                club_net_rake=club_net_rake,
                                club_keeps_pct=club_keeps_pct)
 
+    if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
+        from app.union_data import get_cumulative_stats
+        from app.models import PlayerSession
+
+        player_id = current_user.player_id
+        cs = get_cumulative_stats([player_id]).get(player_id)
+        sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+        session_list = [{'table_name': s.table_name, 'game_type': s.game_type,
+                         'blinds': s.blinds or '', 'pnl': round(s.pnl, 2)} for s in sessions]
+
+        return render_template('main/player_dashboard.html',
+                               player=cs or {'nickname': current_user.username, 'club': '-', 'pnl': 0, 'rake': 0, 'hands': 0},
+                               sessions=session_list)
+
     transactions = (Transaction.query
                     .filter_by(user_id=current_user.id)
                     .order_by(Transaction.date.desc())

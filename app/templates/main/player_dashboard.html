@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}דשבורד שחקן{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>שלום, {{ current_user.username }}</h1>
+        <p class="subtitle">
+            <span class="role-badge role-player">שחקן</span>
+            &nbsp;{{ player.club }}
+        </p>
+    </div>
+    <a href="{{ url_for('main.export_player', player_id=current_user.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold;">📥 הורד דוח אקסל</a>
+</div>
+
+{# ── Stats Cards ── #}
+<div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
+    <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">יתרה (P&L)</div>
+        <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ "%.2f"|format(player.pnl) }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">Rake</div>
+        <div class="stat-value">{{ "%.2f"|format(player.rake) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Hands</div>
+        <div class="stat-value">{{ "{:,}".format(player.hands|int) }}</div>
+    </div>
+</div>
+
+{# ── Game Sessions ── #}
+<div class="section">
+    <h2 class="section-title">המשחקים שלי ({{ sessions|length }})</h2>
+    {% if sessions %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>משחק</th>
+                <th>סוג</th>
+                <th>בליינדס</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in sessions %}
+            <tr>
+                <td><strong>{{ s.table_name }}</strong></td>
+                <td><span class="badge badge-game">{{ s.game_type }}</span></td>
+                <td class="muted">{{ s.blinds }}</td>
+                <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
+                    {% if s.pnl > 0 %}+{% endif %}{{ "%.2f"|format(s.pnl) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="3"><strong>סה"כ</strong></td>
+                {% set total_pnl = sessions|sum(attribute='pnl') %}
+                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>אין משחקים עדיין.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
