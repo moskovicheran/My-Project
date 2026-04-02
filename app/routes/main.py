@@ -396,10 +396,23 @@ def _make_excel(sheets_data, filename):
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center')
-        # Data
+        # Data with color formatting
+        green_font = Font(color='2EC4B6', bold=True)
+        red_font = Font(color='EF233C', bold=True)
+        bold_font = Font(bold=True)
         for row_idx, row_data in enumerate(rows, 2):
             for col_idx, key in enumerate(headers, 1):
-                ws.cell(row=row_idx, column=col_idx, value=row_data.get(key, ''))
+                val = row_data.get(key, '')
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                # Color P&L values
+                if key in ('P&L', 'נטו שלי') and isinstance(val, (int, float)):
+                    if val > 0:
+                        cell.font = green_font
+                    elif val < 0:
+                        cell.font = red_font
+                # Bold totals row
+                if row_data.get(headers[0]) == 'סה"כ':
+                    cell.font = Font(bold=True, color=cell.font.color if cell.font.color else '000000')
         # Auto-width
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
