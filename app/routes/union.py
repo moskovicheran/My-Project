@@ -55,7 +55,22 @@ def mtts():
 @union_bp.route('/members')
 @login_required
 def members():
-    top_winners, top_losers = get_top_members(20)
+    from app.union_data import get_cumulative_stats
+    all_cumulative = get_cumulative_stats()
+    all_players = []
+    for pid, cs in all_cumulative.items():
+        if cs.get('hands', 0) == 0 and cs.get('pnl', 0) == 0:
+            continue
+        all_players.append({
+            'member_id': pid,
+            'nickname': cs['nickname'],
+            'club': cs['club'],
+            'pnl_total': cs['pnl'],
+            'rake_total': cs['rake'],
+            'hands_total': cs['hands'],
+        })
+    top_winners = sorted(all_players, key=lambda x: x['pnl_total'], reverse=True)[:20]
+    top_losers = sorted(all_players, key=lambda x: x['pnl_total'])[:20]
     return render_template('union/members.html',
                            top_winners=top_winners,
                            top_losers=top_losers)
