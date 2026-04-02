@@ -764,6 +764,120 @@ def export_agent_period():
                        f'{current_user.username}_{from_date}_{to_date}.xlsx')
 
 
+@main_bp.route('/export/club/report')
+@login_required
+def export_club_report():
+    """Export club report - all SAs, Agents, Players with balances."""
+    if current_user.role != 'club' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+
+    club_id = current_user.player_id
+    clubs_data, _ = get_members_hierarchy()
+    club_name = None
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            club_name = c['name']
+            break
+    if not club_name:
+        flash('מועדון לא נמצא.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    # All players in this club
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
+        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    # Nickname map
+    all_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+
+    sheets = {}
+
+    # Group by agent
+    agent_groups = {}
+    direct_players = []
+    for p in players:
+        ag_id = p[3] if p[3] and p[3] != '-' else None
+        sa_id = p[2] if p[2] and p[2] != '-' else None
+        ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
+        row = {
+            'שחקן': p[1], 'ID': p[0],
+            'Super Agent': all_nicks.get(sa_id, sa_id) if sa_id else '',
+            'P&L': round(float(p[4] or 0), 2),
+            'Rake': round(float(p[5] or 0), 2),
+            'Hands': int(p[6] or 0),
+        }
+        if ag_name:
+            if ag_name not in agent_groups:
+                agent_groups[ag_name] = []
+            agent_groups[ag_name].append(row)
+        else:
+            direct_players.append(row)
+
+    # Sheet per agent
+    for ag_name, ag_players in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+        ag_players.sort(key=lambda x: x['Rake'], reverse=True)
+        ag_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '',
+            'P&L': round(sum(r['P&L'] for r in ag_players), 2),
+            'Rake': round(sum(r['Rake'] for r in ag_players), 2),
+            'Hands': sum(r['Hands'] for r in ag_players),
+        })
+        import re
+        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
+        sheets[safe_name] = ag_players
+
+    # Direct players
+    if direct_players:
+        direct_players.sort(key=lambda x: x['Rake'], reverse=True)
+        direct_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '',
+            'P&L': round(sum(r['P&L'] for r in direct_players), 2),
+            'Rake': round(sum(r['Rake'] for r in direct_players), 2),
+            'Hands': sum(r['Hands'] for r in direct_players),
+        })
+        sheets['שחקנים ישירים'] = direct_players
+
+    # Summary sheet
+    sa_stats = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.sa_id, sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+    ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry',
+             DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-'
+    ).group_by(DailyPlayerStats.sa_id).all()
+
+    sa_rows = []
+    for s in sa_stats:
+        sa_rows.append({
+            'Super Agent': all_nicks.get(s[0], s[0]), 'ID': s[0],
+            'שחקנים': int(s[4] or 0),
+            'P&L': round(float(s[1] or 0), 2),
+            'Rake': round(float(s[2] or 0), 2),
+            'Hands': int(s[3] or 0),
+        })
+    sa_rows.sort(key=lambda x: x['Rake'], reverse=True)
+    if sa_rows:
+        sa_rows.append({
+            'Super Agent': 'סה"כ', 'ID': '', 'שחקנים': sum(r['שחקנים'] for r in sa_rows),
+            'P&L': round(sum(r['P&L'] for r in sa_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
+            'Hands': sum(r['Hands'] for r in sa_rows),
+        })
+        sheets['Super Agents'] = sa_rows
+
+    return _make_excel(sheets, f'{club_name}_report.xlsx')
+
+
 @main_bp.route('/agent/transfers', methods=['GET', 'POST'])
 @login_required
 def agent_transfers():

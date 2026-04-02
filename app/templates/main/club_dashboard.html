@@ -7,6 +7,9 @@
         <h1>{% if managed_club %}{{ managed_club.name }}{% else %}מועדון{% endif %}</h1>
         <p class="subtitle"><span class="role-badge" style="background:#e8f5e9; color:#2e7d32;">מועדון</span></p>
     </div>
+    <div style="display:flex; gap:0.4rem;">
+        <a href="{{ url_for('main.export_club_report') }}" class="btn btn-outline btn-sm">📥 דוח מועדון</a>
+    </div>
 </div>
 
 {% if managed_club %}
