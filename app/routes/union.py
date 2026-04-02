@@ -20,6 +20,10 @@ def overview():
 @login_required
 def ring_games():
     games, totals = get_ring_games()
+    # Override with cumulative Ring Rake from Member Statistics (matches dashboard)
+    from app.union_data import get_cumulative_totals
+    ct = get_cumulative_totals()
+    totals['rake'] = ct.get('ring_rake', totals['rake'])
     return render_template('union/ring_games.html', games=games, totals=totals)
 
 
