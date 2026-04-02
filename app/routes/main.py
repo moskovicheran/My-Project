@@ -456,7 +456,7 @@ def export_player(player_id):
                      'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
 
     summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
-                'P&L': cs['pnl'], 'Rake': cs['rake'], 'Hands': cs['hands']}]
+                'P&L': cs['pnl'], 'Hands': cs['hands']}]
 
     return _make_excel({
         'סיכום': summary,
