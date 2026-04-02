@@ -123,13 +123,21 @@ function toggleExpenseDetails() {
                     {# Agents under this SA #}
                     {% for ag_id, agent in sa.agents.items() %}
                     <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:6px; overflow:hidden;">
+                        {% set cag_rake = agent.members|sum(attribute='rake_total') %}
+                        {% set cag_pnl = agent.members|sum(attribute='pnl_total') %}
                         <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; cursor:pointer;">
                             <div style="display:flex; align-items:center; gap:0.4rem;">
                                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">▶</span>
                                 <span class="role-badge role-agent">Agent</span>
                                 <strong style="font-size:0.9rem;">{{ agent.nick }}</strong>
+                                <span class="muted small">{{ agent.members|length }} שחקנים</span>
                             </div>
-                            <span class="muted small">{{ agent.members|length }} שחקנים</span>
+                            <div style="display:flex; gap:0.4rem;">
+                                <span class="summary-chip chip-win" style="font-size:0.8rem;">R {{ "%.2f"|format(cag_rake) }}</span>
+                                <span class="summary-chip {% if cag_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}" style="font-size:0.8rem;">
+                                    P&L {% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}
+                                </span>
+                            </div>
                         </div>
                         <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
                             <table class="table table-sm" style="margin:0;">
@@ -137,7 +145,8 @@ function toggleExpenseDetails() {
                                     {% for m in agent.members %}
                                     <tr>
                                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" >
+                                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                                             {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                                         </td>
                                     </tr>
@@ -156,7 +165,8 @@ function toggleExpenseDetails() {
                                 {% for m in sa.direct_members %}
                                 <tr>
                                     <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" >
+                                    <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                                         {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                                     </td>
                                 </tr>
@@ -373,7 +383,10 @@ function toggleExpenseDetails() {
                         <strong style="font-size:0.9rem;">{{ ag.nick }}</strong>
                         <span class="muted small">{{ ag.members|length }} שחקנים</span>
                     </div>
-                    <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+                    <div style="display:flex; gap:0.3rem;">
+                        <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+                        <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">P&L {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</span>
+                    </div>
                 </div>
                 <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
                     <table class="table table-sm" style="margin:0;">
@@ -381,7 +394,8 @@ function toggleExpenseDetails() {
                             {% for m in ag.members %}
                             <tr>
                                 <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" >
+                                <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                                     {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
                                 </td>
                             </tr>
@@ -400,7 +414,8 @@ function toggleExpenseDetails() {
                         {% for m in cs.direct %}
                         <tr>
                             <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                            <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" >
+                            <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                            <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                                 {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
                             </td>
                         </tr>
