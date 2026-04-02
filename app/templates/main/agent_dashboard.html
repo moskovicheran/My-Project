@@ -209,15 +209,15 @@ function toggleExpenseDetails() {
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
     {% for ag_id, ag in my_sa.agents.items() %}
-    <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
-        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
-            <div style="display:flex; align-items:center; gap:0.5rem;">
-                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
+    <div class="agent-card">
+        <div class="agent-card-header" onclick="toggleAccordion(this)">
+            <div class="agent-card-name">
+                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
                 <span class="role-badge role-agent">Agent</span>
                 <strong>{{ ag.nick }}</strong>
-                <span class="muted small">{{ ag.members|length }} שחקנים</span>
+                <span class="muted">{{ ag.members|length }} שחקנים</span>
             </div>
-            <div style="display:flex; gap:0.4rem;">
+            <div class="agent-card-stats">
                 <span class="summary-chip chip-win">R {{ "%.2f"|format(ag.total_rake) }}</span>
                 <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     P&L {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
@@ -225,7 +225,7 @@ function toggleExpenseDetails() {
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
-            <table class="table table-sm" style="margin:0;">
+            <table class="table" style="margin:0; font-size:0.95rem;">
                 <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
                 <tbody>
                     {% for m in ag.members %}
@@ -271,14 +271,14 @@ function toggleExpenseDetails() {
     {% if my_sa.direct %}
     {% set direct_rake = my_sa.direct | sum(attribute='rake') %}
     {% set direct_pnl = my_sa.direct | sum(attribute='pnl') %}
-    <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
-        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
-            <div style="display:flex; align-items:center; gap:0.5rem;">
-                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
+    <div class="agent-card">
+        <div class="agent-card-header" onclick="toggleAccordion(this)">
+            <div class="agent-card-name">
+                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
                 <strong>שחקנים ישירים</strong>
-                <span class="muted small">{{ my_sa.direct|length }} שחקנים</span>
+                <span class="muted">{{ my_sa.direct|length }} שחקנים</span>
             </div>
-            <div style="display:flex; gap:0.4rem;">
+            <div class="agent-card-stats">
                 <span class="summary-chip chip-win">R {{ "%.2f"|format(direct_rake) }}</span>
                 <span class="summary-chip {% if direct_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     P&L {% if direct_pnl > 0 %}+{% endif %}{{ "%.2f"|format(direct_pnl) }}
@@ -286,7 +286,7 @@ function toggleExpenseDetails() {
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
-            <table class="table table-sm" style="margin:0;">
+            <table class="table" style="margin:0; font-size:0.95rem;">
                 <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
                 <tbody>
                     {% for m in my_sa.direct %}
@@ -427,11 +427,26 @@ function toggleExpenseDetails() {
 {% endif %}
 
 <style>
-.accordion-section { padding: 0; overflow: hidden; }
-.accordion-header:hover { background: #f8f9fa; }
+.accordion-section { padding: 0; overflow: hidden; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+.accordion-header { transition: background 0.15s; }
+.accordion-header:hover { background: #f0f2f5; }
 .accordion-body { border-top: 1px solid #f0f0f0; }
 body.dark .accordion-header:hover { background: #252535; }
 body.dark .accordion-body { border-top-color: #333; }
+
+/* Agent cards */
+.agent-card { margin-bottom: 0.7rem; border: 1px solid #e0e4ef; border-radius: 12px; overflow: hidden; transition: box-shadow 0.2s; }
+.agent-card:hover { box-shadow: 0 3px 12px rgba(67,97,238,0.08); }
+.agent-card-header { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 1.2rem; cursor: pointer; background: #fafbfc; }
+.agent-card-header:hover { background: #f0f3ff; }
+.agent-card-name { display: flex; align-items: center; gap: 0.6rem; }
+.agent-card-name strong { font-size: 1.05rem; }
+.agent-card-name .muted { font-size: 0.88rem; }
+.agent-card-stats { display: flex; gap: 0.5rem; }
+.agent-card-stats .summary-chip { font-size: 0.88rem; padding: 0.25rem 0.7rem; }
+body.dark .agent-card { border-color: #333; }
+body.dark .agent-card-header { background: #1e1e2e; }
+body.dark .agent-card-header:hover { background: #252540; }
 
 .record-container {
     background: #f8f9fa;
