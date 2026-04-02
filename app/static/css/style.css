@@ -871,22 +871,46 @@ body.dark .admin-header { background: linear-gradient(135deg, #0d0d1a 0%, #11112
 }
 
 @media (max-width: 640px) {
-    .stats-grid, .stats-5, .stats-4, .stats-3 { grid-template-columns: 1fr; }
+    .stats-grid, .stats-5, .stats-4, .stats-3 { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
     .navbar { padding: 0 0.8rem; flex-wrap: wrap; }
-    .nav-links { gap: 0.5rem; font-size: 0.85rem; flex-wrap: wrap; }
+    .nav-links { gap: 0.4rem; font-size: 0.85rem; flex-wrap: wrap; }
     .nav-brand { font-size: 1rem; }
     .nav-hamburger { display: block; }
     .nav-links.collapsed { display: none; }
-    .nav-links.expanded { display: flex; width: 100%; padding: 0.5rem 0; }
+    .nav-links.expanded { display: flex; flex-direction: column; width: 100%; padding: 0.5rem 0; gap: 0.3rem; }
     .admin-header-top { flex-direction: column; gap: 0.5rem; padding: 0.8rem 1rem; }
     .admin-title { font-size: 1.2rem; }
-    .admin-tabs { padding: 0 0.3rem; }
-    .admin-tab { padding: 0.5rem 0.6rem; font-size: 0.78rem; }
+    .admin-tabs { padding: 0 0.3rem; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .admin-tab { padding: 0.5rem 0.6rem; font-size: 0.78rem; white-space: nowrap; }
     .admin-content { padding: 0 0.5rem; }
-    .section { padding: 0.8rem; margin-bottom: 1rem; }
-    .stat-card { padding: 0.8rem; }
-    .stat-value { font-size: 1.2rem; }
-    .stat-label { font-size: 0.8rem; }
+    .container { padding: 0 0.5rem; }
+    .section { padding: 0.6rem; margin-bottom: 0.8rem; border-radius: 10px; }
+    .stat-card { padding: 0.6rem; }
+    .stat-value { font-size: 1.1rem; }
+    .stat-label { font-size: 0.75rem; }
+    .page-header { flex-direction: column; gap: 0.5rem; align-items: flex-start; }
     .page-header h1 { font-size: 1.2rem; }
-    .btn { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+    .btn { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+    .btn-sm { padding: 0.2rem 0.4rem; font-size: 0.72rem; }
+
+    /* Tables scroll on mobile */
+    .table { min-width: auto; font-size: 0.82rem; }
+    .table th, .table td { padding: 0.4rem 0.5rem; }
+
+    /* Agent/Club cards mobile */
+    .agent-card-header { padding: 0.6rem 0.8rem; flex-direction: column; gap: 0.4rem; align-items: flex-start; }
+    .agent-card-name strong { font-size: 0.95rem; }
+    .agent-card-stats { width: 100%; }
+    .agent-card-stats .summary-chip { font-size: 0.85rem; padding: 0.25rem 0.6rem; }
+    .summary-chip { font-size: 0.75rem; padding: 0.15rem 0.4rem; }
+
+    /* Accordion mobile */
+    .accordion-section { border-radius: 10px; }
+    .accordion-header { padding: 0.6rem 0.8rem !important; }
+
+    /* Member chips */
+    .member-chip { font-size: 0.78rem; padding: 0.2rem 0.5rem; }
+
+    /* Hide text, show compact */
+    .nav-user { display: none; }
 }

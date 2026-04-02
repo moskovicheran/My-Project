@@ -58,8 +58,18 @@ function toggleDark() {
 }
 function toggleNav() {
     var nav = document.getElementById('navLinks');
-    nav.classList.toggle('collapsed');
-    nav.classList.toggle('expanded');
+    if (nav.classList.contains('expanded')) {
+        nav.classList.remove('expanded');
+        nav.classList.add('collapsed');
+    } else {
+        nav.classList.remove('collapsed');
+        nav.classList.add('expanded');
+    }
+}
+// Auto-collapse nav on mobile
+if (window.innerWidth <= 640) {
+    var nav = document.getElementById('navLinks');
+    if (nav) nav.classList.add('collapsed');
 }
 // Load saved theme
 if (localStorage.getItem('theme') === 'dark') {
