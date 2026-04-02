@@ -245,6 +245,16 @@ function toggleExpenseDetails() {
                     </tr>
                     {% endfor %}
                 </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td><strong>סה"כ</strong></td>
+                        <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
+                        <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                            <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
@@ -288,6 +298,16 @@ function toggleExpenseDetails() {
                     </tr>
                     {% endfor %}
                 </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td><strong>סה"כ</strong></td>
+                        <td class="amount income"><strong>{{ "%.2f"|format(direct_rake) }}</strong></td>
+                        <td class="amount {% if direct_pnl >= 0 %}income{% else %}expense{% endif %}">
+                            <strong>{% if direct_pnl > 0 %}+{% endif %}{{ "%.2f"|format(direct_pnl) }}</strong>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>

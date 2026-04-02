@@ -70,6 +70,17 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td><strong>סה"כ</strong></td>
+                            <td class="amount income"><strong>{{ "%.2f"|format(agent.members|sum(attribute='rake_total')) }}</strong></td>
+                            {% set ag_pnl = agent.members|sum(attribute='pnl_total') %}
+                            <td class="amount {% if ag_pnl >= 0 %}income{% else %}expense{% endif %}">
+                                <strong>{% if ag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl) }}</strong>
+                            </td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -87,9 +98,21 @@
                         <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
                             {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                         </td>
+                        <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a></td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td><strong>סה"כ</strong></td>
+                        <td class="amount income"><strong>{{ "%.2f"|format(sa.direct_members|sum(attribute='rake_total')) }}</strong></td>
+                        {% set dm_pnl = sa.direct_members|sum(attribute='pnl_total') %}
+                        <td class="amount {% if dm_pnl >= 0 %}income{% else %}expense{% endif %}">
+                            <strong>{% if dm_pnl > 0 %}+{% endif %}{{ "%.2f"|format(dm_pnl) }}</strong>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
         {% endif %}
@@ -113,6 +136,17 @@
             </tr>
             {% endfor %}
         </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td><strong>סה"כ</strong></td>
+                <td class="amount income"><strong>{{ "%.2f"|format(managed_club.no_sa_members|sum(attribute='rake_total')) }}</strong></td>
+                {% set nsa_pnl = managed_club.no_sa_members|sum(attribute='pnl_total') %}
+                <td class="amount {% if nsa_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}</strong>
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
     </table>
 </div>
 {% endif %}
