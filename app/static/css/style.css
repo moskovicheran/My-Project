@@ -877,7 +877,9 @@ body.dark .admin-header { background: linear-gradient(135deg, #0d0d1a 0%, #11112
     .nav-brand { font-size: 1rem; }
     .nav-hamburger { display: block; }
     .nav-links.collapsed { display: none; }
-    .nav-links.expanded { display: flex; flex-direction: column; width: 100%; padding: 0.5rem 0; gap: 0.3rem; }
+    .nav-links.expanded { display: flex; flex-direction: column; width: 100%; padding: 0.5rem 0; gap: 0.15rem; align-items: flex-start; }
+    .nav-links.expanded .nav-link { padding: 0.3rem 0; font-size: 0.9rem; }
+    .nav-links.expanded .nav-link.logout { color: #ef233c; margin-top: 0.3rem; padding-top: 0.4rem; border-top: 1px solid rgba(255,255,255,0.1); width: 100%; }
     .admin-header-top { flex-direction: column; gap: 0.5rem; padding: 0.8rem 1rem; }
     .admin-title { font-size: 1.2rem; }
     .admin-tabs { padding: 0 0.3rem; overflow-x: auto; -webkit-overflow-scrolling: touch; }
