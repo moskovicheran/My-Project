@@ -35,25 +35,45 @@
 
 {# ── Super Agents & Agents (accordion) ── #}
 {% for sa_id, sa in managed_club.super_agents.items() %}
-<div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
-    <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.8rem; cursor:pointer; background:#f8f9fa;">
-        <div style="display:flex; align-items:center; gap:0.5rem;">
-            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.7rem;">▶</span>
+{% set sa_rake = sa.direct_members|sum(attribute='rake_total') if sa.direct_members else 0 %}
+{% set sa_pnl = sa.direct_members|sum(attribute='pnl_total') if sa.direct_members else 0 %}
+{% for ag_id, agent in sa.agents.items() %}
+    {% set sa_rake = sa_rake + agent.members|sum(attribute='rake_total') %}
+    {% set sa_pnl = sa_pnl + agent.members|sum(attribute='pnl_total') %}
+{% endfor %}
+<div style="margin-bottom:0.7rem; border:1px solid #e0e4ef; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+    <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.8rem 1rem; cursor:pointer; background:#fafbfc;">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
             <span class="role-badge role-sa">SA</span>
-            <strong>{{ sa.nick }}</strong>
-            <span class="muted small">{{ sa.id }}</span>
+            <strong style="font-size:1.05rem;">{{ sa.nick }}</strong>
+            <span class="muted" style="font-size:0.85rem;">{{ sa.id }}</span>
         </div>
-        <span class="muted small">{{ sa.agents|length }} סוכנים</span>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <span class="summary-chip chip-win" style="font-size:0.95rem; padding:0.3rem 0.8rem; font-weight:700;">R {{ "%.2f"|format(sa_rake) }}</span>
+            <span class="summary-chip {% if sa_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}" style="font-size:0.95rem; padding:0.3rem 0.8rem; font-weight:700;">
+                P&L {% if sa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl) }}
+            </span>
+            <span class="muted" style="font-size:0.85rem;">{{ sa.agents|length }} סוכנים</span>
+        </div>
     </div>
     <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
         {% for ag_id, agent in sa.agents.items() %}
-        <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:6px; overflow:hidden;">
-            <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; cursor:pointer;">
-                <div style="display:flex; align-items:center; gap:0.4rem;">
-                    <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">▶</span>
+        {% set ag_rake = agent.members|sum(attribute='rake_total') %}
+        {% set ag_pnl_val = agent.members|sum(attribute='pnl_total') %}
+        <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:8px; overflow:hidden;">
+            <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.8rem; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.7rem;">▶</span>
                     <span class="role-badge role-agent">Agent</span>
-                    <strong style="font-size:0.9rem;">{{ agent.nick }}</strong>
-                    <span class="muted small">{{ agent.members|length }} שחקנים</span>
+                    <strong style="font-size:0.95rem;">{{ agent.nick }}</strong>
+                    <span class="muted" style="font-size:0.85rem;">{{ agent.members|length }} שחקנים</span>
+                </div>
+                <div style="display:flex; gap:0.4rem;">
+                    <span class="summary-chip chip-win" style="font-size:0.85rem;">R {{ "%.2f"|format(ag_rake) }}</span>
+                    <span class="summary-chip {% if ag_pnl_val >= 0 %}chip-win{% else %}chip-lose{% endif %}" style="font-size:0.85rem;">
+                        P&L {% if ag_pnl_val > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl_val) }}
+                    </span>
                 </div>
             </div>
             <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
