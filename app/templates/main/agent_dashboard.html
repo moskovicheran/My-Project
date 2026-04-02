@@ -137,7 +137,7 @@ function toggleExpenseDetails() {
                                     {% for m in agent.members %}
                                     <tr>
                                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" >
                                             {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                                         </td>
                                     </tr>
@@ -156,7 +156,7 @@ function toggleExpenseDetails() {
                                 {% for m in sa.direct_members %}
                                 <tr>
                                     <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" >
                                         {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                                     </td>
                                 </tr>
@@ -177,7 +177,7 @@ function toggleExpenseDetails() {
                         {% for m in managed_club.no_sa_members %}
                         <tr>
                             <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                            <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                            <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" >
                                 {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                             </td>
                         </tr>
@@ -381,7 +381,7 @@ function toggleExpenseDetails() {
                             {% for m in ag.members %}
                             <tr>
                                 <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" >
                                     {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
                                 </td>
                             </tr>
@@ -400,7 +400,7 @@ function toggleExpenseDetails() {
                         {% for m in cs.direct %}
                         <tr>
                             <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                            <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                            <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}" >
                                 {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
                             </td>
                         </tr>

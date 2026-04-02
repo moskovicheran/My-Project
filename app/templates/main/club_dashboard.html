@@ -126,8 +126,8 @@
                     {% for m in sa.direct_members %}
                     <tr>
                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                        <td class="amount income" style="text-align:left;">{{ "%.2f"|format(m.rake_total) }}</td>
-                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                        <td class="amount income" >{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                             {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                         </td>
                         <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a></td>
@@ -169,8 +169,8 @@
             {% for m in managed_club.no_sa_members %}
             <tr>
                 <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                <td class="amount income" style="text-align:left;">{{ "%.2f"|format(m.rake_total) }}</td>
-                <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                <td class="amount income" >{{ "%.2f"|format(m.rake_total) }}</td>
+                <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                     {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                 </td>
                 <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a></td>
