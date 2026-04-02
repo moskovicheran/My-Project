@@ -440,10 +440,6 @@ def export_player(player_id):
     sessions = PlayerSession.query.filter_by(player_id=player_id).all()
     session_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
                      'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
-    # Add totals row
-    if session_rows:
-        total_pnl = round(sum(r['P&L'] for r in session_rows), 2)
-        session_rows.append({'משחק': 'סה"כ', 'סוג': '', 'בליינדס': '', 'P&L': total_pnl})
 
     summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
                 'P&L': cs['pnl'], 'Rake': cs['rake'], 'Hands': cs['hands']}]
