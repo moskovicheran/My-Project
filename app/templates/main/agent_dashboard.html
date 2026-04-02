@@ -235,7 +235,10 @@ function toggleExpenseDetails() {
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                             {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
                         </td>
-                        <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל">📥</a>
+                        </td>
                     </tr>
                     <tr class="record-row" style="display:none;">
                         <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
@@ -275,7 +278,10 @@ function toggleExpenseDetails() {
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                             {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
                         </td>
-                        <td><button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button></td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל">📥</a>
+                        </td>
                     </tr>
                     <tr class="record-row" style="display:none;">
                         <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
