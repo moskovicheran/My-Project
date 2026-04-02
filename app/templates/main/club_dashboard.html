@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}דשבורד מועדון{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if managed_club %}{{ managed_club.name }}{% else %}מועדון{% endif %}</h1>
+        <p class="subtitle"><span class="role-badge" style="background:#e8f5e9; color:#2e7d32;">מועדון</span></p>
+    </div>
+</div>
+
+{% if managed_club %}
+{# ── Stats Cards ── #}
+<div class="stats-grid stats-4" style="margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">שחקנים</div>
+        <div class="stat-value">{{ player_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Hands</div>
+        <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">Rake</div>
+        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+        <div class="stat-label">P&L</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+    </div>
+</div>
+
+{# ── Super Agents & Agents (accordion) ── #}
+{% for sa_id, sa in managed_club.super_agents.items() %}
+<div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
+    <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.8rem; cursor:pointer; background:#f8f9fa;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.7rem;">▶</span>
+            <span class="role-badge role-sa">SA</span>
+            <strong>{{ sa.nick }}</strong>
+            <span class="muted small">{{ sa.id }}</span>
+        </div>
+        <span class="muted small">{{ sa.agents|length }} סוכנים</span>
+    </div>
+    <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
+        {% for ag_id, agent in sa.agents.items() %}
+        <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:6px; overflow:hidden;">
+            <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                    <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">▶</span>
+                    <span class="role-badge role-agent">Agent</span>
+                    <strong style="font-size:0.9rem;">{{ agent.nick }}</strong>
+                    <span class="muted small">{{ agent.members|length }} שחקנים</span>
+                </div>
+            </div>
+            <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
+                <table class="table table-sm" style="margin:0;">
+                    <tbody>
+                        {% for m in agent.members %}
+                        <tr>
+                            <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                            <td class="amount income" style="text-align:left;">{{ "%.2f"|format(m.rake_total) }}</td>
+                            <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                                {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if sa.direct_members %}
+        <div style="padding:0.4rem 0; border-top:1px dashed #ddd; margin-top:0.3rem;">
+            <div class="muted small" style="margin-bottom:0.3rem;">שחקנים ישירים</div>
+            <table class="table table-sm" style="margin:0;">
+                <tbody>
+                    {% for m in sa.direct_members %}
+                    <tr>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                        <td class="amount income" style="text-align:left;">{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% if managed_club.no_sa_members %}
+<div style="margin-top:0.5rem; padding:0.5rem 0.8rem; border:1px solid #e8e8e8; border-radius:10px;">
+    <div class="muted small" style="margin-bottom:0.3rem;">ללא SA ({{ managed_club.no_sa_members|length }})</div>
+    <table class="table table-sm" style="margin:0;">
+        <tbody>
+            {% for m in managed_club.no_sa_members %}
+            <tr>
+                <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                <td class="amount income" style="text-align:left;">{{ "%.2f"|format(m.rake_total) }}</td>
+                <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
+                    {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% else %}
+<div class="section">
+    <div class="empty-state">
+        <p>לא נמצאו נתונים למועדון זה.</p>
+        <p class="muted">ודא שה-ID של המועדון ({{ current_user.player_id }}) תואם למועדון בקובץ.</p>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function toggleAccordion(header) {
+    var body = header.nextElementSibling;
+    var arrow = header.querySelector('.accordion-arrow');
+    var open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    if (arrow) arrow.style.transform = open ? '' : 'rotate(90deg)';
+}
+</script>
+{% endblock %}

@@ -37,6 +37,87 @@ def dashboard():
                                ring_rake=ct.get('ring_rake', 0),
                                mtt_rake=ct.get('mtt_rake', 0))
 
+    if hasattr(current_user, 'role') and current_user.role == 'club' and current_user.player_id:
+        from app.models import DailyPlayerStats
+        from app.union_data import get_members_hierarchy
+        from sqlalchemy import func as sqlfunc
+
+        club_id = current_user.player_id
+        # Find club name
+        clubs_data, _ = get_members_hierarchy()
+        club_name = None
+        club_obj = None
+        for c in clubs_data:
+            if c['club_id'] == club_id:
+                club_name = c['name']
+                club_obj = c
+                break
+
+        if club_name:
+            # Get all players in this club from cumulative DB
+            club_players_db = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry'
+            ).group_by(DailyPlayerStats.player_id).all()
+
+            # Nickname map
+            all_nicks = dict(DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+            ).group_by(DailyPlayerStats.player_id).all())
+
+            # Build SA structure
+            club_sas = {}
+            no_sa = []
+            total_rake = 0
+            total_pnl = 0
+            total_hands = 0
+            for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val, hands_val in club_players_db:
+                p = round(float(pnl_val or 0), 2)
+                r = round(float(rake_val or 0), 2)
+                h = int(hands_val or 0)
+                total_rake += r
+                total_pnl += p
+                total_hands += h
+                member = {'player_id': pid, 'nickname': nick, 'pnl_total': p, 'rake_total': r, 'hands': h}
+
+                if sa_id_val and sa_id_val != '-':
+                    if sa_id_val not in club_sas:
+                        sa_nick = all_nicks.get(sa_id_val, sa_id_val)
+                        club_sas[sa_id_val] = {'nick': sa_nick, 'id': sa_id_val,
+                                                'agents': {}, 'direct_members': []}
+                    sa = club_sas[sa_id_val]
+                    if ag_id_val and ag_id_val != '-' and ag_id_val != sa_id_val:
+                        if ag_id_val not in sa['agents']:
+                            ag_nick = all_nicks.get(ag_id_val, ag_id_val)
+                            sa['agents'][ag_id_val] = {'nick': ag_nick, 'members': []}
+                        sa['agents'][ag_id_val]['members'].append(member)
+                    else:
+                        sa['direct_members'].append(member)
+                else:
+                    no_sa.append(member)
+
+            managed_club = {
+                'name': club_name, 'club_id': club_id,
+                'total_rake': round(total_rake, 2), 'total_pnl': round(total_pnl, 2),
+                'super_agents': club_sas, 'no_sa_members': no_sa,
+            }
+            player_count = len(club_players_db)
+
+            return render_template('main/club_dashboard.html',
+                                   managed_club=managed_club,
+                                   total_rake=round(total_rake, 2),
+                                   total_pnl=round(total_pnl, 2),
+                                   total_hands=total_hands,
+                                   player_count=player_count)
+
+        # Club not found in data
+        return render_template('main/club_dashboard.html',
+                               managed_club=None, total_rake=0, total_pnl=0,
+                               total_hands=0, player_count=0)
+
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy
         from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats
