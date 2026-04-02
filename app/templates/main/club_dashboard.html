@@ -66,7 +66,7 @@
                             <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
                                 {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                             </td>
-                            <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל">📥</a></td>
+                            <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -109,7 +109,7 @@
                 <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" style="text-align:left;">
                     {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
                 </td>
-                <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל">📥</a></td>
+                <td><a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a></td>
             </tr>
             {% endfor %}
         </tbody>

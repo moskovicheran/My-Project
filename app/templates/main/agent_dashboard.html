@@ -237,7 +237,7 @@ function toggleExpenseDetails() {
                         </td>
                         <td style="white-space:nowrap;">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
-                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל">📥</a>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                         </td>
                     </tr>
                     <tr class="record-row" style="display:none;">
@@ -280,7 +280,7 @@ function toggleExpenseDetails() {
                         </td>
                         <td style="white-space:nowrap;">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
-                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל">📥</a>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" title="הורד אקסל" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                         </td>
                     </tr>
                     <tr class="record-row" style="display:none;">
