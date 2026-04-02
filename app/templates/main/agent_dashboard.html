@@ -248,12 +248,20 @@ function toggleExpenseDetails() {
     {% endfor %}
 
     {% if my_sa.direct %}
+    {% set direct_rake = my_sa.direct | sum(attribute='rake') %}
+    {% set direct_pnl = my_sa.direct | sum(attribute='pnl') %}
     <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
         <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
                 <strong>שחקנים ישירים</strong>
                 <span class="muted small">{{ my_sa.direct|length }} שחקנים</span>
+            </div>
+            <div style="display:flex; gap:0.4rem;">
+                <span class="summary-chip chip-win">R {{ "%.2f"|format(direct_rake) }}</span>
+                <span class="summary-chip {% if direct_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                    P&L {% if direct_pnl > 0 %}+{% endif %}{{ "%.2f"|format(direct_pnl) }}
+                </span>
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
