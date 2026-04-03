@@ -185,15 +185,44 @@ def dashboard():
                     pass
             selected_dates = valid_dates
 
+        # Resolve all IDs this agent is known by (player_id, sa_id, agent_id)
+        from sqlalchemy import or_
+        known_ids = {sa_id}
+        # Check if this user's player_id appears as a player with SA/Agent role
+        linked_ids = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.sa_id, DailyPlayerStats.agent_id
+        ).filter(DailyPlayerStats.player_id == sa_id).all()
+        for row_sa, row_ag in linked_ids:
+            if row_sa and row_sa != '-':
+                known_ids.add(row_sa)
+            if row_ag and row_ag != '-':
+                known_ids.add(row_ag)
+        # Also check if player_id maps to an SA or Agent ID directly
+        alt_ids = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.sa_id
+        ).filter(DailyPlayerStats.sa_id == sa_id).first()
+        alt_ag = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.agent_id
+        ).filter(DailyPlayerStats.agent_id == sa_id).first()
+        if alt_ids:
+            known_ids.add(alt_ids[0])
+        if alt_ag:
+            known_ids.add(alt_ag[0])
+        known_ids.discard('')
+        known_ids.discard('-')
+
         # Get SA structure from Excel (for hierarchy display)
         sa_tables = get_super_agent_tables()
-        my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
-        child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+        my_sas = []
+        for kid in known_ids:
+            my_sas.extend([sa for sa in sa_tables if sa['sa_id'] == kid])
+        child_sa_ids = []
+        for kid in known_ids:
+            child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
         child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
-        all_sa_ids = [sa_id] + child_sa_ids
+        all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
-        from sqlalchemy import or_
         base_agent_filters = [or_(
             DailyPlayerStats.sa_id.in_(all_sa_ids),
             DailyPlayerStats.agent_id.in_(all_sa_ids)
