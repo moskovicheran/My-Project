@@ -128,13 +128,13 @@
                 <option value="{{ c.club_id }}|{{ c.name }}">{{ c.name }} ({{ c.club_id }})</option>
                 {% endfor %}
             </select>
-            <select name="entity_key" id="rake-select-agent" disabled
-                    style="display:none; width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-                <option value="">בחר סוכן...</option>
-                {% for sa in all_sa %}
-                <option value="{{ sa.id }}|{{ sa.nick }}">{{ sa.nick }} ({{ sa.id }}) - {{ sa.club }}</option>
-                {% endfor %}
-            </select>
+            <div id="rake-select-agent-wrap" style="display:none; position:relative;">
+                <input type="text" id="rake-agent-search" placeholder="הקלד שם..." autocomplete="off"
+                       oninput="filterAgentOptions(this.value)" onfocus="filterAgentOptions(this.value)"
+                       style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <input type="hidden" name="entity_key" id="rake-agent-value" disabled>
+                <div id="rake-agent-dropdown" style="display:none; position:absolute; top:100%; right:0; left:0; z-index:50; background:#fff; border:1px solid #ddd; border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+            </div>
             <div id="rake-select-player-wrap" style="display:none; position:relative;">
                 <input type="text" id="rake-player-search" placeholder="הקלד שם..." autocomplete="off"
                        oninput="filterPlayerOptions(this.value)" onfocus="filterPlayerOptions(this.value)"
@@ -197,22 +197,32 @@ var _allMembers = [
     {pid: "{{ m.player_id }}", nick: "{{ m.nickname }}", club: "{{ m.club }}"},
     {% endfor %}
 ];
+var _allAgents = [
+    {% for sa in all_sa %}
+    {id: "{{ sa.id }}", nick: "{{ sa.nick }}", club: "{{ sa.club }}"},
+    {% endfor %}
+];
 
 function switchRakeEntity(type) {
     var club = document.getElementById('rake-select-club');
-    var agent = document.getElementById('rake-select-agent');
+    var agentWrap = document.getElementById('rake-select-agent-wrap');
+    var agentVal = document.getElementById('rake-agent-value');
+    var agentSearch = document.getElementById('rake-agent-search');
     var playerWrap = document.getElementById('rake-select-player-wrap');
     var playerVal = document.getElementById('rake-player-value');
     var playerSearch = document.getElementById('rake-player-search');
     club.style.display = type === 'club' ? '' : 'none';
     club.disabled = type !== 'club';
-    agent.style.display = type === 'agent' ? '' : 'none';
-    agent.disabled = type !== 'agent';
+    agentWrap.style.display = type === 'agent' ? '' : 'none';
+    agentVal.disabled = type !== 'agent';
     playerWrap.style.display = type === 'player' ? '' : 'none';
     playerVal.disabled = type !== 'player';
+    if (type !== 'agent') {
+        agentSearch.value = ''; agentVal.value = '';
+        document.getElementById('rake-agent-dropdown').style.display = 'none';
+    }
     if (type !== 'player') {
-        playerSearch.value = '';
-        playerVal.value = '';
+        playerSearch.value = ''; playerVal.value = '';
         document.getElementById('rake-player-dropdown').style.display = 'none';
     }
 }
@@ -247,12 +257,39 @@ function selectPlayer(pid, nick) {
     document.getElementById('rake-player-dropdown').style.display = 'none';
 }
 
-// Close dropdown on outside click
-document.addEventListener('click', function(e) {
-    var wrap = document.getElementById('rake-select-player-wrap');
-    if (wrap && !wrap.contains(e.target)) {
-        document.getElementById('rake-player-dropdown').style.display = 'none';
+function filterAgentOptions(query) {
+    var dropdown = document.getElementById('rake-agent-dropdown');
+    query = query.trim().toLowerCase();
+    if (query.length < 2) { dropdown.style.display = 'none'; return; }
+    var matches = _allAgents.filter(function(a) {
+        return a.nick.toLowerCase().indexOf(query) !== -1 || a.id.indexOf(query) !== -1;
+    });
+    if (matches.length === 0) {
+        dropdown.innerHTML = '<div style="padding:0.5rem; color:#888; font-size:0.85rem;">לא נמצא</div>';
+        dropdown.style.display = 'block';
+        return;
     }
+    var html = '';
+    matches.slice(0, 20).forEach(function(a) {
+        html += '<div onclick="selectAgent(\'' + a.id + '\', \'' + a.nick + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
+        html += '<strong>' + a.nick + '</strong> <span style="color:#888; font-size:0.8rem;">(' + a.id + ') - ' + a.club + '</span></div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+}
+
+function selectAgent(id, nick) {
+    document.getElementById('rake-agent-search').value = nick + ' (' + id + ')';
+    document.getElementById('rake-agent-value').value = id + '|' + nick;
+    document.getElementById('rake-agent-dropdown').style.display = 'none';
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click', function(e) {
+    var pw = document.getElementById('rake-select-player-wrap');
+    if (pw && !pw.contains(e.target)) document.getElementById('rake-player-dropdown').style.display = 'none';
+    var aw = document.getElementById('rake-select-agent-wrap');
+    if (aw && !aw.contains(e.target)) document.getElementById('rake-agent-dropdown').style.display = 'none';
 });
 
 // Handle transfer confirmations from flash messages
