@@ -192,8 +192,12 @@ def dashboard():
         child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
         all_sa_ids = [sa_id] + child_sa_ids
 
-        # Get ALL players that ever belonged to this SA from CUMULATIVE DB
-        base_agent_filters = [DailyPlayerStats.sa_id.in_(all_sa_ids)]
+        # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
+        from sqlalchemy import or_
+        base_agent_filters = [or_(
+            DailyPlayerStats.sa_id.in_(all_sa_ids),
+            DailyPlayerStats.agent_id.in_(all_sa_ids)
+        )]
         if upload_ids_filter:
             base_agent_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
 
