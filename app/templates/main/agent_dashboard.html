@@ -58,7 +58,7 @@
 </div>
 
 {# ── Stats Cards ── #}
-<div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
+<div class="stats-grid {% if rake_refund_list is defined and rake_refund_list %}stats-6{% else %}stats-5{% endif %}" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">שחקנים</div>
         <div class="stat-value">{{ player_count }}</div>
@@ -75,11 +75,51 @@
         <div class="stat-label">רייק מועדונים</div>
         <div class="stat-value">{{ "%.2f"|format(clubs_total_rake) }}</div>
     </div>
+    {% if rake_refund_list is defined and rake_refund_list %}
+    <div class="stat-card" style="cursor:pointer; border:2px solid #667eea;" onclick="toggleRakeRefund()">
+        <div class="stat-label" style="color:#667eea;">החזרי רייק</div>
+        <div class="stat-value" style="color:#667eea;">{{ "%.2f"|format(total_rake_refund) }}</div>
+    </div>
+    {% endif %}
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">P&L</div>
         <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
     </div>
 </div>
+
+{% if rake_refund_list is defined and rake_refund_list %}
+<div id="rakeRefundPanel" style="display:none; margin-bottom:1.5rem; border:2px solid #667eea; border-radius:14px; background:linear-gradient(135deg, #f8f9ff, #f0f3ff); overflow:hidden;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; border-bottom:1px solid #e0e4ef;">
+        <strong style="color:#667eea;">פירוט החזרי רייק</strong>
+        <span onclick="toggleRakeRefund()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
+    </div>
+    <div style="padding:0.5rem 1rem 0.8rem;">
+        {% for r in rake_refund_list %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <strong>{{ r.nick }}</strong>
+                <span class="rake-split-badge">{{ r.rake_pct|int }}%</span>
+                {% if r.type == 'player' %}<span class="muted" style="font-size:0.75rem;">שחקן</span>{% endif %}
+            </div>
+            <div style="display:flex; gap:1rem; align-items:center;">
+                <span class="muted">רייק {{ "%.2f"|format(r.total_rake) }}</span>
+                <span style="color:#667eea; font-weight:700;">{{ "%.2f"|format(r.refund) }}</span>
+            </div>
+        </div>
+        {% endfor %}
+        <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:0.95rem; font-weight:700;">
+            <span>סה"כ החזר</span>
+            <span style="color:#667eea;">{{ "%.2f"|format(total_rake_refund) }}</span>
+        </div>
+    </div>
+</div>
+<script>
+function toggleRakeRefund() {
+    var el = document.getElementById('rakeRefundPanel');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endif %}
 
 {% if total_expenses > 0 %}
 <div id="expenseBalloon" style="position:fixed; left:1rem; bottom:1.5rem; z-index:100; cursor:pointer;" onclick="toggleExpenseDetails()">
@@ -275,10 +315,12 @@ function toggleExpenseDetails() {
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">▶</span>
                 <span class="role-badge role-agent">Agent</span>
                 <strong>{{ ag.nick }}</strong>
+                {% if ag.rake_pct %}<span class="rake-split-badge">{{ ag.rake_pct|int }}% רייק</span>{% endif %}
                 <span class="muted">{{ ag.members|length }} שחקנים</span>
             </div>
             <div class="agent-card-stats">
                 <span class="summary-chip chip-win">R {{ "%.2f"|format(ag.total_rake) }}</span>
+                {% if ag.rake_pct %}<span class="summary-chip chip-rake-net">{{ "%.2f"|format(ag.agent_net_rake) }}</span>{% endif %}
                 <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     P&L {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
                 </span>
@@ -492,6 +534,24 @@ function toggleExpenseDetails() {
 .accordion-body { border-top: 1px solid #f0f0f0; }
 body.dark .accordion-header:hover { background: #252535; }
 body.dark .accordion-body { border-top-color: #333; }
+
+/* Rake split badge & net row */
+.rake-split-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 0.75rem; font-weight: 700;
+    padding: 0.15rem 0.55rem; border-radius: 20px;
+}
+.chip-rake-net {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: #fff !important;
+}
+.rake-net-row {
+    background: linear-gradient(90deg, #f0f7ff, #e8f4fd);
+    border-top: 2px solid #4361ee;
+}
+body.dark .rake-net-row { background: linear-gradient(90deg, #1a2744, #1e2d4a); }
+body.dark .rake-split-badge { background: linear-gradient(135deg, #5a6fd6, #6a4098); }
 
 /* Agent cards */
 .agent-card { margin-bottom: 0.7rem; border: 1px solid #e0e4ef; border-radius: 12px; overflow: hidden; transition: box-shadow 0.2s; }

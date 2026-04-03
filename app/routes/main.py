@@ -284,6 +284,52 @@ def dashboard():
                 if ag_id in agents_map:
                     agents_map[ag_id]['nick'] = ag['nick']
 
+        # Query rake configs for sub-agents
+        agent_ids = list(agents_map.keys())
+        agent_rake_configs = {rc.entity_id: rc.rake_percent
+                              for rc in RakeConfig.query.filter(
+                                  RakeConfig.entity_type == 'sub_agent',
+                                  RakeConfig.entity_id.in_(agent_ids)).all()} if agent_ids else {}
+        for ag_id, ag in agents_map.items():
+            pct = agent_rake_configs.get(ag_id, 0)
+            ag['rake_pct'] = pct
+            ag['agent_net_rake'] = round(ag['total_rake'] * pct / 100, 2)
+            ag['sa_keeps'] = round(ag['total_rake'] - ag['agent_net_rake'], 2)
+
+        # Query rake configs for players
+        all_player_ids_list = list(all_my_player_ids)
+        player_rake_configs = {rc.entity_id: rc.rake_percent
+                               for rc in RakeConfig.query.filter(
+                                   RakeConfig.entity_type == 'player',
+                                   RakeConfig.entity_id.in_(all_player_ids_list)).all()} if all_player_ids_list else {}
+        players_with_rake = []
+        for m in direct_players:
+            pct = player_rake_configs.get(m['player_id'], 0)
+            if pct:
+                refund = round(m['rake'] * pct / 100, 2)
+                players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
+                                          'total_rake': m['rake'], 'refund': refund})
+        for ag in agents_map.values():
+            for m in ag['members']:
+                pct = player_rake_configs.get(m['player_id'], 0)
+                if pct:
+                    refund = round(m['rake'] * pct / 100, 2)
+                    players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
+                                              'total_rake': m['rake'], 'refund': refund})
+
+        # Combined rake refund list (agents + players)
+        rake_refund_list = []
+        for ag in agents_map.values():
+            if ag.get('rake_pct'):
+                rake_refund_list.append({'nick': ag['nick'], 'rake_pct': ag['rake_pct'],
+                                         'total_rake': ag['total_rake'], 'refund': ag['agent_net_rake'],
+                                         'type': 'agent'})
+        for p in players_with_rake:
+            rake_refund_list.append({'nick': p['nick'], 'rake_pct': p['rake_pct'],
+                                     'total_rake': p['total_rake'], 'refund': p['refund'],
+                                     'type': 'player'})
+        total_rake_refund = round(sum(r['refund'] for r in rake_refund_list), 2)
+
         # Build a single SA structure with cumulative data
         total_rake = sum(m['rake'] for m in direct_players) + sum(a['total_rake'] for a in agents_map.values())
         total_pnl = sum(m['pnl'] for m in direct_players) + sum(a['total_pnl'] for a in agents_map.values())
@@ -407,6 +453,8 @@ def dashboard():
                                net_rake_after_expenses=net_rake_after_expenses,
                                total_expenses=total_expenses,
                                expense_charges=expense_charges,
+                               rake_refund_list=rake_refund_list,
+                               total_rake_refund=total_rake_refund,
                                rake_pct=rake_pct, player_count=player_count,
                                club_net_rake=club_net_rake,
                                club_keeps_pct=club_keeps_pct,
