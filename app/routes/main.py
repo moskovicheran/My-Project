@@ -288,7 +288,7 @@ def dashboard():
         agent_ids = list(agents_map.keys())
         agent_rake_configs = {rc.entity_id: rc.rake_percent
                               for rc in RakeConfig.query.filter(
-                                  RakeConfig.entity_type == 'sub_agent',
+                                  RakeConfig.entity_type.in_(['sub_agent', 'agent']),
                                   RakeConfig.entity_id.in_(agent_ids)).all()} if agent_ids else {}
         for ag_id, ag in agents_map.items():
             pct = agent_rake_configs.get(ag_id, 0)
