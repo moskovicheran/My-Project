@@ -185,29 +185,28 @@ def dashboard():
                     pass
             selected_dates = valid_dates
 
-        # Resolve all IDs this agent is known by (player_id, sa_id, agent_id)
+        # Resolve the actual SA/Agent ID for this user
         from sqlalchemy import or_
         known_ids = {sa_id}
-        # Check if this user's player_id appears as a player with SA/Agent role
-        linked_ids = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.sa_id, DailyPlayerStats.agent_id
-        ).filter(DailyPlayerStats.player_id == sa_id).all()
-        for row_sa, row_ag in linked_ids:
-            if row_sa and row_sa != '-':
-                known_ids.add(row_sa)
-            if row_ag and row_ag != '-':
-                known_ids.add(row_ag)
-        # Also check if player_id maps to an SA or Agent ID directly
-        alt_ids = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.sa_id
-        ).filter(DailyPlayerStats.sa_id == sa_id).first()
-        alt_ag = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.agent_id
-        ).filter(DailyPlayerStats.agent_id == sa_id).first()
-        if alt_ids:
-            known_ids.add(alt_ids[0])
-        if alt_ag:
-            known_ids.add(alt_ag[0])
+
+        # 1) Check if player_id is directly used as sa_id or agent_id
+        is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == sa_id).first() is not None
+        is_agent = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == sa_id).first() is not None
+
+        if not is_sa and not is_agent:
+            # 2) Player ID doesn't match directly - look up their role to find real ID
+            own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == sa_id).first()
+            if own_row:
+                role_lower = (own_row.role or '').lower()
+                if 'super' in role_lower or role_lower in ('sa',):
+                    # They're an SA - use sa_id from their row
+                    if own_row.sa_id and own_row.sa_id != '-':
+                        known_ids.add(own_row.sa_id)
+                elif 'agent' in role_lower:
+                    # They're a sub-agent - use agent_id from their row
+                    if own_row.agent_id and own_row.agent_id != '-':
+                        known_ids.add(own_row.agent_id)
+
         known_ids.discard('')
         known_ids.discard('-')
 
