@@ -40,6 +40,73 @@
     </div>
 </div>
 
+{# ── Agents Section ── #}
+{% if agents %}
+<div class="section" style="margin-top:1.5rem;">
+    <h2 class="section-title">סוכנים ({{ agents|length }})</h2>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:0.8rem;">
+        {% for ag in agents %}
+        <div class="agent-overview-card">
+            <div class="ao-header">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span class="role-badge role-agent" style="font-size:0.7rem;">Agent</span>
+                    <strong class="ao-name">{{ ag.username }}</strong>
+                </div>
+                <span class="muted" style="font-size:0.75rem;">{{ ag.player_id }}</span>
+            </div>
+            <div class="ao-stats">
+                <div class="ao-stat">
+                    <span class="ao-stat-val">{{ ag.players }}</span>
+                    <span class="ao-stat-label">שחקנים</span>
+                </div>
+                <div class="ao-stat">
+                    <span class="ao-stat-val">{{ "{:,}".format(ag.hands) }}</span>
+                    <span class="ao-stat-label">Hands</span>
+                </div>
+                <div class="ao-stat">
+                    <span class="ao-stat-val" style="color:#2ec4b6;">{{ "%.0f"|format(ag.rake) }}</span>
+                    <span class="ao-stat-label">Rake</span>
+                </div>
+                <div class="ao-stat">
+                    <span class="ao-stat-val" style="color:{% if ag.pnl >= 0 %}#2ec4b6{% else %}#ef233c{% endif %};">
+                        {% if ag.pnl > 0 %}+{% endif %}{{ "%.0f"|format(ag.pnl) }}
+                    </span>
+                    <span class="ao-stat-label">P&L</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.agent-overview-card {
+    background: #fff; border: 1px solid #e0e4ef; border-radius: 12px;
+    overflow: hidden; transition: box-shadow 0.2s;
+}
+.agent-overview-card:hover { box-shadow: 0 4px 15px rgba(67,97,238,0.1); }
+.ao-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.7rem 0.9rem; background: #fafbfc; border-bottom: 1px solid #f0f0f0;
+}
+.ao-name { font-size: 0.95rem; }
+.ao-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+.ao-stat {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 0.6rem 0.3rem; border-left: 1px solid #f0f0f0;
+}
+.ao-stat:last-child { border-left: none; }
+.ao-stat-val { font-size: 0.95rem; font-weight: 700; line-height: 1.2; }
+.ao-stat-label { font-size: 0.65rem; color: #888; margin-top: 0.15rem; }
+
+body.dark .agent-overview-card { background: #1e1e2e; border-color: #333; }
+body.dark .agent-overview-card:hover { box-shadow: 0 4px 15px rgba(67,97,238,0.15); }
+body.dark .ao-header { background: #252535; border-bottom-color: #333; }
+body.dark .ao-stat { border-left-color: #333; }
+body.dark .ao-stat-label { color: #777; }
+</style>
+{% endif %}
+
 <div class="section" style="margin-top:1.5rem;">
     <h2 class="section-title">מועדונים פעילים</h2>
     <table class="table table-sm">

@@ -93,7 +93,53 @@ def cash():
 @union_bp.route('/agents')
 @login_required
 def agents():
+    from app.union_data import get_cumulative_stats
     sa_tables = get_super_agent_tables()
+    # Override Excel data with cumulative DB data
+    all_pids = set()
+    for sa in sa_tables:
+        for m in sa.get('direct', []):
+            all_pids.add(m['player_id'])
+        for ag in sa.get('agents', {}).values():
+            for m in ag.get('members', []):
+                all_pids.add(m['player_id'])
+    if all_pids:
+        cumul = get_cumulative_stats(list(all_pids))
+        for sa in sa_tables:
+            sa_rake = 0
+            sa_pnl = 0
+            sa_hands = 0
+            for m in sa.get('direct', []):
+                c = cumul.get(m['player_id'])
+                if c:
+                    m['pnl'] = c['pnl']
+                    m['rake'] = c['rake']
+                    m['hands'] = c.get('hands', 0)
+                sa_rake += m.get('rake', 0)
+                sa_pnl += m.get('pnl', 0)
+                sa_hands += m.get('hands', 0)
+            for ag in sa.get('agents', {}).values():
+                ag_rake = 0
+                ag_pnl = 0
+                ag_hands = 0
+                for m in ag.get('members', []):
+                    c = cumul.get(m['player_id'])
+                    if c:
+                        m['pnl'] = c['pnl']
+                        m['rake'] = c['rake']
+                        m['hands'] = c.get('hands', 0)
+                    ag_rake += m.get('rake', 0)
+                    ag_pnl += m.get('pnl', 0)
+                    ag_hands += m.get('hands', 0)
+                ag['total_rake'] = round(ag_rake, 2)
+                ag['total_pnl'] = round(ag_pnl, 2)
+                ag['total_hands'] = ag_hands
+                sa_rake += ag_rake
+                sa_pnl += ag_pnl
+                sa_hands += ag_hands
+            sa['total_rake'] = round(sa_rake, 2)
+            sa['total_pnl'] = round(sa_pnl, 2)
+            sa['total_hands'] = sa_hands
     return render_template('union/agents.html', sa_tables=sa_tables)
 
 

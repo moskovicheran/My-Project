@@ -222,6 +222,53 @@ def dashboard():
             else:
                 direct_players.append(member)
 
+        # Override child_sas Excel data with cumulative DB data
+        from app.union_data import get_cumulative_stats
+        all_child_player_ids = set()
+        for cs in child_sas:
+            for m in cs.get('direct', []):
+                all_child_player_ids.add(m['player_id'])
+            for ag in cs.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    all_child_player_ids.add(m['player_id'])
+        if all_child_player_ids:
+            cumul = get_cumulative_stats(list(all_child_player_ids))
+            for cs in child_sas:
+                cs_rake = 0
+                cs_pnl = 0
+                cs_hands = 0
+                for m in cs.get('direct', []):
+                    c = cumul.get(m['player_id'])
+                    if c:
+                        m['pnl'] = c['pnl']
+                        m['rake'] = c['rake']
+                        m['hands'] = c.get('hands', 0)
+                    cs_rake += m.get('rake', 0)
+                    cs_pnl += m.get('pnl', 0)
+                    cs_hands += m.get('hands', 0)
+                for ag in cs.get('agents', {}).values():
+                    ag_rake = 0
+                    ag_pnl = 0
+                    ag_hands = 0
+                    for m in ag.get('members', []):
+                        c = cumul.get(m['player_id'])
+                        if c:
+                            m['pnl'] = c['pnl']
+                            m['rake'] = c['rake']
+                            m['hands'] = c.get('hands', 0)
+                        ag_rake += m.get('rake', 0)
+                        ag_pnl += m.get('pnl', 0)
+                        ag_hands += m.get('hands', 0)
+                    ag['total_rake'] = round(ag_rake, 2)
+                    ag['total_pnl'] = round(ag_pnl, 2)
+                    ag['total_hands'] = ag_hands
+                    cs_rake += ag_rake
+                    cs_pnl += ag_pnl
+                    cs_hands += ag_hands
+                cs['total_rake'] = round(cs_rake, 2)
+                cs['total_pnl'] = round(cs_pnl, 2)
+                cs['total_hands'] = cs_hands
+
         # Find agent nicknames from Excel
         for sa in my_sas + child_sas:
             for ag_id, ag in sa.get('agents', {}).items():

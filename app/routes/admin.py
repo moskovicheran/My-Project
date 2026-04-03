@@ -22,9 +22,32 @@ def admin_required(f):
 @admin_required
 def overview():
     from app.union_data import get_union_overview, get_cumulative_totals
+    from app.models import User, DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
     meta, _, _ = get_union_overview()
     ct = get_cumulative_totals()
     meta['period'] = ct['period']
+
+    # Agent stats
+    agent_users = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
+    agents_data = []
+    for u in agent_users:
+        stats = DailyPlayerStats.query.with_entities(
+            sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+            sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(DailyPlayerStats.sa_id == u.player_id).first()
+        player_count = stats[0] or 0
+        rake = round(float(stats[1] or 0), 2)
+        pnl = round(float(stats[2] or 0), 2)
+        hands = int(stats[3] or 0)
+        agents_data.append({
+            'username': u.username, 'player_id': u.player_id,
+            'players': player_count, 'rake': rake, 'pnl': pnl, 'hands': hands,
+        })
+    agents_data.sort(key=lambda a: a['rake'], reverse=True)
+
     return render_template('admin/overview.html',
                            meta=meta, clubs=ct['clubs'],
                            total={'active_players': ct['total_players'],
@@ -32,7 +55,8 @@ def overview():
                                   'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
                            tables_count=ct['uploads_count'],
                            total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
-                           total_hands=ct['total_hands'])
+                           total_hands=ct['total_hands'],
+                           agents=agents_data)
 
 
 @admin_bp.route('/transfers', methods=['GET', 'POST'])
