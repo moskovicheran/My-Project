@@ -160,7 +160,12 @@ def clubs():
         if ct_club:
             club['total_rake'] = ct_club['total_fee']
             club['total_pnl'] = ct_club['pnl']
-    return render_template('admin/clubs.html', clubs=clubs, grand=grand)
+            club['total_hands'] = ct_club['total_hands']
+            club['active_players'] = ct_club['active_players']
+    return render_template('admin/clubs.html', clubs=clubs, grand=grand,
+                           total_hands=ct.get('total_hands', 0),
+                           total_players=ct.get('total_players', 0),
+                           uploads_count=ct.get('uploads_count', 0))
 
 
 @admin_bp.route('/lost-players')

@@ -38,9 +38,10 @@ def dashboard():
                                mtt_rake=ct.get('mtt_rake', 0))
 
     if hasattr(current_user, 'role') and current_user.role == 'club' and current_user.player_id:
-        from app.models import DailyPlayerStats
+        from app.models import DailyPlayerStats, DailyUpload
         from app.union_data import get_members_hierarchy
         from sqlalchemy import func as sqlfunc
+        from datetime import datetime as dt
 
         club_id = current_user.player_id
         # Find club name
@@ -53,15 +54,40 @@ def dashboard():
                 club_obj = c
                 break
 
+        # Available upload dates
+        available_dates = [u[0].strftime('%Y-%m-%d') for u in
+                           DailyUpload.query.with_entities(DailyUpload.upload_date)
+                           .distinct().order_by(DailyUpload.upload_date.desc()).all()]
+
+        # Date filter — supports multiple dates: ?dates=2026-03-30,2026-03-31
+        selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        upload_ids_filter = []
+        if selected_dates:
+            valid_dates = []
+            for ds in selected_dates:
+                try:
+                    sel = dt.strptime(ds, '%Y-%m-%d').date()
+                    upload = DailyUpload.query.filter_by(upload_date=sel).first()
+                    if upload:
+                        upload_ids_filter.append(upload.id)
+                        valid_dates.append(ds)
+                except ValueError:
+                    pass
+            selected_dates = valid_dates
+
         if club_name:
-            # Get all players in this club from cumulative DB
+            # Base query
+            base_filters = [DailyPlayerStats.club == club_name,
+                            DailyPlayerStats.role != 'Name Entry']
+            if upload_ids_filter:
+                base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+
             club_players_db = DailyPlayerStats.query.with_entities(
                 DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
                 sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
                 sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
                 sqlfunc.sum(DailyPlayerStats.hands),
-            ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry'
-            ).group_by(DailyPlayerStats.player_id).all()
+            ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
 
             # Nickname map
             all_nicks = dict(DailyPlayerStats.query.with_entities(
@@ -111,12 +137,16 @@ def dashboard():
                                    total_rake=round(total_rake, 2),
                                    total_pnl=round(total_pnl, 2),
                                    total_hands=total_hands,
-                                   player_count=player_count)
+                                   player_count=player_count,
+                                   available_dates=available_dates,
+                                   selected_dates=selected_dates)
 
         # Club not found in data
         return render_template('main/club_dashboard.html',
                                managed_club=None, total_rake=0, total_pnl=0,
-                               total_hands=0, player_count=0)
+                               total_hands=0, player_count=0,
+                               available_dates=available_dates,
+                               selected_dates=[])
 
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy
@@ -798,7 +828,7 @@ def export_club_report():
     if current_user.role != 'club' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import DailyPlayerStats
+    from app.models import DailyPlayerStats, DailyUpload
     from app.union_data import get_members_hierarchy
     from sqlalchemy import func as sqlfunc
 
@@ -813,14 +843,33 @@ def export_club_report():
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
 
+    # Date filter
+    dates_str = request.args.get('dates', '')
+    base_filters = [DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry']
+    filename_suffix = ''
+    if dates_str:
+        from datetime import datetime as dt
+        upload_ids = []
+        for ds in dates_str.split(','):
+            ds = ds.strip()
+            try:
+                sel = dt.strptime(ds, '%Y-%m-%d').date()
+                upload = DailyUpload.query.filter_by(upload_date=sel).first()
+                if upload:
+                    upload_ids.append(upload.id)
+            except ValueError:
+                pass
+        if upload_ids:
+            base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
+            filename_suffix = f'_{dates_str.replace(",", "_")}'
+
     # All players in this club
     players = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
         sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
         sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
         sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
+    ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
 
     # Nickname map
     all_nicks = dict(DailyPlayerStats.query.with_entities(
@@ -896,7 +945,199 @@ def export_club_report():
         })
         sheets['Super Agents'] = sa_rows
 
-    return _make_excel(sheets, f'{club_name}_report.xlsx')
+    return _make_excel(sheets, f'{club_name}_report{filename_suffix}.xlsx')
+
+
+@main_bp.route('/club/reports')
+@login_required
+def club_reports():
+    if not hasattr(current_user, 'role') or current_user.role != 'club' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+
+    club_id = current_user.player_id
+    clubs_data, _ = get_members_hierarchy()
+    club_name = None
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            club_name = c['name']
+            break
+    if not club_name:
+        flash('מועדון לא נמצא.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    # All players in this club
+    club_players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(
+        DailyPlayerStats.club == club_name,
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    players = [{'player_id': pid, 'nickname': nick} for pid, nick in club_players]
+    player_ids = [pid for pid, _ in club_players]
+
+    return render_template('main/club_reports.html', players=players, player_ids=player_ids)
+
+
+@main_bp.route('/export/club/period')
+@login_required
+def export_club_period():
+    """Export club data for specific date range."""
+    if current_user.role != 'club' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats, DailyUpload
+    from app.union_data import get_members_hierarchy
+    from sqlalchemy import func as sqlfunc
+    from datetime import datetime
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    if not from_date or not to_date:
+        flash('יש לבחור תאריכים.', 'danger')
+        return redirect(url_for('main.club_reports'))
+
+    fd = datetime.strptime(from_date, '%Y-%m-%d').date()
+    td = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+    club_id = current_user.player_id
+    clubs_data, _ = get_members_hierarchy()
+    club_name = None
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            club_name = c['name']
+            break
+    if not club_name:
+        flash('מועדון לא נמצא.', 'danger')
+        return redirect(url_for('main.club_reports'))
+
+    uploads = DailyUpload.query.filter(DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
+    upload_ids = [u.id for u in uploads]
+    if not upload_ids:
+        flash('אין נתונים בטווח התאריכים.', 'warning')
+        return redirect(url_for('main.club_reports'))
+
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(
+        DailyPlayerStats.upload_id.in_(upload_ids),
+        DailyPlayerStats.club == club_name,
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+             'P&L': round(float(p[3] or 0), 2), 'Rake': round(float(p[4] or 0), 2),
+             'Hands': int(p[5] or 0)} for p in players]
+    rows.sort(key=lambda x: x['Rake'], reverse=True)
+
+    return _make_excel({f'{from_date} - {to_date}': rows},
+                       f'{club_name}_{from_date}_{to_date}.xlsx')
+
+
+@main_bp.route('/club/transfers', methods=['GET', 'POST'])
+@login_required
+def club_transfers():
+    if not hasattr(current_user, 'role') or current_user.role != 'club' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.union_data import get_player_balance, get_all_balances, get_members_hierarchy
+    from app.models import MoneyTransfer, DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+
+    club_id = current_user.player_id
+    clubs_data, _ = get_members_hierarchy()
+    club_name = None
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            club_name = c['name']
+            break
+    if not club_name:
+        flash('מועדון לא נמצא.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    # All players in this club
+    club_players_db = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(
+        DailyPlayerStats.club == club_name,
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    my_player_ids = set()
+    my_players = []
+    for pid, nick in club_players_db:
+        my_player_ids.add(pid)
+        my_players.append({'player_id': pid, 'nickname': nick})
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            from_key = request.form.get('from_key', '').strip()
+            to_key = request.form.get('to_key', '').strip()
+            description = request.form.get('description', '').strip()
+            try:
+                amount = float(request.form.get('amount', 0))
+            except ValueError:
+                flash('סכום לא תקין.', 'danger')
+                return redirect(url_for('main.club_transfers'))
+
+            if not from_key or not to_key or '|' not in from_key or '|' not in to_key:
+                flash('יש לבחור שולח ומקבל.', 'danger')
+            elif from_key == to_key:
+                flash('לא ניתן להעביר לאותו שחקן.', 'warning')
+            elif amount <= 0:
+                flash('הסכום חייב להיות חיובי.', 'danger')
+            else:
+                from_pid = from_key.split('|', 1)[0]
+                to_pid = to_key.split('|', 1)[0]
+                from_name = from_key.split('|', 1)[1]
+                to_name = to_key.split('|', 1)[1]
+                if from_pid not in my_player_ids or to_pid not in my_player_ids:
+                    flash('אין הרשאה להעביר לשחקן שלא שייך למועדון.', 'danger')
+                else:
+                    from_balance = get_player_balance(from_pid)
+                    to_balance = get_player_balance(to_pid)
+                    max_transfer = min(abs(from_balance), to_balance)
+                    if from_balance >= 0:
+                        flash(f'{from_name} לא במינוס.', 'danger')
+                    elif to_balance <= 0:
+                        flash(f'{to_name} לא בפלוס.', 'danger')
+                    elif amount > max_transfer:
+                        flash(f'חריגה! מקסימום: {max_transfer:.2f}', 'danger')
+                    else:
+                        t = MoneyTransfer(user_id=current_user.id,
+                                          from_player_id=from_pid, from_name=from_name,
+                                          to_player_id=to_pid, to_name=to_name,
+                                          amount=amount, description=description)
+                        db.session.add(t)
+                        db.session.commit()
+                        flash(f'העברה של {amount} מ-{from_name} ל-{to_name} בוצעה.', 'success')
+        elif action == 'delete':
+            tid = request.form.get('transfer_id')
+            t = MoneyTransfer.query.get(tid)
+            if t and (t.from_player_id in my_player_ids or t.to_player_id in my_player_ids):
+                db.session.delete(t)
+                db.session.commit()
+                flash('העברה נמחקה.', 'success')
+        return redirect(url_for('main.club_transfers'))
+
+    balances = get_all_balances(my_player_ids)
+    my_transfers = MoneyTransfer.query.filter(
+        db.or_(
+            MoneyTransfer.from_player_id.in_(my_player_ids),
+            MoneyTransfer.to_player_id.in_(my_player_ids)
+        )
+    ).order_by(MoneyTransfer.created_at.desc()).all()
+
+    return render_template('main/club_transfers.html',
+                           players=my_players, balances=balances,
+                           transfers=my_transfers)
 
 
 @main_bp.route('/agent/transfers', methods=['GET', 'POST'])

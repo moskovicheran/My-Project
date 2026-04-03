@@ -2,44 +2,301 @@
 {% block title %}ניהול מועדונים - לוח בקרה{% endblock %}
 
 {% block content %}
-<div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
+
+{# ── Stats Cards ── #}
+<div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">מועדונים</div>
         <div class="stat-value">{{ clubs|length }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">שחקנים פעילים</div>
+        <div class="stat-value">{{ total_players }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Hands</div>
+        <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
     </div>
     <div class="stat-card income">
         <div class="stat-label">סה"כ רייק</div>
         <div class="stat-value">{{ "%.2f"|format(grand.rake) }}</div>
     </div>
     <div class="stat-card {% if grand.pnl >= 0 %}income{% else %}expense{% endif %}">
-        <div class="stat-label">סה"כ P&L</div>
+        <div class="stat-label">רווח / הפסד</div>
         <div class="stat-value">{% if grand.pnl > 0 %}+{% endif %}{{ "%.2f"|format(grand.pnl) }}</div>
     </div>
 </div>
 
+{# ── Club Accordion Sections ── #}
 {% for club in clubs %}
-<div class="section" style="margin-bottom:1rem;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-        <div>
-            <strong style="font-size:1.1rem;">{{ club.name }}</strong>
+<div class="section accordion-section" style="margin-bottom:1rem;">
+    {# Club Header #}
+    <div class="accordion-header" onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; padding:0.8rem 1rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">&#9654;</span>
+            <span style="font-size:1.1rem;">&#127970;</span>
+            <strong style="font-size:1.05rem;">{{ club.name }}</strong>
             <span class="muted small">(ID: {{ club.club_id }})</span>
         </div>
-        <div style="display:flex; gap:0.4rem;">
-            <span class="summary-chip">Rake {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            <span class="summary-chip" style="background:#eef0ff; color:#4361ee;">{{ club.active_players|default(0) }} שחקנים</span>
+            <span class="summary-chip chip-win">R {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
             <span class="summary-chip {% if club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                 P&L {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
             </span>
         </div>
     </div>
-    <div class="muted small">
-        {{ club.super_agents|length }} Super Agents
-        {% if club.no_sa_members %} | {{ club.no_sa_members|length }} ללא SA{% endif %}
+
+    {# Club Body #}
+    <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
+
+        {# Super Agents #}
+        {% set club_sas = club.super_agents.values()|list %}
+        {% for sa in club_sas %}
+        <div class="agent-card" style="margin-bottom:0.5rem;">
+            <div class="agent-card-header" onclick="toggleAccordion(this)">
+                <div class="agent-card-name">
+                    <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">&#9654;</span>
+                    <span class="role-badge role-sa">SA</span>
+                    <strong>{{ sa.nick }}</strong>
+                    <span class="muted small">{{ sa.id }}</span>
+                    <span class="muted small">| {{ sa.agents|length }} סוכנים</span>
+                </div>
+                <div class="agent-card-stats">
+                    {% set sa_rake = namespace(v=0) %}
+                    {% set sa_pnl = namespace(v=0) %}
+                    {% for ag in sa.agents.values() %}
+                        {% for m in ag.members %}
+                            {% set sa_rake.v = sa_rake.v + m.rake_total %}
+                            {% set sa_pnl.v = sa_pnl.v + m.pnl_total %}
+                        {% endfor %}
+                    {% endfor %}
+                    {% for m in sa.direct_members %}
+                        {% set sa_rake.v = sa_rake.v + m.rake_total %}
+                        {% set sa_pnl.v = sa_pnl.v + m.pnl_total %}
+                    {% endfor %}
+                    <span class="summary-chip chip-win">R {{ "%.2f"|format(sa_rake.v) }}</span>
+                    <span class="summary-chip {% if sa_pnl.v >= 0 %}chip-win{% else %}chip-lose{% endif %}">
+                        P&L {% if sa_pnl.v > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl.v) }}
+                    </span>
+                </div>
+            </div>
+            <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
+                {# Agents under this SA #}
+                {% for ag_id, agent in sa.agents.items() %}
+                <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:8px; overflow:hidden;">
+                    {% set cag_rake = agent.members|sum(attribute='rake_total') %}
+                    {% set cag_pnl = agent.members|sum(attribute='pnl_total') %}
+                    <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.7rem; cursor:pointer; background:#fafbfc;">
+                        <div style="display:flex; align-items:center; gap:0.4rem;">
+                            <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">&#9654;</span>
+                            <span class="role-badge role-agent">Agent</span>
+                            <strong style="font-size:0.9rem;">{{ agent.nick }}</strong>
+                            <span class="muted small">{{ agent.members|length }} שחקנים</span>
+                        </div>
+                        <div style="display:flex; gap:0.3rem;">
+                            <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(cag_rake) }}</span>
+                            <span class="summary-chip {% if cag_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
+                                P&L {% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="accordion-body" style="display:none; padding:0.4rem 0.6rem 0.5rem;">
+                        <div class="table-scroll-wrap">
+                        <table class="table table-sm" style="margin:0;">
+                            <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                            <tbody>
+                                {% for m in agent.members %}
+                                <tr>
+                                    <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                    <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
+                                        {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                    </td>
+                                    <td class="player-actions">
+                                        <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
+                                        <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                                    </td>
+                                </tr>
+                                <tr class="record-row" style="display:none;">
+                                    <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <tr class="total-row">
+                                    <td><strong>סה"כ</strong></td>
+                                    <td class="amount income"><strong>{{ "%.2f"|format(cag_rake) }}</strong></td>
+                                    <td class="amount {% if cag_pnl >= 0 %}income{% else %}expense{% endif %}">
+                                        <strong>{% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}</strong>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {# Direct members under SA (no agent) #}
+                {% if sa.direct_members %}
+                <div style="padding:0.6rem 0; border-top:2px solid #1a1a2e; margin-top:0.5rem;">
+                    <div style="margin-bottom:0.4rem; font-weight:700; font-size:0.95rem; color:#1a1a2e;">שחקנים ישירים (ללא סוכן)</div>
+                    <div class="table-scroll-wrap">
+                    <table class="table table-sm" style="margin:0;">
+                        <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                        <tbody>
+                            {% for m in sa.direct_members %}
+                            <tr>
+                                <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                                <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
+                                    {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                </td>
+                                <td class="player-actions">
+                                    <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
+                                    <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                                </td>
+                            </tr>
+                            <tr class="record-row" style="display:none;">
+                                <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+        {# Members without SA #}
+        {% if club.no_sa_members %}
+        <div style="padding:0.5rem 0; border-top:1px dashed #ddd; margin-top:0.3rem;">
+            <div class="muted" style="margin-bottom:0.4rem; font-weight:600;">ללא Super Agent ({{ club.no_sa_members|length }})</div>
+            <div class="table-scroll-wrap">
+            <table class="table table-sm" style="margin:0;">
+                <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                <tbody>
+                    {% for m in club.no_sa_members %}
+                    <tr>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
+                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                        </td>
+                        <td class="player-actions">
+                            <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                        </td>
+                    </tr>
+                    <tr class="record-row" style="display:none;">
+                        <td colspan="4" style="padding:0;"><div class="record-container" id="record-{{ m.player_id }}"></div></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        {% endif %}
+
     </div>
 </div>
 {% endfor %}
 
-<div style="text-align:center; margin-top:1rem;">
+{# ── Action Buttons ── #}
+<div style="text-align:center; margin-top:1.5rem; display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap;">
     <a href="{{ url_for('union.sa_hierarchy') }}" class="btn btn-outline">שיוך Super Agents</a>
     <a href="{{ url_for('union.players') }}" class="btn btn-outline">עץ שחקנים</a>
 </div>
+
+{# ── Scoped Styles ── #}
+<style>
+.accordion-section { padding: 0; overflow: hidden; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+.accordion-header { transition: background 0.15s; }
+.accordion-header:hover { background: #f0f2f5; }
+.accordion-body { border-top: 1px solid #f0f0f0; }
+body.dark .accordion-header:hover { background: #252535; }
+body.dark .accordion-body { border-top-color: #333; }
+
+.agent-card { margin-bottom: 0.7rem; border: 1px solid #e0e4ef; border-radius: 12px; overflow: hidden; transition: box-shadow 0.2s; }
+.agent-card:hover { box-shadow: 0 3px 12px rgba(67,97,238,0.08); }
+.agent-card-header { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 1.2rem; cursor: pointer; background: #fafbfc; }
+.agent-card-header:hover { background: #f0f3ff; }
+.agent-card-name { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.agent-card-name strong { font-size: 1.05rem; }
+.agent-card-name .muted { font-size: 0.88rem; }
+.agent-card-stats { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.agent-card-stats .summary-chip { font-size: 0.95rem; padding: 0.3rem 0.8rem; font-weight: 700; }
+body.dark .agent-card { border-color: #333; }
+body.dark .agent-card-header { background: #1e1e2e; }
+body.dark .agent-card-header:hover { background: #252540; }
+
+.record-container { background: #f8f9fa; padding: 0.6rem 1rem; border-top: 2px solid #eef0ff; }
+.record-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+.record-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; }
+.record-table .rec-plus { color: #2ec4b6; font-weight: 600; }
+.record-table .rec-minus { color: #ef233c; font-weight: 600; }
+.record-total { font-weight: 700; font-size: 0.9rem; padding-top: 0.4rem; border-top: 2px solid #ddd; }
+body.dark .record-container { background: #1e1e2e; border-top-color: #333; }
+body.dark .record-table td { border-bottom-color: #333; }
+
+.table-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 640px) {
+    .agent-card-header { flex-direction: column; align-items: flex-start; gap: 0.4rem; padding: 0.7rem 0.8rem; }
+    .agent-card-stats .summary-chip { font-size: 0.8rem; padding: 0.2rem 0.5rem; }
+    .agent-card-name strong { font-size: 0.95rem; }
+}
+</style>
+
+{# ── JavaScript ── #}
+<script>
+function toggleAccordion(header) {
+    var body = header.nextElementSibling;
+    var arrow = header.querySelector('.accordion-arrow');
+    var open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    arrow.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+function toggleRecord(btn, playerId) {
+    var row = btn.closest('tr').nextElementSibling;
+    if (row.style.display !== 'none') {
+        row.style.display = 'none';
+        btn.textContent = 'רקורד';
+        return;
+    }
+    row.style.display = '';
+    btn.textContent = 'סגור';
+    var container = document.getElementById('record-' + playerId);
+    if (container.innerHTML) return;
+    container.innerHTML = '<span class="muted small">טוען...</span>';
+    fetch('/api/player-record/' + playerId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.sessions.length) {
+                container.innerHTML = '<span class="muted small">אין משחקים</span>';
+                return;
+            }
+            var html = '<table class="record-table">';
+            data.sessions.forEach(function(s) {
+                var cls = s.pnl >= 0 ? 'rec-plus' : 'rec-minus';
+                var sign = s.pnl > 0 ? '+' : '';
+                html += '<tr><td class="muted">' + s.game + '</td>';
+                html += '<td>' + s.table + '</td>';
+                html += '<td>' + s.blinds + '</td>';
+                html += '<td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
+            });
+            var totalCls = data.total_pnl >= 0 ? 'rec-plus' : 'rec-minus';
+            var totalSign = data.total_pnl > 0 ? '+' : '';
+            html += '<tr><td colspan="3" class="record-total">סה"כ</td>';
+            html += '<td class="record-total ' + totalCls + '">' + totalSign + data.total_pnl.toFixed(2) + '</td></tr>';
+            html += '</table>';
+            container.innerHTML = html;
+        });
+}
+</script>
 {% endblock %}

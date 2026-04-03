@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% block title %}העברת כספים{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>העברת כספים</h1>
+        <p class="subtitle">העבר כספים בין שחקנים של המועדון</p>
+    </div>
+    <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline">← חזור לדשבורד</a>
+</div>
+
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">העברה חדשה</h2>
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap;">
+        <input type="hidden" name="action" value="add">
+
+        <div style="flex:2; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">משלם (במינוס - חייב כסף)</label>
+            <select name="from_key" required id="fromSelect" onchange="updateLimits()"
+                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר שחקן...</option>
+                {% for p in players %}
+                {% set bal = balances.get(p.player_id, 0) %}
+                {% if bal < 0 %}
+                <option value="{{ p.player_id }}|{{ p.nickname }}" data-balance="{{ bal|abs }}">
+                    {{ p.nickname }} — חוב: {{ "%.2f"|format(bal|abs) }}
+                </option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <div id="fromBalance" class="muted small" style="margin-top:0.2rem;"></div>
+        </div>
+
+        <div style="font-size:1.3rem; color:#888; padding-bottom:1.5rem;">→</div>
+
+        <div style="flex:2; min-width:200px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">מקבל (בפלוס - מגיע לו)</label>
+            <select name="to_key" required id="toSelect" onchange="updateLimits()"
+                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <option value="">בחר שחקן...</option>
+                {% for p in players %}
+                {% set bal = balances.get(p.player_id, 0) %}
+                {% if bal > 0 %}
+                <option value="{{ p.player_id }}|{{ p.nickname }}" data-balance="{{ bal }}">
+                    {{ p.nickname }} — זכות: {{ "%.2f"|format(bal) }}
+                </option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <div id="toBalance" class="muted small" style="margin-top:0.2rem;"></div>
+        </div>
+
+        <div style="min-width:110px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סכום</label>
+            <input type="number" name="amount" required step="0.01" min="0.01" id="amountInput" placeholder="0.00"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+
+        <div style="flex:1; min-width:120px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">תיאור</label>
+            <input type="text" name="description" placeholder="אופציונלי"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+
+        <button type="submit" class="btn btn-primary">העבר</button>
+    </form>
+</div>
+
+<div class="section">
+    <h2 class="section-title">העברות ({{ transfers|length }})</h2>
+    {% if transfers %}
+    <div class="table-scroll-wrap">
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>תאריך</th>
+                <th>משלם</th>
+                <th>מקבל</th>
+                <th>סכום</th>
+                <th>תיאור</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in transfers %}
+            <tr>
+                <td class="muted">{{ t.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                <td><strong>{{ t.from_name }}</strong></td>
+                <td><strong>{{ t.to_name }}</strong></td>
+                <td class="amount income">{{ "%.2f"|format(t.amount) }}</td>
+                <td class="muted">{{ t.description or '-' }}</td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק העברה זו?');">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="transfer_id" value="{{ t.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">מחק</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>אין העברות עדיין.</p></div>
+    {% endif %}
+</div>
+
+<style>
+.table-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+</style>
+
+<script>
+function updateLimits() {
+    var fromSel = document.getElementById('fromSelect');
+    var toSel = document.getElementById('toSelect');
+    var fromOpt = fromSel.options[fromSel.selectedIndex];
+    var toOpt = toSel.options[toSel.selectedIndex];
+    var fromBal = fromOpt ? parseFloat(fromOpt.getAttribute('data-balance')) : 0;
+    var toBal = toOpt ? parseFloat(toOpt.getAttribute('data-balance')) : 0;
+    var amountInput = document.getElementById('amountInput');
+    if (fromBal) {
+        document.getElementById('fromBalance').innerHTML = 'חוב: <strong style="color:#ef233c;">' + fromBal.toFixed(2) + '</strong>';
+    } else {
+        document.getElementById('fromBalance').innerHTML = '';
+    }
+    if (toBal) {
+        document.getElementById('toBalance').innerHTML = 'זכות: <strong style="color:#2ec4b6;">' + toBal.toFixed(2) + '</strong>';
+    } else {
+        document.getElementById('toBalance').innerHTML = '';
+    }
+    if (fromBal && toBal) {
+        amountInput.max = Math.min(fromBal, toBal);
+    }
+}
+</script>
+{% endblock %}

@@ -100,7 +100,45 @@ def agents():
 @union_bp.route('/players')
 @login_required
 def players():
+    from app.union_data import get_cumulative_stats
     clubs, grand = get_members_hierarchy()
+
+    # Override Excel pnl/rake with cumulative DB values
+    cumulative = get_cumulative_stats()
+    grand_pnl = 0
+    grand_rake = 0
+    for club in clubs:
+        club_pnl = 0
+        club_rake = 0
+        for sa in club.get('super_agents', {}).values():
+            for ag in sa.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    c = cumulative.get(m['player_id'])
+                    if c:
+                        m['pnl_total'] = c['pnl']
+                        m['rake_total'] = c['rake']
+                    club_pnl += m['pnl_total']
+                    club_rake += m['rake_total']
+            for m in sa.get('direct_members', []):
+                c = cumulative.get(m['player_id'])
+                if c:
+                    m['pnl_total'] = c['pnl']
+                    m['rake_total'] = c['rake']
+                club_pnl += m['pnl_total']
+                club_rake += m['rake_total']
+        for m in club.get('no_sa_members', []):
+            c = cumulative.get(m['player_id'])
+            if c:
+                m['pnl_total'] = c['pnl']
+                m['rake_total'] = c['rake']
+            club_pnl += m['pnl_total']
+            club_rake += m['rake_total']
+        club['total_pnl'] = round(club_pnl, 2)
+        club['total_rake'] = round(club_rake, 2)
+        grand_pnl += club_pnl
+        grand_rake += club_rake
+    grand = {'pnl': round(grand_pnl, 2), 'rake': round(grand_rake, 2)}
+
     return render_template('union/players.html', clubs=clubs, grand=grand)
 
 
