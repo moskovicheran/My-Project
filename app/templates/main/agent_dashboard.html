@@ -82,15 +82,15 @@
 </div>
 
 {% if total_expenses > 0 %}
-<div id="expenseBalloon" style="position:fixed; left:1.5rem; top:5rem; z-index:100; cursor:pointer;" onclick="toggleExpenseDetails()">
-    <div style="background:linear-gradient(135deg, #ef233c, #d90429); color:#fff; border-radius:16px; padding:0.6rem 1rem; box-shadow:0 4px 15px rgba(239,35,60,0.4); text-align:center; min-width:120px;">
-        <div style="font-size:0.7rem; opacity:0.9;">הוצאות שוטפות</div>
-        <div style="font-size:1.3rem; font-weight:700;">{{ "%.2f"|format(total_expenses) }}</div>
-        <div style="font-size:0.65rem; opacity:0.8;">{{ expense_charges|length }} חיובים</div>
+<div id="expenseBalloon" style="position:fixed; left:1rem; bottom:1.5rem; z-index:100; cursor:pointer;" onclick="toggleExpenseDetails()">
+    <div style="background:linear-gradient(135deg, #ef233c, #d90429); color:#fff; border-radius:12px; padding:0.4rem 0.75rem; box-shadow:0 3px 10px rgba(239,35,60,0.35); text-align:center; min-width:90px;">
+        <div style="font-size:0.6rem; opacity:0.9;">הוצאות שוטפות</div>
+        <div style="font-size:1rem; font-weight:700;">{{ "%.2f"|format(total_expenses) }}</div>
+        <div style="font-size:0.55rem; opacity:0.8;">{{ expense_charges|length }} חיובים</div>
     </div>
 </div>
 
-<div id="expenseDetails" style="display:none; position:fixed; left:1.5rem; top:10rem; z-index:100; background:#fff; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:1rem; max-width:320px; max-height:300px; overflow-y:auto;">
+<div id="expenseDetails" style="display:none; position:fixed; left:1rem; bottom:5rem; z-index:100; background:#fff; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:1rem; max-width:320px; max-height:300px; overflow-y:auto;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
         <strong style="color:#ef233c;">פירוט הוצאות</strong>
         <span onclick="toggleExpenseDetails()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
