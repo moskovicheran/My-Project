@@ -150,9 +150,31 @@ def dashboard():
 
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy
-        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats
+        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload
         from sqlalchemy import func as sqlfunc
+        from datetime import datetime as dt
         sa_id = current_user.player_id
+
+        # Available upload dates
+        available_dates = [u[0].strftime('%Y-%m-%d') for u in
+                           DailyUpload.query.with_entities(DailyUpload.upload_date)
+                           .distinct().order_by(DailyUpload.upload_date.desc()).all()]
+
+        # Date filter
+        selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        upload_ids_filter = []
+        if selected_dates:
+            valid_dates = []
+            for ds in selected_dates:
+                try:
+                    sel = dt.strptime(ds, '%Y-%m-%d').date()
+                    upload = DailyUpload.query.filter_by(upload_date=sel).first()
+                    if upload:
+                        upload_ids_filter.append(upload.id)
+                        valid_dates.append(ds)
+                except ValueError:
+                    pass
+            selected_dates = valid_dates
 
         # Get SA structure from Excel (for hierarchy display)
         sa_tables = get_super_agent_tables()
@@ -162,6 +184,10 @@ def dashboard():
         all_sa_ids = [sa_id] + child_sa_ids
 
         # Get ALL players that ever belonged to this SA from CUMULATIVE DB
+        base_agent_filters = [DailyPlayerStats.sa_id.in_(all_sa_ids)]
+        if upload_ids_filter:
+            base_agent_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+
         my_players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -171,7 +197,7 @@ def dashboard():
             sqlfunc.sum(DailyPlayerStats.pnl),
             sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.hands),
-        ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids)
+        ).filter(*base_agent_filters
         ).group_by(DailyPlayerStats.player_id).all()
 
         # Build agent structure from DB data
@@ -238,6 +264,9 @@ def dashboard():
                 ).group_by(DailyPlayerStats.player_id).all())
 
                 # Get ALL players in this club from cumulative DB
+                club_filters = [DailyPlayerStats.club == club_name]
+                if upload_ids_filter:
+                    club_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
                 club_players_db = DailyPlayerStats.query.with_entities(
                     DailyPlayerStats.player_id,
                     sqlfunc.max(DailyPlayerStats.nickname),
@@ -245,7 +274,7 @@ def dashboard():
                     sqlfunc.max(DailyPlayerStats.agent_id),
                     sqlfunc.sum(DailyPlayerStats.pnl),
                     sqlfunc.sum(DailyPlayerStats.rake),
-                ).filter(DailyPlayerStats.club == club_name
+                ).filter(*club_filters
                 ).group_by(DailyPlayerStats.player_id).all()
 
                 # Build SA structure from DB data
@@ -324,7 +353,9 @@ def dashboard():
                                expense_charges=expense_charges,
                                rake_pct=rake_pct, player_count=player_count,
                                club_net_rake=club_net_rake,
-                               club_keeps_pct=club_keeps_pct)
+                               club_keeps_pct=club_keeps_pct,
+                               available_dates=available_dates,
+                               selected_dates=selected_dates)
 
     if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
         from app.union_data import get_cumulative_stats

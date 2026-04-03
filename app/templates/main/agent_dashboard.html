@@ -17,6 +17,46 @@
     </div>
 </div>
 
+{# ── Date Range Picker ── #}
+<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+    <div style="position:relative; display:inline-block;">
+        <button id="datePickerBtn" onclick="toggleCalendar()" class="dp-trigger">
+            <span class="dp-icon">📅</span>
+            <span id="dpLabel">
+                {% if selected_dates %}
+                    {{ selected_dates|length }} ימים נבחרו
+                {% else %}
+                    כל התקופות
+                {% endif %}
+            </span>
+            <span class="dp-arrow">▾</span>
+        </button>
+
+        <div id="calendarPopup" class="dp-popup" style="display:none;">
+            <div class="dp-header">
+                <button onclick="dpChangeMonth(-1)" class="dp-nav">→</button>
+                <strong id="dpMonthLabel"></strong>
+                <button onclick="dpChangeMonth(1)" class="dp-nav">←</button>
+            </div>
+            <div class="dp-weekdays">
+                <span>א</span><span>ב</span><span>ג</span><span>ד</span><span>ה</span><span>ו</span><span>ש</span>
+            </div>
+            <div id="dpGrid" class="dp-grid"></div>
+            <div class="dp-footer">
+                <span id="dpSelCount" class="dp-sel-info"></span>
+                <div style="display:flex; gap:0.3rem;">
+                    <button onclick="dpClear()" class="dp-footer-btn">נקה</button>
+                    <button onclick="dpApply()" class="dp-footer-btn dp-apply">החל</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if selected_dates %}
+    <a href="{{ url_for('main.dashboard') }}" class="dp-reset">&#10005; הצג הכל</a>
+    {% endif %}
+</div>
+
 {# ── Stats Cards ── #}
 <div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
     <div class="stat-card">
@@ -540,5 +580,139 @@ function toggleRecord(btn, playerId) {
             container.innerHTML = html;
         });
 }
+
+/* ── Date Picker ── */
+var _availDates = {{ available_dates|tojson }};
+var _selectedDates = {{ selected_dates|tojson }};
+var _dpYear, _dpMonth;
+
+(function() {
+    if (_availDates.length) {
+        var parts = _availDates[0].split('-');
+        _dpYear = parseInt(parts[0]); _dpMonth = parseInt(parts[1]) - 1;
+    } else {
+        var now = new Date(); _dpYear = now.getFullYear(); _dpMonth = now.getMonth();
+    }
+})();
+
+function toggleCalendar() {
+    var p = document.getElementById('calendarPopup');
+    if (p.style.display === 'none') { p.style.display = 'block'; renderDpCalendar(); }
+    else { p.style.display = 'none'; }
+}
+document.addEventListener('click', function(e) {
+    var popup = document.getElementById('calendarPopup');
+    var btn = document.getElementById('datePickerBtn');
+    if (popup && popup.style.display !== 'none' && !popup.contains(e.target) && !btn.contains(e.target)) {
+        popup.style.display = 'none';
+    }
+});
+
+function renderDpCalendar() {
+    var months = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+    document.getElementById('dpMonthLabel').textContent = months[_dpMonth] + ' ' + _dpYear;
+    var grid = document.getElementById('dpGrid');
+    var first = new Date(_dpYear, _dpMonth, 1);
+    var lastDay = new Date(_dpYear, _dpMonth + 1, 0).getDate();
+    var startDay = first.getDay();
+    var html = '';
+    for (var i = 0; i < startDay; i++) html += '<div class="dp-day empty"></div>';
+    for (var d = 1; d <= lastDay; d++) {
+        var ds = _dpYear + '-' + String(_dpMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        var hasData = _availDates.indexOf(ds) >= 0;
+        var isSel = _selectedDates.indexOf(ds) >= 0;
+        var inRange = false;
+        if (_selectedDates.length === 2) {
+            var sorted = _selectedDates.slice().sort();
+            inRange = ds > sorted[0] && ds < sorted[1] && hasData;
+        }
+        var cls = 'dp-day';
+        if (hasData) cls += ' has-data';
+        if (isSel) cls += ' selected';
+        else if (inRange) cls += ' in-range';
+        if (!hasData) cls += ' empty';
+        var onclick = hasData ? ' onclick="dpToggle(\'' + ds + '\')"' : '';
+        html += '<div class="' + cls + '"' + onclick + '>' + d + '</div>';
+    }
+    grid.innerHTML = html;
+    updateDpInfo();
+}
+function dpChangeMonth(dir) {
+    _dpMonth += dir;
+    if (_dpMonth < 0) { _dpMonth = 11; _dpYear--; }
+    if (_dpMonth > 11) { _dpMonth = 0; _dpYear++; }
+    renderDpCalendar();
+}
+function dpToggle(ds) {
+    var idx = _selectedDates.indexOf(ds);
+    if (idx >= 0) { _selectedDates.splice(idx, 1); } else { _selectedDates.push(ds); }
+    _selectedDates.sort();
+    renderDpCalendar();
+}
+function dpClear() { _selectedDates = []; renderDpCalendar(); }
+function dpApply() {
+    if (_selectedDates.length === 0) { window.location.href = '{{ url_for("main.dashboard") }}'; }
+    else { window.location.href = '{{ url_for("main.dashboard") }}?dates=' + _selectedDates.join(','); }
+}
+function updateDpInfo() {
+    var el = document.getElementById('dpSelCount');
+    if (_selectedDates.length === 0) { el.textContent = 'כל התקופות'; }
+    else { el.textContent = _selectedDates.length + ' ימים נבחרו'; }
+}
 </script>
+
+<style>
+.dp-trigger {
+    display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.9rem;
+    border:1px solid #e0e4ef; border-radius:10px; background:#fff; cursor:pointer;
+    font-family:inherit; font-size:0.9rem; color:#333; transition:all 0.15s;
+    box-shadow:0 1px 4px rgba(0,0,0,0.06);
+}
+.dp-trigger:hover { border-color:#4361ee; box-shadow:0 2px 8px rgba(67,97,238,0.12); }
+.dp-icon { font-size:1.1rem; }
+.dp-arrow { font-size:0.7rem; color:#888; margin-right:-0.2rem; }
+.dp-reset { font-size:0.82rem; color:#ef233c; text-decoration:none; padding:0.3rem 0.6rem; border-radius:6px; transition:background 0.15s; }
+.dp-reset:hover { background:#fff0f2; }
+.dp-popup {
+    position:absolute; top:calc(100% + 6px); right:0; z-index:200;
+    background:#fff; border:1px solid #e0e4ef; border-radius:14px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:0.8rem; min-width:280px;
+    animation: dpFadeIn 0.15s ease;
+}
+@keyframes dpFadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.dp-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+.dp-header strong { font-size:0.95rem; }
+.dp-nav { border:none; background:#f0f2f5; border-radius:6px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem; color:#555; transition:background 0.15s; }
+.dp-nav:hover { background:#e0e4ef; }
+.dp-weekdays { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:0.2rem; }
+.dp-weekdays span { font-size:0.7rem; color:#888; font-weight:600; padding:0.2rem 0; }
+.dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
+.dp-day { padding:0.35rem 0; border-radius:8px; font-size:0.82rem; cursor:pointer; transition:all 0.12s; color:#bbb; user-select:none; }
+.dp-day.has-data { color:#333; font-weight:500; }
+.dp-day.has-data:hover { background:#e8ebff; }
+.dp-day.selected { background:#4361ee; color:#fff !important; font-weight:700; }
+.dp-day.in-range { background:#dde3ff; color:#333 !important; }
+.dp-day.empty { cursor:default; }
+.dp-footer { display:flex; justify-content:space-between; align-items:center; margin-top:0.6rem; padding-top:0.5rem; border-top:1px solid #f0f0f0; }
+.dp-sel-info { font-size:0.78rem; color:#888; }
+.dp-footer-btn { border:1px solid #ddd; background:#fff; border-radius:6px; padding:0.3rem 0.7rem; cursor:pointer; font-family:inherit; font-size:0.8rem; color:#555; transition:all 0.15s; }
+.dp-footer-btn:hover { background:#f0f2f5; }
+.dp-apply { background:#4361ee; color:#fff; border-color:#4361ee; font-weight:600; }
+.dp-apply:hover { background:#3451d1; }
+body.dark .dp-trigger { background:#1e1e2e; border-color:#333; color:#e0e0e0; }
+body.dark .dp-trigger:hover { border-color:#4361ee; }
+body.dark .dp-popup { background:#1e1e2e; border-color:#333; box-shadow:0 8px 30px rgba(0,0,0,0.4); }
+body.dark .dp-nav { background:#252535; color:#ccc; }
+body.dark .dp-day { color:#555; }
+body.dark .dp-day.has-data { color:#ddd; }
+body.dark .dp-day.has-data:hover { background:#333355; }
+body.dark .dp-day.selected { background:#4361ee; color:#fff !important; }
+body.dark .dp-day.in-range { background:#2a2a55; color:#ccc !important; }
+body.dark .dp-footer { border-top-color:#333; }
+body.dark .dp-footer-btn { background:#252535; border-color:#444; color:#ccc; }
+body.dark .dp-reset { color:#ff6b6b; }
+@media (max-width: 640px) {
+    .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; min-width:auto; width:auto; transform:none; }
+}
+</style>
 {% endblock %}
