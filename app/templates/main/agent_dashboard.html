@@ -58,7 +58,10 @@
 </div>
 
 {# ── Stats Cards ── #}
-<div class="stats-grid {% if rake_refund_list is defined and rake_refund_list %}stats-6{% else %}stats-5{% endif %}" style="margin-bottom:1.5rem;">
+{% set extra_cards = 0 %}
+{% if rake_refund_list is defined and rake_refund_list %}{% set extra_cards = extra_cards + 1 %}{% endif %}
+{% if my_rake_pct is defined and my_rake_pct %}{% set extra_cards = extra_cards + 1 %}{% endif %}
+<div class="stats-grid stats-{{ 5 + extra_cards }}" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">שחקנים</div>
         <div class="stat-value">{{ player_count }}</div>
@@ -79,6 +82,12 @@
     <div class="stat-card" style="cursor:pointer; border:2px solid #667eea;" onclick="toggleRakeRefund()">
         <div class="stat-label" style="color:#667eea;">החזרי רייק</div>
         <div class="stat-value" style="color:#667eea;">{{ "%.2f"|format(total_rake_refund) }}</div>
+    </div>
+    {% endif %}
+    {% if my_rake_pct is defined and my_rake_pct %}
+    <div class="stat-card" style="cursor:pointer; border:2px solid #2ec4b6;" onclick="toggleMyRake()">
+        <div class="stat-label" style="color:#2ec4b6;">הרייק שלי ({{ my_rake_pct|int }}%)</div>
+        <div class="stat-value" style="color:#2ec4b6;">{{ "%.2f"|format(my_rake_earning) }}</div>
     </div>
     {% endif %}
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
@@ -116,6 +125,35 @@
 <script>
 function toggleRakeRefund() {
     var el = document.getElementById('rakeRefundPanel');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endif %}
+
+{% if my_rake_pct is defined and my_rake_pct %}
+<div id="myRakePanel" style="display:none; margin-bottom:1.5rem; border:2px solid #2ec4b6; border-radius:14px; background:linear-gradient(135deg, #f0fdfb, #e8f8f5); overflow:hidden;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; border-bottom:1px solid #c8ede8;">
+        <strong style="color:#2ec4b6;">הרייק שלי</strong>
+        <span onclick="toggleMyRake()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
+    </div>
+    <div style="padding:0.5rem 1rem 0.8rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
+            <span>רייק כולל</span>
+            <strong>{{ "%.2f"|format(personal_rake) }}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
+            <span>האחוז שלי</span>
+            <span class="rake-split-badge" style="background:linear-gradient(135deg, #2ec4b6, #1aae9f);">{{ my_rake_pct|int }}%</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:1.05rem; font-weight:700;">
+            <span>הרייק שלי</span>
+            <span style="color:#2ec4b6;">{{ "%.2f"|format(my_rake_earning) }}</span>
+        </div>
+    </div>
+</div>
+<script>
+function toggleMyRake() {
+    var el = document.getElementById('myRakePanel');
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 </script>

@@ -442,6 +442,13 @@ def dashboard():
         net_rake = round(sa_net_rake + club_net_rake, 2)
         player_count = len(all_my_player_ids)
 
+        # My own rake percentage (if configured as sub_agent or agent)
+        my_rake_rc = RakeConfig.query.filter(
+            RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+            RakeConfig.entity_id == sa_id).first()
+        my_rake_pct = my_rake_rc.rake_percent if my_rake_rc else 0
+        my_rake_earning = round(personal_rake * my_rake_pct / 100, 2) if my_rake_pct else 0
+
         # Expense charges for this agent
         expense_charges = ExpenseCharge.query.filter_by(agent_player_id=sa_id).all()
         total_expenses = round(sum(c.charge_amount for c in expense_charges), 2)
@@ -459,6 +466,8 @@ def dashboard():
                                expense_charges=expense_charges,
                                rake_refund_list=rake_refund_list,
                                total_rake_refund=total_rake_refund,
+                               my_rake_pct=my_rake_pct,
+                               my_rake_earning=my_rake_earning,
                                rake_pct=rake_pct, player_count=player_count,
                                club_net_rake=club_net_rake,
                                club_keeps_pct=club_keeps_pct,
