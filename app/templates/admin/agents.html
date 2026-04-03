@@ -115,6 +115,7 @@
                     style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
                 <option value="club">מועדון</option>
                 <option value="agent">סוכן (SA)</option>
+                <option value="sub_agent">סוכן (Agent)</option>
                 <option value="player">שחקן</option>
             </select>
         </div>
@@ -134,6 +135,13 @@
                        style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
                 <input type="hidden" name="entity_key" id="rake-agent-value" disabled>
                 <div id="rake-agent-dropdown" style="display:none; position:absolute; top:100%; right:0; left:0; z-index:50; background:#fff; border:1px solid #ddd; border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+            </div>
+            <div id="rake-select-subagent-wrap" style="display:none; position:relative;">
+                <input type="text" id="rake-subagent-search" placeholder="הקלד שם..." autocomplete="off"
+                       oninput="filterSubAgentOptions(this.value)" onfocus="filterSubAgentOptions(this.value)"
+                       style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                <input type="hidden" name="entity_key" id="rake-subagent-value" disabled>
+                <div id="rake-subagent-dropdown" style="display:none; position:absolute; top:100%; right:0; left:0; z-index:50; background:#fff; border:1px solid #ddd; border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
             </div>
             <div id="rake-select-player-wrap" style="display:none; position:relative;">
                 <input type="text" id="rake-player-search" placeholder="הקלד שם..." autocomplete="off"
@@ -169,7 +177,7 @@
             <tr>
                 <td>
                     <span class="role-badge {% if rc.entity_type == 'club' %}role-sa{% elif rc.entity_type == 'agent' %}role-agent{% else %}role-player{% endif %}">
-                        {{ {'club': 'מועדון', 'agent': 'סוכן', 'player': 'שחקן'}[rc.entity_type] }}
+                        {{ {'club': 'מועדון', 'agent': 'סוכן (SA)', 'sub_agent': 'סוכן (Agent)', 'player': 'שחקן'}.get(rc.entity_type, rc.entity_type) }}
                     </span>
                 </td>
                 <td><strong>{{ rc.entity_name }}</strong></td>
@@ -202,12 +210,20 @@ var _allAgents = [
     {id: "{{ sa.id }}", nick: "{{ sa.nick }}", club: "{{ sa.club }}"},
     {% endfor %}
 ];
+var _allSubAgents = [
+    {% for a in all_sub_agents %}
+    {id: "{{ a.id }}", nick: "{{ a.nick }}", club: "{{ a.club }}"},
+    {% endfor %}
+];
 
 function switchRakeEntity(type) {
     var club = document.getElementById('rake-select-club');
     var agentWrap = document.getElementById('rake-select-agent-wrap');
     var agentVal = document.getElementById('rake-agent-value');
     var agentSearch = document.getElementById('rake-agent-search');
+    var subAgentWrap = document.getElementById('rake-select-subagent-wrap');
+    var subAgentVal = document.getElementById('rake-subagent-value');
+    var subAgentSearch = document.getElementById('rake-subagent-search');
     var playerWrap = document.getElementById('rake-select-player-wrap');
     var playerVal = document.getElementById('rake-player-value');
     var playerSearch = document.getElementById('rake-player-search');
@@ -215,11 +231,17 @@ function switchRakeEntity(type) {
     club.disabled = type !== 'club';
     agentWrap.style.display = type === 'agent' ? '' : 'none';
     agentVal.disabled = type !== 'agent';
+    subAgentWrap.style.display = type === 'sub_agent' ? '' : 'none';
+    subAgentVal.disabled = type !== 'sub_agent';
     playerWrap.style.display = type === 'player' ? '' : 'none';
     playerVal.disabled = type !== 'player';
     if (type !== 'agent') {
         agentSearch.value = ''; agentVal.value = '';
         document.getElementById('rake-agent-dropdown').style.display = 'none';
+    }
+    if (type !== 'sub_agent') {
+        subAgentSearch.value = ''; subAgentVal.value = '';
+        document.getElementById('rake-subagent-dropdown').style.display = 'none';
     }
     if (type !== 'player') {
         playerSearch.value = ''; playerVal.value = '';
@@ -284,12 +306,44 @@ function selectAgent(id, nick) {
     document.getElementById('rake-agent-dropdown').style.display = 'none';
 }
 
+function filterSubAgentOptions(query) {
+    var dropdown = document.getElementById('rake-subagent-dropdown');
+    query = query.trim().toLowerCase();
+    if (query.length < 2) { dropdown.style.display = 'none'; return; }
+    var matches = _allSubAgents.filter(function(a) {
+        return a.nick.toLowerCase().indexOf(query) !== -1 || a.id.indexOf(query) !== -1;
+    });
+    if (matches.length === 0) {
+        dropdown.innerHTML = '<div style="padding:0.5rem; color:#888; font-size:0.85rem;">לא נמצא</div>';
+        dropdown.style.display = 'block';
+        return;
+    }
+    var html = '';
+    matches.slice(0, 20).forEach(function(a) {
+        html += '<div onclick="selectSubAgent(\'' + a.id + '\', \'' + a.nick + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
+        html += '<strong>' + a.nick + '</strong> <span style="color:#888; font-size:0.8rem;">(' + a.id + ') - ' + a.club + '</span></div>';
+    });
+    if (matches.length > 20) {
+        html += '<div style="padding:0.4rem; color:#888; font-size:0.8rem; text-align:center;">+ עוד ' + (matches.length - 20) + '</div>';
+    }
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+}
+
+function selectSubAgent(id, nick) {
+    document.getElementById('rake-subagent-search').value = nick + ' (' + id + ')';
+    document.getElementById('rake-subagent-value').value = id + '|' + nick;
+    document.getElementById('rake-subagent-dropdown').style.display = 'none';
+}
+
 // Close dropdowns on outside click
 document.addEventListener('click', function(e) {
     var pw = document.getElementById('rake-select-player-wrap');
     if (pw && !pw.contains(e.target)) document.getElementById('rake-player-dropdown').style.display = 'none';
     var aw = document.getElementById('rake-select-agent-wrap');
     if (aw && !aw.contains(e.target)) document.getElementById('rake-agent-dropdown').style.display = 'none';
+    var sw = document.getElementById('rake-select-subagent-wrap');
+    if (sw && !sw.contains(e.target)) document.getElementById('rake-subagent-dropdown').style.display = 'none';
 });
 
 // Handle transfer confirmations from flash messages

@@ -516,9 +516,18 @@ def agents():
     all_members = get_all_members()
     rake_configs = RakeConfig.query.order_by(RakeConfig.entity_type).all()
 
+    # All agents (non-SA) from DB
+    from app.models import DailyPlayerStats as DPS2
+    all_agents_db = DPS2.query.with_entities(
+        DPS2.agent_id, sqlfunc.max(DPS2.nickname), sqlfunc.max(DPS2.club)
+    ).filter(DPS2.agent_id != '-', DPS2.agent_id != '', DPS2.agent_id.isnot(None)
+    ).group_by(DPS2.agent_id).all()
+    all_sub_agents = [{'id': a[0], 'nick': a[1] or a[0], 'club': a[2] or ''} for a in all_agents_db if a[0]]
+
     return render_template('admin/agents.html',
                            all_sa=all_sa, all_clubs=all_clubs,
                            all_members=all_members,
+                           all_sub_agents=all_sub_agents,
                            hierarchy_links=hierarchy_links,
                            configs=configs, sa_stats=sa_stats,
                            rake_configs=rake_configs)
