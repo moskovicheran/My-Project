@@ -325,7 +325,6 @@ function updateDpInfo() {
                         {% endfor %}
                     </tbody>
                     <tfoot>
-                        {% set ag_wins = agent.members|selectattr('pnl_total', 'gt', 0)|sum(attribute='pnl_total') %}
                         <tr class="total-row">
                             <td><strong>סה"כ</strong></td>
                             <td class="amount income"><strong>{{ "%.2f"|format(ag_rake) }}</strong></td>
@@ -333,10 +332,6 @@ function updateDpInfo() {
                                 <strong>{% if ag_pnl_val > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl_val) }}</strong>
                             </td>
                             <td></td>
-                        </tr>
-                        <tr>
-                            <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(ag_wins) }}</strong></td>
-                            <td></td><td></td><td></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -371,7 +366,6 @@ function updateDpInfo() {
                     {% endfor %}
                 </tbody>
                 <tfoot>
-                    {% set dm_wins = sa.direct_members|selectattr('pnl_total', 'gt', 0)|sum(attribute='pnl_total') %}
                     {% set dm_pnl = sa.direct_members|sum(attribute='pnl_total') %}
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
@@ -380,10 +374,6 @@ function updateDpInfo() {
                             <strong>{% if dm_pnl > 0 %}+{% endif %}{{ "%.2f"|format(dm_pnl) }}</strong>
                         </td>
                         <td></td>
-                    </tr>
-                    <tr>
-                        <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(dm_wins) }}</strong></td>
-                        <td></td><td></td><td></td>
                     </tr>
                 </tfoot>
             </table>
@@ -435,7 +425,6 @@ function updateDpInfo() {
                 {% endfor %}
             </tbody>
             <tfoot>
-                {% set nsa_wins = managed_club.no_sa_members|selectattr('pnl_total', 'gt', 0)|sum(attribute='pnl_total') %}
                 <tr class="total-row">
                     <td><strong>סה"כ</strong></td>
                     <td class="amount income"><strong>{{ "%.2f"|format(nsa_rake) }}</strong></td>
@@ -443,10 +432,6 @@ function updateDpInfo() {
                         <strong>{% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}</strong>
                     </td>
                     <td></td>
-                </tr>
-                <tr>
-                    <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(nsa_wins) }}</strong></td>
-                    <td></td><td></td><td></td>
                 </tr>
             </tfoot>
         </table>

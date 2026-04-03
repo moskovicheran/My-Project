@@ -306,20 +306,12 @@ function toggleExpenseDetails() {
                     {% endfor %}
                 </tbody>
                 <tfoot>
-                    {% set wins = ag.members|selectattr('pnl', 'gt', 0)|sum(attribute='pnl') %}
-                    {% set losses = ag.members|selectattr('pnl', 'lt', 0)|sum(attribute='pnl') %}
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
                         <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
                         <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
                             <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
                         </td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(wins) }}</strong></td>
-                        <td></td>
-                        <td></td>
                         <td></td>
                     </tr>
                 </tfoot>
@@ -367,20 +359,12 @@ function toggleExpenseDetails() {
                     {% endfor %}
                 </tbody>
                 <tfoot>
-                    {% set d_wins = my_sa.direct|selectattr('pnl', 'gt', 0)|sum(attribute='pnl') %}
-                    {% set d_losses = my_sa.direct|selectattr('pnl', 'lt', 0)|sum(attribute='pnl') %}
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
                         <td class="amount income"><strong>{{ "%.2f"|format(direct_rake) }}</strong></td>
                         <td class="amount {% if direct_pnl >= 0 %}income{% else %}expense{% endif %}">
                             <strong>{% if direct_pnl > 0 %}+{% endif %}{{ "%.2f"|format(direct_pnl) }}</strong>
                         </td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td class="amount income" style="font-size:0.8rem;"><strong>זכויות: +{{ "%.2f"|format(d_wins) }}</strong></td>
-                        <td></td>
-                        <td class="amount expense" style="font-size:0.8rem;"><strong>חובות: {{ "%.2f"|format(d_losses) }}</strong></td>
                         <td></td>
                     </tr>
                 </tfoot>
