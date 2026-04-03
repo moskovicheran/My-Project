@@ -277,7 +277,7 @@ function updateDpInfo() {
         <div class="agent-card-stats">
             <span class="summary-chip chip-win">R {{ "%.2f"|format(sa_rake) }}</span>
             <span class="summary-chip {% if sa_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if sa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl) }}
+                רווח/הפסד {% if sa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl) }}
             </span>
         </div>
     </div>
@@ -298,14 +298,14 @@ function updateDpInfo() {
                 <div class="inner-agent-chips" style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                     <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(ag_rake) }}</span>
                     <span class="summary-chip {% if ag_pnl_val >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
-                        P&L {% if ag_pnl_val > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl_val) }}
+                        רווח/הפסד {% if ag_pnl_val > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl_val) }}
                     </span>
                 </div>
             </div>
             <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
                 <div class="table-scroll-wrap">
                 <table class="table table-sm" style="margin:0;">
-                    <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                    <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                     <tbody>
                         {% for m in agent.members %}
                         <tr>
@@ -346,7 +346,7 @@ function updateDpInfo() {
             <div style="margin-bottom:0.4rem; font-weight:700; font-size:0.95rem; color:#1a1a2e;">שחקנים ישירים</div>
             <div class="table-scroll-wrap">
             <table class="table table-sm" style="margin:0;">
-                <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                 <tbody>
                     {% for m in sa.direct_members %}
                     <tr>
@@ -398,14 +398,14 @@ function updateDpInfo() {
             {% set nsa_pnl = managed_club.no_sa_members|sum(attribute='pnl_total') %}
             <span class="summary-chip chip-win">R {{ "%.2f"|format(nsa_rake) }}</span>
             <span class="summary-chip {% if nsa_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}
+                רווח/הפסד {% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}
             </span>
         </div>
     </div>
     <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
         <div class="table-scroll-wrap">
         <table class="table table-sm" style="margin:0;">
-            <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+            <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
             <tbody>
                 {% for m in managed_club.no_sa_members %}
                 <tr>

@@ -56,7 +56,7 @@
             <span class="summary-chip">גבייה {{ "%.2f"|format(t_buyin) }}</span>
             <span class="summary-chip chip-win">רייק {{ "%.2f"|format(t_rake) }}</span>
             <span class="summary-chip {% if t_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if t_pnl > 0 %}+{% endif %}{{ "%.2f"|format(t_pnl) }}
+                רווח/הפסד {% if t_pnl > 0 %}+{% endif %}{{ "%.2f"|format(t_pnl) }}
             </span>
             <span class="muted small">{{ table.club }}</span>
         </div>
@@ -71,7 +71,7 @@
                 <th>Cashout</th>
                 <th>Hands</th>
                 <th>Rake</th>
-                <th>P&L</th>
+                <th>רווח/הפסד</th>
             </tr>
         </thead>
         <tbody>

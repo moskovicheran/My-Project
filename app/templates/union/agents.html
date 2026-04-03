@@ -30,7 +30,7 @@
         </div>
         <div class="sa-summary-chips">
             <span class="summary-chip {% if sa.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if sa.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa.total_pnl) }}
+                רווח/הפסד {% if sa.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa.total_pnl) }}
             </span>
             <span class="summary-chip">Rake {{ "%.2f"|format(sa.total_rake) }}</span>
             <span class="summary-chip">Hands {{ "{:,}".format(sa.total_hands|int) }}</span>
@@ -57,7 +57,7 @@
                     <th>Role</th>
                     <th>Hands</th>
                     <th>Rake</th>
-                    <th>P&L</th>
+                    <th>רווח/הפסד</th>
                 </tr>
             </thead>
             <tbody>
@@ -104,7 +104,7 @@
                     <th>Role</th>
                     <th>Hands</th>
                     <th>Rake</th>
-                    <th>P&L</th>
+                    <th>רווח/הפסד</th>
                 </tr>
             </thead>
             <tbody>

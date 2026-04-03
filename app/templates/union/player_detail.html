@@ -36,7 +36,7 @@
                 <th>Agent</th>
                 <th>Hands</th>
                 <th>Rake</th>
-                <th>P&L</th>
+                <th>רווח/הפסד</th>
             </tr>
         </thead>
         <tbody>
@@ -73,7 +73,7 @@
         <div class="stat-value small-val">{{ member.club }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
-        <div class="stat-label">P&L</div>
+        <div class="stat-label">רווח/הפסד</div>
         <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
     </div>
     <div class="stat-card income">
@@ -97,7 +97,7 @@
                 <th>Table</th>
                 <th>Game</th>
                 <th>Blinds</th>
-                <th>P&L</th>
+                <th>רווח/הפסד</th>
             </tr>
         </thead>
         <tbody>

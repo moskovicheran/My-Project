@@ -16,7 +16,7 @@
 {# ── Stats Cards ── #}
 <div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
-        <div class="stat-label">יתרה (P&L)</div>
+        <div class="stat-label">יתרה (רווח/הפסד)</div>
         <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ "%.2f"|format(player.pnl) }}</div>
     </div>
     <div class="stat-card">
@@ -39,7 +39,7 @@
                 <th>משחק</th>
                 <th>סוג</th>
                 <th>בליינדס</th>
-                <th>P&L</th>
+                <th>רווח/הפסד</th>
             </tr>
         </thead>
         <tbody>

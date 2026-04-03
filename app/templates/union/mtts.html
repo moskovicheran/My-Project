@@ -110,7 +110,7 @@ function toggleMttPlayers(row, title) {
                 container.innerHTML = '<span class="muted small">אין נתוני שחקנים</span>';
                 return;
             }
-            var html = '<table><tr><th style="text-align:right;">#</th><th style="text-align:right;">שחקן</th><th style="text-align:left;">P&L</th></tr>';
+            var html = '<table><tr><th style="text-align:right;">#</th><th style="text-align:right;">שחקן</th><th style="text-align:left;">רווח/הפסד</th></tr>';
             data.players.forEach(function(p, i) {
                 var cls = p.pnl > 0 ? 'winner' : (p.pnl < 0 ? 'loser' : '');
                 var sign = p.pnl > 0 ? '+' : '';

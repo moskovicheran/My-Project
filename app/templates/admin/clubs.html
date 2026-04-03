@@ -42,7 +42,7 @@
             <span class="summary-chip" style="background:#eef0ff; color:#4361ee;">{{ club.active_players|default(0) }} שחקנים</span>
             <span class="summary-chip chip-win">R {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
             <span class="summary-chip {% if club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
+                רווח/הפסד {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
             </span>
         </div>
     </div>
@@ -77,7 +77,7 @@
                     {% endfor %}
                     <span class="summary-chip chip-win">R {{ "%.2f"|format(sa_rake.v) }}</span>
                     <span class="summary-chip {% if sa_pnl.v >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                        P&L {% if sa_pnl.v > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl.v) }}
+                        רווח/הפסד {% if sa_pnl.v > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl.v) }}
                     </span>
                 </div>
             </div>
@@ -97,14 +97,14 @@
                         <div style="display:flex; gap:0.3rem;">
                             <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(cag_rake) }}</span>
                             <span class="summary-chip {% if cag_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
-                                P&L {% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}
+                                רווח/הפסד {% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}
                             </span>
                         </div>
                     </div>
                     <div class="accordion-body" style="display:none; padding:0.4rem 0.6rem 0.5rem;">
                         <div class="table-scroll-wrap">
                         <table class="table table-sm" style="margin:0;">
-                            <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                            <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                             <tbody>
                                 {% for m in agent.members %}
                                 <tr>
@@ -145,7 +145,7 @@
                     <div style="margin-bottom:0.4rem; font-weight:700; font-size:0.95rem; color:#1a1a2e;">שחקנים ישירים (ללא סוכן)</div>
                     <div class="table-scroll-wrap">
                     <table class="table table-sm" style="margin:0;">
-                        <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                        <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                         <tbody>
                             {% for m in sa.direct_members %}
                             <tr>
@@ -178,7 +178,7 @@
             <div class="muted" style="margin-bottom:0.4rem; font-weight:600;">ללא Super Agent ({{ club.no_sa_members|length }})</div>
             <div class="table-scroll-wrap">
             <table class="table table-sm" style="margin:0;">
-                <thead><tr><th>שחקן</th><th>Rake</th><th>P&L</th><th></th></tr></thead>
+                <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                 <tbody>
                     {% for m in club.no_sa_members %}
                     <tr>

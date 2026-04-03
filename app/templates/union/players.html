@@ -81,7 +81,7 @@
         <div style="display:flex; gap:0.5rem;">
             <span class="summary-chip chip-win">Rake {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
             <span class="summary-chip {% if club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                P&L {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
+                רווח/הפסד {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
             </span>
         </div>
     </div>
