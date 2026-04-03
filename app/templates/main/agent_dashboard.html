@@ -58,10 +58,11 @@
 </div>
 
 {# ── Stats Cards ── #}
-{% set extra_cards = 0 %}
-{% if rake_refund_list is defined and rake_refund_list %}{% set extra_cards = extra_cards + 1 %}{% endif %}
-{% if my_rake_pct is defined and my_rake_pct %}{% set extra_cards = extra_cards + 1 %}{% endif %}
-<div class="stats-grid stats-{{ 5 + extra_cards }}" style="margin-bottom:1.5rem;">
+{% set base_cards = 4 %}
+{% if managed_clubs is defined and managed_clubs %}{% set base_cards = base_cards + 1 %}{% endif %}
+{% if rake_refund_list is defined and rake_refund_list %}{% set base_cards = base_cards + 1 %}{% endif %}
+{% if my_rake_pct is defined and my_rake_pct %}{% set base_cards = base_cards + 1 %}{% endif %}
+<div class="stats-grid stats-{{ base_cards }}" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">שחקנים</div>
         <div class="stat-value">{{ player_count }}</div>
@@ -74,10 +75,12 @@
         <div class="stat-label">רייק אישי</div>
         <div class="stat-value">{{ "%.2f"|format(personal_rake) }}</div>
     </div>
+    {% if managed_clubs is defined and managed_clubs %}
     <div class="stat-card income">
         <div class="stat-label">רייק מועדונים</div>
         <div class="stat-value">{{ "%.2f"|format(clubs_total_rake) }}</div>
     </div>
+    {% endif %}
     {% if rake_refund_list is defined and rake_refund_list %}
     <div class="stat-card" style="cursor:pointer; border:2px solid #667eea;" onclick="toggleRakeRefund()">
         <div class="stat-label" style="color:#667eea;">החזרי רייק</div>
