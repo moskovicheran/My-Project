@@ -252,7 +252,7 @@ function updateDpInfo() {
         <div class="stat-value">{{ "%.2f"|format(net_rake) }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
-        <div class="stat-label">P&L</div>
+        <div class="stat-label">סך הכל {% if total_pnl >= 0 %}רווחים{% else %}הפסדים{% endif %}</div>
         <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
     </div>
 </div>
