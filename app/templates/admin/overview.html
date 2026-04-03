@@ -46,7 +46,7 @@
     <h2 class="section-title">מנהלים ({{ agents|length }})</h2>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:0.8rem;">
         {% for ag in agents %}
-        <div class="agent-overview-card">
+        <a href="{{ url_for('admin.agent_view', sa_id=ag.player_id) }}" class="agent-overview-card" style="text-decoration:none; color:inherit;">
             <div class="ao-header">
                 <div style="display:flex; align-items:center; gap:0.5rem;">
                     <span class="role-badge role-agent" style="font-size:0.7rem;">Agent</span>
@@ -74,15 +74,15 @@
                     <span class="ao-stat-label">P&L</span>
                 </div>
             </div>
-        </div>
+        </a>
         {% endfor %}
     </div>
 </div>
 
 <style>
 .agent-overview-card {
-    background: #fff; border: 1px solid #e0e4ef; border-radius: 12px;
-    overflow: hidden; transition: box-shadow 0.2s;
+    display:block; background: #fff; border: 1px solid #e0e4ef; border-radius: 12px;
+    overflow: hidden; transition: box-shadow 0.2s; cursor: pointer;
 }
 .agent-overview-card:hover { box-shadow: 0 4px 15px rgba(67,97,238,0.1); }
 .ao-header {

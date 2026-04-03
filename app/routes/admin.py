@@ -59,6 +59,149 @@ def overview():
                            agents=agents_data)
 
 
+@admin_bp.route('/agent-view/<sa_id>')
+@admin_required
+def agent_view(sa_id):
+    """Admin view of a specific agent's dashboard."""
+    from app.union_data import get_super_agent_tables, get_members_hierarchy, get_cumulative_stats
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+
+    sa_tables = get_super_agent_tables()
+    my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
+    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+    child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
+    all_sa_ids = [sa_id] + child_sa_ids
+
+    # Get players from cumulative DB
+    my_players_db = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+        sqlfunc.max(DailyPlayerStats.role),
+        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids)
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    agents_map = {}
+    direct_players = []
+    for pid, nick, club, ag_id, role, pnl, rake, hands in my_players_db:
+        pnl = round(float(pnl or 0), 2)
+        rake = round(float(rake or 0), 2)
+        hands = int(hands or 0)
+        member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
+        if ag_id and ag_id != '-' and ag_id != sa_id:
+            if ag_id not in agents_map:
+                agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
+                                     'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
+            agents_map[ag_id]['members'].append(member)
+            agents_map[ag_id]['total_pnl'] += pnl
+            agents_map[ag_id]['total_rake'] += rake
+            agents_map[ag_id]['total_hands'] += hands
+        else:
+            direct_players.append(member)
+
+    # Agent nicknames from Excel
+    for sa in my_sas + child_sas:
+        for ag_id, ag in sa.get('agents', {}).items():
+            if ag_id in agents_map:
+                agents_map[ag_id]['nick'] = ag['nick']
+
+    # Override child_sas with cumulative DB data
+    all_child_pids = set()
+    for cs in child_sas:
+        for m in cs.get('direct', []):
+            all_child_pids.add(m['player_id'])
+        for ag in cs.get('agents', {}).values():
+            for m in ag.get('members', []):
+                all_child_pids.add(m['player_id'])
+    if all_child_pids:
+        cumul = get_cumulative_stats(list(all_child_pids))
+        for cs in child_sas:
+            cs_rake = cs_pnl = cs_hands = 0
+            for m in cs.get('direct', []):
+                c = cumul.get(m['player_id'])
+                if c:
+                    m['pnl'] = c['pnl']; m['rake'] = c['rake']; m['hands'] = c.get('hands', 0)
+                cs_rake += m.get('rake', 0); cs_pnl += m.get('pnl', 0); cs_hands += m.get('hands', 0)
+            for ag in cs.get('agents', {}).values():
+                ag_r = ag_p = ag_h = 0
+                for m in ag.get('members', []):
+                    c = cumul.get(m['player_id'])
+                    if c:
+                        m['pnl'] = c['pnl']; m['rake'] = c['rake']; m['hands'] = c.get('hands', 0)
+                    ag_r += m.get('rake', 0); ag_p += m.get('pnl', 0); ag_h += m.get('hands', 0)
+                ag['total_rake'] = round(ag_r, 2); ag['total_pnl'] = round(ag_p, 2); ag['total_hands'] = ag_h
+                cs_rake += ag_r; cs_pnl += ag_p; cs_hands += ag_h
+            cs['total_rake'] = round(cs_rake, 2); cs['total_pnl'] = round(cs_pnl, 2); cs['total_hands'] = cs_hands
+
+    total_rake = sum(m['rake'] for m in direct_players) + sum(a['total_rake'] for a in agents_map.values())
+    total_pnl = sum(m['pnl'] for m in direct_players) + sum(a['total_pnl'] for a in agents_map.values())
+    total_hands = sum(m['hands'] for m in direct_players) + sum(a['total_hands'] for a in agents_map.values())
+    player_count = len(my_players_db)
+
+    agents_sorted = dict(sorted(agents_map.items(), key=lambda x: x[1].get('total_rake', 0), reverse=True))
+
+    sa_nick = my_sas[0]['sa_nick'] if my_sas else sa_id
+    my_sa = {
+        'sa_id': sa_id, 'sa_nick': sa_nick,
+        'club': my_sas[0]['club'] if my_sas else '',
+        'agents': agents_sorted, 'direct': direct_players,
+        'total_pnl': total_pnl, 'total_rake': total_rake, 'total_hands': total_hands,
+    }
+
+    # Managed clubs
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+    managed_clubs = []
+    if rake_cfgs:
+        clubs_data, _ = get_members_hierarchy()
+        club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        all_nicks = dict(DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).group_by(DailyPlayerStats.player_id).all())
+        for cfg in rake_cfgs:
+            cname = club_id_to_name.get(cfg.managed_club_id, '')
+            if not cname:
+                continue
+            cp = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+            ).filter(DailyPlayerStats.club == cname
+            ).group_by(DailyPlayerStats.player_id).all()
+            club_sas = {}
+            no_sa = []
+            cr = cp_pnl = 0
+            for pid, nick, sid, aid, pv, rv in cp:
+                p = round(float(pv or 0), 2); r = round(float(rv or 0), 2)
+                cr += r; cp_pnl += p
+                mem = {'player_id': pid, 'nickname': nick, 'pnl_total': p, 'rake_total': r}
+                if sid and sid != '-':
+                    if sid not in club_sas:
+                        club_sas[sid] = {'nick': all_nicks.get(sid, sid), 'id': sid, 'agents': {}, 'direct_members': []}
+                    sa = club_sas[sid]
+                    if aid and aid != '-' and aid != sid:
+                        if aid not in sa['agents']:
+                            sa['agents'][aid] = {'nick': all_nicks.get(aid, aid), 'members': []}
+                        sa['agents'][aid]['members'].append(mem)
+                    else:
+                        sa['direct_members'].append(mem)
+                else:
+                    no_sa.append(mem)
+            managed_clubs.append({'name': cname, 'club_id': cfg.managed_club_id,
+                                  'total_rake': round(cr, 2), 'total_pnl': round(cp_pnl, 2),
+                                  'super_agents': club_sas, 'no_sa_members': no_sa})
+
+    return render_template('admin/agent_view.html',
+                           sa_nick=sa_nick, sa_id=sa_id,
+                           my_sa=my_sa, child_sas=child_sas,
+                           managed_clubs=managed_clubs,
+                           total_rake=round(total_rake, 2),
+                           total_pnl=round(total_pnl, 2),
+                           total_hands=int(total_hands),
+                           player_count=player_count)
+
+
 @admin_bp.route('/transfers', methods=['GET', 'POST'])
 @admin_required
 def transfers():
