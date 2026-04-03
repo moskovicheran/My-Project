@@ -286,16 +286,10 @@ def dashboard():
 
         # Query rake configs for sub-agents
         agent_ids = list(agents_map.keys())
-        # DEBUG: log all rake configs and agent IDs for troubleshooting
-        all_rcs = RakeConfig.query.all()
-        import logging
-        logging.warning(f'[RAKE DEBUG] agent_ids in agents_map: {agent_ids}')
-        logging.warning(f'[RAKE DEBUG] all RakeConfigs: {[(rc.entity_type, rc.entity_id, rc.entity_name, rc.rake_percent) for rc in all_rcs]}')
         agent_rake_configs = {rc.entity_id: rc.rake_percent
                               for rc in RakeConfig.query.filter(
                                   RakeConfig.entity_type.in_(['sub_agent', 'agent']),
                                   RakeConfig.entity_id.in_(agent_ids)).all()} if agent_ids else {}
-        logging.warning(f'[RAKE DEBUG] matched agent_rake_configs: {agent_rake_configs}')
         for ag_id, ag in agents_map.items():
             pct = agent_rake_configs.get(ag_id, 0)
             ag['rake_pct'] = pct
