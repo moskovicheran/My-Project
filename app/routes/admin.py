@@ -464,8 +464,20 @@ def agents():
         return redirect(url_for('admin.agents'))
 
     # GET - build all data
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
     all_sa = get_all_super_agents()
     all_clubs = get_all_clubs()
+    # Also add SAs from DB that aren't in Excel
+    sa_ids_excel = {sa['id'] for sa in all_sa}
+    db_sas = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.sa_id, sqlfunc.max(DailyPlayerStats.nickname), sqlfunc.max(DailyPlayerStats.club)
+    ).filter(DailyPlayerStats.sa_id != '-', DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id.isnot(None)
+    ).group_by(DailyPlayerStats.sa_id).all()
+    for sid, nick, club in db_sas:
+        if sid and sid not in sa_ids_excel:
+            all_sa.append({'id': sid, 'nick': nick or sid, 'club': club or ''})
+    all_sa.sort(key=lambda x: x['nick'].lower())
     sa_name_map = {sa['id']: sa for sa in all_sa}
 
     # SA hierarchy links
@@ -516,13 +528,22 @@ def agents():
     all_members = get_all_members()
     rake_configs = RakeConfig.query.order_by(RakeConfig.entity_type).all()
 
-    # All agents (non-SA) from DB
-    from app.models import DailyPlayerStats as DPS2
-    all_agents_db = DPS2.query.with_entities(
-        DPS2.agent_id, sqlfunc.max(DPS2.nickname), sqlfunc.max(DPS2.club)
-    ).filter(DPS2.agent_id != '-', DPS2.agent_id != '', DPS2.agent_id.isnot(None)
-    ).group_by(DPS2.agent_id).all()
-    all_sub_agents = [{'id': a[0], 'nick': a[1] or a[0], 'club': a[2] or ''} for a in all_agents_db if a[0]]
+    # All agents (non-SA) from DB — get real agent name from their player entry
+    agent_ids_db = [r[0] for r in DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.agent_id
+    ).filter(DailyPlayerStats.agent_id != '-', DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id.isnot(None)
+    ).group_by(DailyPlayerStats.agent_id).all() if r[0]]
+    # Get agent nicknames from their own player records
+    agent_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id.in_(agent_ids_db)
+    ).group_by(DailyPlayerStats.player_id).all()) if agent_ids_db else {}
+    # Get club info
+    agent_clubs = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.agent_id, sqlfunc.max(DailyPlayerStats.club)
+    ).filter(DailyPlayerStats.agent_id.in_(agent_ids_db)
+    ).group_by(DailyPlayerStats.agent_id).all()) if agent_ids_db else {}
+    all_sub_agents = [{'id': aid, 'nick': agent_nicks.get(aid, aid), 'club': agent_clubs.get(aid, '')} for aid in agent_ids_db]
 
     return render_template('admin/agents.html',
                            all_sa=all_sa, all_clubs=all_clubs,
