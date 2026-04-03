@@ -234,7 +234,7 @@ function updateDpInfo() {
 </script>
 
 {# ── Stats Cards ── #}
-<div class="stats-grid stats-4" style="margin-bottom:1.5rem;">
+<div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">שחקנים</div>
         <div class="stat-value">{{ player_count }}</div>
@@ -244,8 +244,12 @@ function updateDpInfo() {
         <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
     </div>
     <div class="stat-card income">
-        <div class="stat-label">Rake</div>
+        <div class="stat-label">רייק כולל</div>
         <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+    </div>
+    <div class="stat-card income">
+        <div class="stat-label">רייק נטו ({{ "%.0f"|format(rake_pct) }}%)</div>
+        <div class="stat-value">{{ "%.2f"|format(net_rake) }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">P&L</div>

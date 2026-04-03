@@ -132,9 +132,17 @@ def dashboard():
             }
             player_count = len(club_players_db)
 
+            # Net rake calculation (club's percentage)
+            from app.models import RakeConfig
+            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=club_id).first()
+            rake_pct = club_rc.rake_percent if club_rc else 100
+            net_rake = round(total_rake * rake_pct / 100, 2)
+
             return render_template('main/club_dashboard.html',
                                    managed_club=managed_club,
                                    total_rake=round(total_rake, 2),
+                                   net_rake=net_rake,
+                                   rake_pct=rake_pct,
                                    total_pnl=round(total_pnl, 2),
                                    total_hands=total_hands,
                                    player_count=player_count,
@@ -143,7 +151,8 @@ def dashboard():
 
         # Club not found in data
         return render_template('main/club_dashboard.html',
-                               managed_club=None, total_rake=0, total_pnl=0,
+                               managed_club=None, total_rake=0, net_rake=0,
+                               rake_pct=100, total_pnl=0,
                                total_hands=0, player_count=0,
                                available_dates=available_dates,
                                selected_dates=[])
