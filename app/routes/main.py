@@ -459,10 +459,24 @@ def dashboard():
                 club_rake = round(club_rake, 2)
                 club_pnl = round(club_pnl, 2)
 
+                # Flat list of all members for simple display
+                all_club_members = []
+                for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val in club_players_db:
+                    sa_nick = all_nicknames.get(sa_id_val, sa_id_val) if sa_id_val and sa_id_val != '-' else '-'
+                    ag_nick = all_nicknames.get(ag_id_val, ag_id_val) if ag_id_val and ag_id_val != '-' else '-'
+                    all_club_members.append({
+                        'player_id': pid, 'nickname': nick,
+                        'sa_nick': sa_nick, 'agent_nick': ag_nick,
+                        'pnl_total': round(float(pnl_val or 0), 2),
+                        'rake_total': round(float(rake_val or 0), 2),
+                    })
+                all_club_members.sort(key=lambda m: m['rake_total'], reverse=True)
+
                 club_obj = {
                     'name': club_name, 'club_id': cfg.managed_club_id,
                     'total_rake': club_rake, 'total_pnl': club_pnl,
                     'super_agents': club_sas, 'no_sa_members': no_sa,
+                    'all_members': all_club_members,
                 }
                 total_rake += club_rake
                 total_pnl += club_pnl

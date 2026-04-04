@@ -227,105 +227,41 @@ function toggleExpenseDetails() {
         </div>
         {# Club detail - hidden by default #}
         <div class="accordion-body" style="display:none; padding:0.8rem 1rem;">
-            {# Super Agents #}
-            {% set club_sas = managed_club.super_agents.values()|list %}
-            {% for sa in club_sas %}
-            <div style="margin-bottom:0.5rem; border:1px solid #eee; border-radius:8px; overflow:hidden;">
-                <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.8rem; cursor:pointer; background:#f8f9fa;">
-                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                        <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.7rem;">▶</span>
-                        <span class="role-badge role-sa">SA</span>
-                        <strong>{{ sa.nick }}</strong>
-                        <span class="muted small">{{ sa.id }}</span>
-                    </div>
-                    <span class="muted small">{{ sa.agents|length }} סוכנים</span>
-                </div>
-                <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
-                    {# Agents under this SA #}
-                    {% for ag_id, agent in sa.agents.items() %}
-                    <div style="margin-bottom:0.5rem; border:1px solid #f0f0f0; border-radius:6px; overflow:hidden;">
-                        {% set cag_rake = agent.members|sum(attribute='rake_total') %}
-                        {% set cag_pnl = agent.members|sum(attribute='pnl_total') %}
-                        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; cursor:pointer;">
-                            <div style="display:flex; align-items:center; gap:0.4rem;">
-                                <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.65rem;">▶</span>
-                                <span class="role-badge role-agent">Agent</span>
-                                <strong style="font-size:0.9rem;">{{ agent.nick }}</strong>
-                                <span class="muted small">{{ agent.members|length }} שחקנים</span>
-                            </div>
-                            <div style="display:flex; gap:0.4rem;">
-                                <span class="summary-chip chip-win" style="font-size:0.8rem;">R {{ "%.2f"|format(cag_rake) }}</span>
-                                <span class="summary-chip {% if cag_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}" style="font-size:0.8rem;">
-                                    רווח/הפסד {% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}
-                                </span>
-                            </div>
-                        </div>
-                        <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
-                            <table class="table table-sm" style="margin:0;">
-                                <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
-                                <tbody>
-                                    {% for m in agent.members %}
-                                    <tr>
-                                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
-                                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
-                                        </td>
-                                        <td class="player-actions">
-                                            <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
-                                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+            {% if managed_club.all_members %}
+            <table class="table table-sm" style="margin:0; font-size:0.9rem;">
+                <thead>
+                    <tr><th>שחקן</th><th>SA</th><th>Agent</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for m in managed_club.all_members %}
+                    <tr>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
+                        <td class="muted" style="font-size:0.8rem;">{{ m.sa_nick }}</td>
+                        <td class="muted" style="font-size:0.8rem;">{{ m.agent_nick }}</td>
+                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
+                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                        </td>
+                        <td class="player-actions">
+                            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="btn btn-outline btn-sm">רקורד</a>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                        </td>
+                    </tr>
                     {% endfor %}
-                    {# Direct members under SA #}
-                    {% if sa.direct_members %}
-                    <div style="padding:0.6rem 0; border-top:2px solid #1a1a2e; margin-top:0.5rem;">
-                        <div style="margin-bottom:0.4rem; font-weight:700; font-size:1rem; color:#1a1a2e;">שחקנים ישירים על המועדון</div>
-                        <table class="table table-sm" style="margin:0;">
-                            <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
-                            <tbody>
-                                {% for m in sa.direct_members %}
-                                <tr>
-                                    <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                    <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
-                                    <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                                        {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
-                                    </td>
-                                    <td class="player-actions">
-                                        <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
-                                        <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-            {# No SA members #}
-            {% if managed_club.no_sa_members %}
-            <div style="padding:0.4rem 0; border-top:1px dashed #ddd; margin-top:0.3rem;">
-                <div class="muted small" style="margin-bottom:0.3rem;">ללא SA</div>
-                <table class="table table-sm" style="margin:0;">
-                    <tbody>
-                        {% for m in managed_club.no_sa_members %}
-                        <tr>
-                            <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                            <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}" >
-                                {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="3"><strong>סה"כ ({{ managed_club.all_members|length }})</strong></td>
+                        <td class="amount income"><strong>{{ "%.2f"|format(managed_club.total_rake) }}</strong></td>
+                        <td class="amount {% if managed_club.total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                            <strong>{% if managed_club.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(managed_club.total_pnl) }}</strong>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+            {% else %}
+            <div class="empty-state"><p class="muted">אין שחקנים במועדון.</p></div>
             {% endif %}
         </div>
     </div>
