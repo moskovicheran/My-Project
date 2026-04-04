@@ -279,6 +279,35 @@ def dashboard():
             else:
                 direct_players.append(member)
 
+        # Fetch missing players for agents found in the initial query
+        # (agent may be under a different SA but their players need to be included)
+        if agents_map:
+            found_agent_ids = list(agents_map.keys())
+            missing_players = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+                sqlfunc.max(DailyPlayerStats.role),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.agent_id.in_(found_agent_ids),
+                DailyPlayerStats.player_id.notin_(list(all_my_player_ids))
+            ).group_by(DailyPlayerStats.player_id).all()
+            for pid, nick, club, ag_id, role, pnl, rake, hands in missing_players:
+                if (role or '').lower() in ('name entry',):
+                    continue
+                pnl = round(float(pnl or 0), 2)
+                rake = round(float(rake or 0), 2)
+                hands = int(hands or 0)
+                all_my_player_ids.add(pid)
+                member = {'player_id': pid, 'nickname': nick, 'role': role or 'Player',
+                          'pnl': pnl, 'rake': rake, 'hands': hands}
+                if ag_id in agents_map:
+                    agents_map[ag_id]['members'].append(member)
+                    agents_map[ag_id]['total_pnl'] += pnl
+                    agents_map[ag_id]['total_rake'] += rake
+                    agents_map[ag_id]['total_hands'] += hands
+
         # Adjust PnL by transfers (settlements)
         from app.union_data import get_transfer_adjustments
         xfer_adj = get_transfer_adjustments(all_my_player_ids)
