@@ -53,11 +53,25 @@
                 </td>
             </tr>
             {% endfor %}
+            {% if transfer_rows is defined and transfer_rows %}
+            {% for t in transfer_rows %}
+            <tr style="background:linear-gradient(90deg, #f8f9ff, #f0f3ff);">
+                <td><strong>{{ t.label }}</strong></td>
+                <td><span class="badge badge-game" style="background:#667eea; color:#fff;">העברה</span></td>
+                <td></td>
+                <td class="amount {% if t.amount >= 0 %}income{% else %}expense{% endif %}">
+                    {% if t.amount > 0 %}+{% endif %}{{ "%.2f"|format(t.amount) }}
+                </td>
+            </tr>
+            {% endfor %}
+            {% endif %}
         </tbody>
         <tfoot>
             <tr class="total-row">
                 <td colspan="3"><strong>סה"כ</strong></td>
-                {% set total_pnl = sessions|sum(attribute='pnl') %}
+                {% set games_pnl = sessions|sum(attribute='pnl') %}
+                {% set xfer_total = transfer_rows|sum(attribute='amount') if transfer_rows is defined and transfer_rows else 0 %}
+                {% set total_pnl = games_pnl + xfer_total %}
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
                     <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
                 </td>

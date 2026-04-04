@@ -520,7 +520,7 @@ def dashboard():
 
     if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
         from app.union_data import get_cumulative_stats
-        from app.models import PlayerSession
+        from app.models import PlayerSession, MoneyTransfer
 
         player_id = current_user.player_id
         cs = get_cumulative_stats([player_id]).get(player_id)
@@ -532,9 +532,23 @@ def dashboard():
         session_list = [{'table_name': s.table_name, 'game_type': s.game_type,
                          'blinds': s.blinds or '', 'pnl': round(s.pnl, 2)} for s in sessions]
 
+        # Get transfers for this player
+        player_transfers = MoneyTransfer.query.filter(
+            db.or_(MoneyTransfer.from_player_id == player_id,
+                   MoneyTransfer.to_player_id == player_id)
+        ).order_by(MoneyTransfer.created_at.desc()).all()
+        transfer_rows = []
+        for t in player_transfers:
+            if t.from_player_id == player_id:
+                transfer_rows.append({'label': f'תשלום ל-{t.to_name}',
+                                      'amount': round(t.amount, 2)})
+            else:
+                transfer_rows.append({'label': f'קבלת תשלום מ-{t.from_name}',
+                                      'amount': round(-t.amount, 2)})
+
         return render_template('main/player_dashboard.html',
                                player=cs or {'nickname': current_user.username, 'club': '-', 'pnl': 0, 'rake': 0, 'hands': 0},
-                               sessions=session_list)
+                               sessions=session_list, transfer_rows=transfer_rows)
 
     transactions = (Transaction.query
                     .filter_by(user_id=current_user.id)
