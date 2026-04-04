@@ -367,6 +367,57 @@ def dashboard():
                 cs['total_pnl'] = round(cs_pnl, 2)
                 cs['total_hands'] = cs_hands
 
+        # Fetch missing players for agents in child_sas from DB
+        for cs in child_sas:
+            for ag_id, ag in cs.get('agents', {}).items():
+                existing_pids = set(m['player_id'] for m in ag.get('members', []))
+                db_members = DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                    sqlfunc.max(DailyPlayerStats.role),
+                    sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                    sqlfunc.sum(DailyPlayerStats.hands),
+                ).filter(
+                    DailyPlayerStats.agent_id == ag_id,
+                    DailyPlayerStats.player_id.notin_(list(existing_pids)) if existing_pids else True,
+                    DailyPlayerStats.role != 'Name Entry'
+                ).group_by(DailyPlayerStats.player_id).all()
+                for pid, nick, role, pnl, rake, hands in db_members:
+                    if pid == ag_id:
+                        continue  # skip the agent themselves
+                    ag['members'].append({
+                        'player_id': pid, 'nickname': nick, 'role': role or 'Player',
+                        'pnl': round(float(pnl or 0), 2),
+                        'rake': round(float(rake or 0), 2),
+                        'hands': int(hands or 0),
+                    })
+            # Also check direct players under SA
+            sa_id_val = cs.get('sa_id')
+            if sa_id_val:
+                existing_direct_pids = set(m['player_id'] for m in cs.get('direct', []))
+                existing_agent_pids = set()
+                for ag in cs.get('agents', {}).values():
+                    for m in ag.get('members', []):
+                        existing_agent_pids.add(m['player_id'])
+                all_existing = existing_direct_pids | existing_agent_pids | {sa_id_val}
+                db_direct = DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                    sqlfunc.max(DailyPlayerStats.role),
+                    sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                    sqlfunc.sum(DailyPlayerStats.hands),
+                ).filter(
+                    DailyPlayerStats.sa_id == sa_id_val,
+                    DailyPlayerStats.agent_id.in_(['', '-']),
+                    DailyPlayerStats.player_id.notin_(list(all_existing)),
+                    DailyPlayerStats.role != 'Name Entry'
+                ).group_by(DailyPlayerStats.player_id).all()
+                for pid, nick, role, pnl, rake, hands in db_direct:
+                    cs['direct'].append({
+                        'player_id': pid, 'nickname': nick, 'role': role or 'Player',
+                        'pnl': round(float(pnl or 0), 2),
+                        'rake': round(float(rake or 0), 2),
+                        'hands': int(hands or 0),
+                    })
+
         # Find agent nicknames from Excel
         for sa in my_sas + child_sas:
             for ag_id, ag in sa.get('agents', {}).items():
