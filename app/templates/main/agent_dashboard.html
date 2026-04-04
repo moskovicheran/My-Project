@@ -2,9 +2,12 @@
 {% block title %}דשבורד סוכן{% endblock %}
 
 {% block content %}
+{% if view_as_username %}
+<a href="{{ url_for('admin.overview') }}" class="btn btn-outline btn-sm" style="margin-bottom:0.5rem;">← חזור לסקירה</a>
+{% endif %}
 <div class="page-header">
     <div>
-        <h1>שלום, {{ current_user.username }}</h1>
+        <h1>שלום, {{ view_as_username or current_user.username }}</h1>
         <p class="subtitle">
             <span class="role-badge role-agent">סוכן</span>
             {% for sa in my_sas %}&nbsp;{{ sa.club }}{% endfor %}

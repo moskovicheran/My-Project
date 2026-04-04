@@ -161,12 +161,24 @@ def dashboard():
                                available_dates=available_dates,
                                selected_dates=[])
 
-    if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
+    # Admin viewing agent dashboard via ?view_as or agent's own dashboard
+    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+    if (current_user.role == 'agent' and current_user.player_id) or view_as_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy
-        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload, MoneyTransfer
+        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload, MoneyTransfer, User
         from sqlalchemy import func as sqlfunc
         from datetime import datetime as dt
-        sa_id = current_user.player_id
+
+        if view_as_id:
+            agent_user = User.query.filter_by(player_id=view_as_id).first()
+            if not agent_user:
+                flash('סוכן לא נמצא.', 'danger')
+                return redirect(url_for('admin.overview'))
+            sa_id = agent_user.player_id
+            view_as_username = agent_user.username
+        else:
+            sa_id = current_user.player_id
+            view_as_username = None
 
         # Available upload dates
         available_dates = [u[0].strftime('%Y-%m-%d') for u in
@@ -531,7 +543,8 @@ def dashboard():
                                club_net_rake=club_net_rake,
                                club_keeps_pct=club_keeps_pct,
                                available_dates=available_dates,
-                               selected_dates=selected_dates)
+                               selected_dates=selected_dates,
+                               view_as_username=view_as_username)
 
     if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
         from app.union_data import get_cumulative_stats
