@@ -681,7 +681,8 @@ def logins():
             device = 'iPad'
         elif 'Android' in ua:
             m = re.search(r'Android[^;]*;\s*([^)]+)', ua)
-            device = m.group(1).strip().split(' Build')[0] if m else 'Android'
+            raw = m.group(1).strip().split(' Build')[0].strip() if m else ''
+            device = raw if len(raw) > 2 else 'Android'
         elif 'Macintosh' in ua:
             device = 'Mac'
         elif 'Windows' in ua:
