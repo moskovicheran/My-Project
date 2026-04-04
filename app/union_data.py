@@ -710,6 +710,91 @@ def get_cumulative_totals():
     }
 
 
+def get_agent_totals(player_id):
+    """Calculate total rake/pnl/hands/players for an agent - same logic as agent dashboard.
+    Returns dict with total_rake, total_pnl, total_hands, player_count."""
+    from app.models import DailyPlayerStats, SAHierarchy, SARakeConfig, RakeConfig, db
+    from sqlalchemy import func as sqlfunc, or_
+
+    uid = player_id
+    known_ids = {uid}
+
+    # Resolve actual SA/Agent ID
+    is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == uid).first() is not None
+    is_ag = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == uid).first() is not None
+    if not is_sa and not is_ag:
+        own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == uid).first()
+        if own_row:
+            role_lower = (own_row.role or '').lower()
+            if 'super' in role_lower or role_lower in ('sa',):
+                if own_row.sa_id and own_row.sa_id != '-':
+                    known_ids.add(own_row.sa_id)
+            elif 'agent' in role_lower:
+                if own_row.agent_id and own_row.agent_id != '-':
+                    known_ids.add(own_row.agent_id)
+    known_ids.discard('')
+    known_ids.discard('-')
+
+    # Include child SAs
+    child_sa_ids = []
+    for kid in list(known_ids):
+        child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+    all_ids = list(set(list(known_ids) + child_sa_ids))
+
+    # Personal players
+    stats = DailyPlayerStats.query.with_entities(
+        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+        sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(or_(
+        DailyPlayerStats.sa_id.in_(all_ids),
+        DailyPlayerStats.agent_id.in_(all_ids)
+    )).first()
+    player_count = stats[0] or 0
+    total_rake = round(float(stats[1] or 0), 2)
+    total_pnl = round(float(stats[2] or 0), 2)
+    total_hands = int(stats[3] or 0)
+
+    # Managed clubs - same logic as agent dashboard (line 396-473)
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+    if rake_cfgs:
+        from app.union_data import get_members_hierarchy
+        clubs_data, _ = get_members_hierarchy()
+        club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        for cfg in rake_cfgs:
+            club_name = club_id_to_name.get(cfg.managed_club_id, '')
+            if not club_name:
+                continue
+            club_stats = DailyPlayerStats.query.with_entities(
+                sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+                sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.pnl),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(DailyPlayerStats.club == club_name).first()
+            if club_stats and club_stats[0]:
+                player_count += (club_stats[0] or 0)
+                total_rake += round(float(club_stats[1] or 0), 2)
+                total_pnl += round(float(club_stats[2] or 0), 2)
+                total_hands += int(club_stats[3] or 0)
+
+    # Transfer adjustments
+    all_player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
+        sqlfunc.distinct(DailyPlayerStats.player_id)
+    ).filter(or_(
+        DailyPlayerStats.sa_id.in_(all_ids),
+        DailyPlayerStats.agent_id.in_(all_ids)
+    )).all()]
+    if all_player_ids:
+        xfer = get_transfer_adjustments(all_player_ids)
+        total_pnl = round(total_pnl + sum(xfer.values()), 2)
+
+    return {
+        'total_rake': total_rake, 'total_pnl': total_pnl,
+        'total_hands': total_hands, 'player_count': player_count,
+    }
+
+
 def get_transfer_adjustments(player_ids):
     """Returns dict of player_id → adjustment amount for PnL.
     Settlements: payer (from, minus) pays → their PnL goes up (+out);
