@@ -21,7 +21,7 @@ def index():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    if hasattr(current_user, 'role') and current_user.role == 'admin':
+    if hasattr(current_user, 'role') and current_user.role == 'admin' and not request.args.get('view_as'):
         from app.union_data import get_union_overview, get_cumulative_totals
         meta, _, _ = get_union_overview()
         ct = get_cumulative_totals()
