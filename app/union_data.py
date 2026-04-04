@@ -710,6 +710,38 @@ def get_cumulative_totals():
     }
 
 
+def get_transfer_adjustments(player_ids):
+    """Returns dict of player_id → adjustment amount for PnL.
+    Settlements: payer (from, minus) pays → their PnL goes up (+out);
+    receiver (to, plus) gets paid → their PnL goes down (-inc)."""
+    from app.models import MoneyTransfer, db
+    from sqlalchemy import func
+    if not player_ids:
+        return {}
+    pids = list(player_ids)
+    t_out = dict(db.session.query(
+        MoneyTransfer.from_player_id, func.sum(MoneyTransfer.amount)
+    ).filter(MoneyTransfer.from_player_id.in_(pids)
+    ).group_by(MoneyTransfer.from_player_id).all())
+    t_in = dict(db.session.query(
+        MoneyTransfer.to_player_id, func.sum(MoneyTransfer.amount)
+    ).filter(MoneyTransfer.to_player_id.in_(pids)
+    ).group_by(MoneyTransfer.to_player_id).all())
+    adjustments = {}
+    for pid in set(list(t_out.keys()) + list(t_in.keys())):
+        inc = float(t_in.get(pid, 0))
+        out = float(t_out.get(pid, 0))
+        adj = round(-inc + out, 2)
+        if adj != 0:
+            adjustments[pid] = adj
+    return adjustments
+
+
+def apply_transfer_adjustment(pnl, player_id, adjustments):
+    """Apply transfer adjustment to a raw PnL value."""
+    return round(pnl + adjustments.get(player_id, 0), 2)
+
+
 def get_player_balance(player_id):
     """Returns current balance: cumulative P&L + incoming transfers - outgoing transfers."""
     from app.models import MoneyTransfer
@@ -728,7 +760,7 @@ def get_player_balance(player_id):
         func.coalesce(func.sum(MoneyTransfer.amount), 0)
     ).filter_by(from_player_id=player_id).scalar()
 
-    return round(pnl + float(incoming) - float(outgoing), 2)
+    return round(pnl - float(incoming) + float(outgoing), 2)
 
 
 def get_all_balances(player_ids=None):
@@ -757,7 +789,7 @@ def get_all_balances(player_ids=None):
         pnl = pnl_map.get(pid, 0)
         inc = float(transfers_in.get(pid, 0))
         out = float(transfers_out.get(pid, 0))
-        balances[pid] = round(pnl + inc - out, 2)
+        balances[pid] = round(pnl - inc + out, 2)
 
     return balances
 

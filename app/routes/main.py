@@ -94,6 +94,10 @@ def dashboard():
                 DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
             ).group_by(DailyPlayerStats.player_id).all())
 
+            # Transfer adjustments
+            from app.union_data import get_transfer_adjustments
+            xfer_adj = get_transfer_adjustments([p[0] for p in club_players_db])
+
             # Build SA structure
             club_sas = {}
             no_sa = []
@@ -101,7 +105,7 @@ def dashboard():
             total_pnl = 0
             total_hands = 0
             for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val, hands_val in club_players_db:
-                p = round(float(pnl_val or 0), 2)
+                p = round(float(pnl_val or 0) + xfer_adj.get(pid, 0), 2)
                 r = round(float(rake_val or 0), 2)
                 h = int(hands_val or 0)
                 total_rake += r
@@ -159,7 +163,7 @@ def dashboard():
 
     if hasattr(current_user, 'role') and current_user.role == 'agent' and current_user.player_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy
-        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload
+        from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload, MoneyTransfer
         from sqlalchemy import func as sqlfunc
         from datetime import datetime as dt
         sa_id = current_user.player_id
@@ -262,6 +266,18 @@ def dashboard():
                 agents_map[ag_id]['total_hands'] += hands
             else:
                 direct_players.append(member)
+
+        # Adjust PnL by transfers (settlements)
+        from app.union_data import get_transfer_adjustments
+        xfer_adj = get_transfer_adjustments(all_my_player_ids)
+        for m in direct_players:
+            m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+        for ag in agents_map.values():
+            ag['total_pnl'] = 0
+            for m in ag['members']:
+                m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+                ag['total_pnl'] += m['pnl']
+            ag['total_pnl'] = round(ag['total_pnl'], 2)
 
         # Override child_sas Excel data with cumulative DB data
         from app.union_data import get_cumulative_stats
@@ -762,15 +778,20 @@ def export_agent_players():
     ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry'
     ).group_by(DailyPlayerStats.player_id).all()
 
+    # Get transfer adjustments for all players
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+
     # Group players by agent - each agent gets its own sheet
     agent_groups = {}  # agent_name -> [players]
     direct_players = []
     for p in players:
         ag_id = p[4] if p[4] and p[4] != '-' else None
         ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
+        raw_pnl = round(float(p[5] or 0), 2)
         row = {
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-            'P&L': round(float(p[5] or 0), 2),
+            'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[6] or 0), 2),
             'Hands': int(p[7] or 0),
         }
@@ -988,9 +1009,17 @@ def export_agent_period():
         DailyPlayerStats.role != 'Name Entry'
     ).group_by(DailyPlayerStats.player_id).all()
 
-    rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-             'P&L': round(float(p[3] or 0), 2), 'Rake': round(float(p[4] or 0), 2),
-             'Hands': int(p[5] or 0)} for p in players]
+    # Transfer adjustments
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+
+    rows = []
+    for p in players:
+        raw_pnl = round(float(p[3] or 0), 2)
+        rows.append({'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+                     'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
+                     'Rake': round(float(p[4] or 0), 2),
+                     'Hands': int(p[5] or 0)})
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
     return _make_excel({f'{from_date} - {to_date}': rows},
@@ -1053,6 +1082,8 @@ def export_club_report():
     ).group_by(DailyPlayerStats.player_id).all())
 
     import re
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
     sheets = {}
 
     # Group by SA - each SA gets its own sheet with all their players
@@ -1065,7 +1096,7 @@ def export_club_report():
         row = {
             'שחקן': p[1], 'ID': p[0],
             'Agent': ag_name,
-            'P&L': round(float(p[4] or 0), 2),
+            'P&L': round(float(p[4] or 0) + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[5] or 0), 2),
             'Hands': int(p[6] or 0),
         }
@@ -1207,8 +1238,11 @@ def export_club_period():
         DailyPlayerStats.role != 'Name Entry'
     ).group_by(DailyPlayerStats.player_id).all()
 
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
     rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-             'P&L': round(float(p[3] or 0), 2), 'Rake': round(float(p[4] or 0), 2),
+             'P&L': round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2),
+             'Rake': round(float(p[4] or 0), 2),
              'Hands': int(p[5] or 0)} for p in players]
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
@@ -1456,12 +1490,15 @@ def report_api():
     query = query.group_by(DailyPlayerStats.player_id)
     results = query.all()
 
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([r[0] for r in results])
+
     players = []
     total_pnl = 0
     total_rake = 0
     total_hands = 0
     for pid, nick, club, pnl, rake, hands in results:
-        p = round(float(pnl or 0), 2)
+        p = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
         r = round(float(rake or 0), 2)
         h = int(hands or 0)
         players.append({'player_id': pid, 'nickname': nick, 'club': club,

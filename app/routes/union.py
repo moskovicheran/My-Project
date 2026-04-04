@@ -150,7 +150,12 @@ def players():
     clubs, grand = get_members_hierarchy()
 
     # Override Excel pnl/rake with cumulative DB values
+    from app.union_data import get_transfer_adjustments
     cumulative = get_cumulative_stats()
+    # Collect all player IDs for transfer adjustments
+    all_pids = list(cumulative.keys())
+    xfer_adj = get_transfer_adjustments(all_pids)
+
     grand_pnl = 0
     grand_rake = 0
     for club in clubs:
@@ -161,21 +166,21 @@ def players():
                 for m in ag.get('members', []):
                     c = cumulative.get(m['player_id'])
                     if c:
-                        m['pnl_total'] = c['pnl']
+                        m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
                         m['rake_total'] = c['rake']
                     club_pnl += m['pnl_total']
                     club_rake += m['rake_total']
             for m in sa.get('direct_members', []):
                 c = cumulative.get(m['player_id'])
                 if c:
-                    m['pnl_total'] = c['pnl']
+                    m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
                     m['rake_total'] = c['rake']
                 club_pnl += m['pnl_total']
                 club_rake += m['rake_total']
         for m in club.get('no_sa_members', []):
             c = cumulative.get(m['player_id'])
             if c:
-                m['pnl_total'] = c['pnl']
+                m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
                 m['rake_total'] = c['rake']
             club_pnl += m['pnl_total']
             club_rake += m['rake_total']
@@ -218,10 +223,14 @@ def player_detail(player_id):
                                member=None, sessions=[], club_entries=[],
                                player_id=player_id)
 
+    # Transfer adjustment for this player
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([player_id])
+
     # Use cumulative data
     if cs:
         total_rake = cs['rake']
-        total_pnl = cs['pnl']
+        total_pnl = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
         total_hands = cs['hands']
         club_entries = [{'club': cs.get('club', member_info.get('club', '-')),
                         'pnl_total': cs['pnl'], 'rake_total': cs['rake'],

@@ -83,10 +83,14 @@ def agent_view(sa_id):
     ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids)
     ).group_by(DailyPlayerStats.player_id).all()
 
+    # Transfer adjustments
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in my_players_db])
+
     agents_map = {}
     direct_players = []
     for pid, nick, club, ag_id, role, pnl, rake, hands in my_players_db:
-        pnl = round(float(pnl or 0), 2)
+        pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
         rake = round(float(rake or 0), 2)
         hands = int(hands or 0)
         member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
