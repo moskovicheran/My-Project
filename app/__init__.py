@@ -33,6 +33,19 @@ def create_app():
 
     app.jinja_env.filters['enumerate'] = enumerate
 
+    @app.context_processor
+    def inject_last_upload():
+        from datetime import timedelta
+        from app.models import DailyUpload
+        try:
+            last = DailyUpload.query.order_by(DailyUpload.created_at.desc()).first()
+            if last and last.created_at:
+                il_time = last.created_at + timedelta(hours=3)
+                return {'last_upload_time': il_time.strftime('%d/%m/%Y %H:%M')}
+        except Exception:
+            pass
+        return {'last_upload_time': None}
+
     with app.app_context():
         try:
             db.create_all()

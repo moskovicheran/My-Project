@@ -37,6 +37,11 @@
     {% endif %}
 
     <main class="container">
+        {% if last_upload_time %}
+        <div style="text-align:center; font-size:0.75rem; color:#888; padding:0.3rem 0; margin-bottom:0.2rem;">
+            עדכון אחרון בוצע ב-{{ last_upload_time }}
+        </div>
+        {% endif %}
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
