@@ -283,8 +283,6 @@ def dashboard():
         # (agent may be under a different SA but their players need to be included)
         if agents_map:
             found_agent_ids = list(agents_map.keys())
-            import logging
-            logging.warning(f'[MISSING_PLAYERS] sa_id={sa_id} agents_map_keys={found_agent_ids} all_my_player_ids_count={len(all_my_player_ids)}')
             missing_players = DailyPlayerStats.query.with_entities(
                 DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
                 sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
@@ -295,7 +293,6 @@ def dashboard():
                 DailyPlayerStats.agent_id.in_(found_agent_ids),
                 DailyPlayerStats.player_id.notin_(list(all_my_player_ids))
             ).group_by(DailyPlayerStats.player_id).all()
-            logging.warning(f'[MISSING_PLAYERS] found {len(missing_players)} missing: {[(p[0], p[1], p[3]) for p in missing_players[:10]]}')
             for pid, nick, club, ag_id, role, pnl, rake, hands in missing_players:
                 if (role or '').lower() in ('name entry',):
                     continue
