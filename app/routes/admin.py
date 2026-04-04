@@ -53,27 +53,55 @@ def overview():
         known_ids.discard('-')
         id_list = list(known_ids)
 
+        # Include child SAs in the search
+        child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=uid).all()]
+        for kid in list(known_ids):
+            child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+        all_ids = list(set(id_list + child_sa_ids))
+
         stats = DailyPlayerStats.query.with_entities(
             sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
             sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.pnl),
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(or_(
-            DailyPlayerStats.sa_id.in_(id_list),
-            DailyPlayerStats.agent_id.in_(id_list)
+            DailyPlayerStats.sa_id.in_(all_ids),
+            DailyPlayerStats.agent_id.in_(all_ids)
         )).first()
         player_count = stats[0] or 0
         rake = round(float(stats[1] or 0), 2)
         pnl = round(float(stats[2] or 0), 2)
         hands = int(stats[3] or 0)
 
+        # Add managed clubs rake
+        from app.models import SARakeConfig
+        managed_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+        if managed_cfgs:
+            from app.union_data import get_members_hierarchy
+            clubs_data, _ = get_members_hierarchy()
+            club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+            for cfg in managed_cfgs:
+                club_name = club_id_to_name.get(cfg.managed_club_id, '')
+                if club_name:
+                    club_stats = DailyPlayerStats.query.with_entities(
+                        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+                        sqlfunc.sum(DailyPlayerStats.rake),
+                        sqlfunc.sum(DailyPlayerStats.pnl),
+                        sqlfunc.sum(DailyPlayerStats.hands),
+                    ).filter(DailyPlayerStats.club == club_name).first()
+                    if club_stats and club_stats[0]:
+                        player_count += (club_stats[0] or 0)
+                        rake += round(float(club_stats[1] or 0), 2)
+                        pnl += round(float(club_stats[2] or 0), 2)
+                        hands += int(club_stats[3] or 0)
+
         # Transfer adjustments
         if player_count > 0:
             player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
                 sqlfunc.distinct(DailyPlayerStats.player_id)
             ).filter(or_(
-                DailyPlayerStats.sa_id.in_(id_list),
-                DailyPlayerStats.agent_id.in_(id_list)
+                DailyPlayerStats.sa_id.in_(all_ids),
+                DailyPlayerStats.agent_id.in_(all_ids)
             )).all()]
             xfer_adj = get_transfer_adjustments(player_ids)
             pnl = round(pnl + sum(xfer_adj.values()), 2)
