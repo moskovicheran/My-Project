@@ -705,8 +705,26 @@ def logins():
             browser = '-'
         return device, browser
 
+    import urllib.request, json
+
+    def get_ip_city(ip):
+        if not ip or ip.startswith('127.') or ip.startswith('192.168.'):
+            return '-'
+        try:
+            resp = urllib.request.urlopen(f'https://ipinfo.io/{ip}/json', timeout=3)
+            data = json.loads(resp.read())
+            return data.get('city', '-')
+        except Exception:
+            return '-'
+
     logs = LoginLog.query.order_by(LoginLog.created_at.desc()).limit(100).all()
+    # Cache IP→city to avoid duplicate lookups
+    ip_city_cache = {}
     for log in logs:
         log.created_at = log.created_at + timedelta(hours=3)
         log.device, log.browser = parse_ua(log.user_agent)
+        ip = log.ip_address
+        if ip not in ip_city_cache:
+            ip_city_cache[ip] = get_ip_city(ip)
+        log.city = ip_city_cache[ip]
     return render_template('admin/logins.html', logs=logs)

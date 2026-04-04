@@ -13,6 +13,7 @@
                 <th>משתמש</th>
                 <th>תפקיד</th>
                 <th>כתובת IP</th>
+                <th>עיר</th>
                 <th>מכשיר</th>
                 <th>דפדפן</th>
             </tr>
@@ -28,6 +29,7 @@
                     </span>
                 </td>
                 <td class="muted">{{ log.ip_address or '-' }}</td>
+                <td class="muted">{{ log.city or '-' }}</td>
                 <td class="muted">{{ log.device or '-' }}</td>
                 <td class="muted" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ log.browser or '-' }}</td>
             </tr>
