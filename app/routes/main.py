@@ -403,8 +403,6 @@ def dashboard():
                     DailyPlayerStats.role != 'Name Entry'
                 ).group_by(DailyPlayerStats.player_id).all()
                 for pid, nick, role, pnl, rake, hands in db_members:
-                    if pid == ag_id:
-                        continue  # skip the agent themselves
                     ag['members'].append({
                         'player_id': pid, 'nickname': nick, 'role': role or 'Player',
                         'pnl': round(float(pnl or 0), 2),
