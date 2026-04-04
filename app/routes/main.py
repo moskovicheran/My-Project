@@ -437,6 +437,27 @@ def dashboard():
                         'hands': int(hands or 0),
                     })
 
+        # Recalculate totals for child_sas after adding missing agents/players
+        for cs in child_sas:
+            cs_rake = cs_pnl = cs_hands = 0
+            for m in cs.get('direct', []):
+                cs_rake += m.get('rake', 0)
+                cs_pnl += m.get('pnl', 0)
+                cs_hands += m.get('hands', 0)
+            for ag in cs.get('agents', {}).values():
+                ag_r = sum(m.get('rake', 0) for m in ag.get('members', []))
+                ag_p = sum(m.get('pnl', 0) for m in ag.get('members', []))
+                ag_h = sum(m.get('hands', 0) for m in ag.get('members', []))
+                ag['total_rake'] = round(ag_r, 2)
+                ag['total_pnl'] = round(ag_p, 2)
+                ag['total_hands'] = ag_h
+                cs_rake += ag_r
+                cs_pnl += ag_p
+                cs_hands += ag_h
+            cs['total_rake'] = round(cs_rake, 2)
+            cs['total_pnl'] = round(cs_pnl, 2)
+            cs['total_hands'] = cs_hands
+
         # Find agent nicknames from Excel
         for sa in my_sas + child_sas:
             for ag_id, ag in sa.get('agents', {}).items():
