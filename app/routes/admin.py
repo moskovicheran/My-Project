@@ -668,5 +668,8 @@ def reports():
 @admin_bp.route('/logins')
 @admin_required
 def logins():
+    from datetime import timedelta
     logs = LoginLog.query.order_by(LoginLog.created_at.desc()).limit(100).all()
+    for log in logs:
+        log.created_at = log.created_at + timedelta(hours=3)
     return render_template('admin/logins.html', logs=logs)
