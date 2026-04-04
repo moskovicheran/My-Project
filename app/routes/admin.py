@@ -74,39 +74,6 @@ def overview():
         pnl = round(float(stats[2] or 0), 2)
         hands = int(stats[3] or 0)
 
-        # Managed clubs - add only players NOT already counted
-        from app.models import SARakeConfig
-        managed_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
-        if managed_cfgs:
-            # Get IDs already counted
-            already_counted = set(r[0] for r in DailyPlayerStats.query.with_entities(
-                sqlfunc.distinct(DailyPlayerStats.player_id)
-            ).filter(or_(
-                DailyPlayerStats.sa_id.in_(all_ids),
-                DailyPlayerStats.agent_id.in_(all_ids)
-            )).all())
-
-            from app.union_data import get_members_hierarchy
-            clubs_data, _ = get_members_hierarchy()
-            club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
-            for cfg in managed_cfgs:
-                club_name = club_id_to_name.get(cfg.managed_club_id, '')
-                if club_name:
-                    club_players = DailyPlayerStats.query.with_entities(
-                        DailyPlayerStats.player_id,
-                        sqlfunc.sum(DailyPlayerStats.rake),
-                        sqlfunc.sum(DailyPlayerStats.pnl),
-                        sqlfunc.sum(DailyPlayerStats.hands),
-                    ).filter(DailyPlayerStats.club == club_name
-                    ).group_by(DailyPlayerStats.player_id).all()
-                    for cp in club_players:
-                        if cp[0] not in already_counted:
-                            player_count += 1
-                            rake += round(float(cp[1] or 0), 2)
-                            pnl += round(float(cp[2] or 0), 2)
-                            hands += int(cp[3] or 0)
-                            already_counted.add(cp[0])
-
         # Transfer adjustments
         all_player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
             sqlfunc.distinct(DailyPlayerStats.player_id)
