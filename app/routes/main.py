@@ -367,7 +367,28 @@ def dashboard():
                 cs['total_pnl'] = round(cs_pnl, 2)
                 cs['total_hands'] = cs_hands
 
-        # Fetch missing players for agents in child_sas from DB
+        # Fetch missing agents and players for child_sas from DB
+        for cs in child_sas:
+            sa_id_val = cs.get('sa_id')
+            if sa_id_val:
+                existing_agent_ids = set(cs.get('agents', {}).keys())
+                # Find agents in DB that are missing from Excel
+                db_agents = DailyPlayerStats.query.with_entities(
+                    sqlfunc.distinct(DailyPlayerStats.agent_id)
+                ).filter(
+                    DailyPlayerStats.sa_id == sa_id_val,
+                    DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id != '-',
+                    DailyPlayerStats.agent_id != sa_id_val,
+                ).all()
+                all_nicks_map = dict(DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+                ).group_by(DailyPlayerStats.player_id).all())
+                for (ag_id_db,) in db_agents:
+                    if ag_id_db not in existing_agent_ids:
+                        ag_nick = all_nicks_map.get(ag_id_db, ag_id_db)
+                        cs['agents'][ag_id_db] = {'id': ag_id_db, 'nick': ag_nick, 'members': [],
+                                                   'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
+
         for cs in child_sas:
             for ag_id, ag in cs.get('agents', {}).items():
                 existing_pids = set(m['player_id'] for m in ag.get('members', []))
