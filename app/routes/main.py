@@ -414,7 +414,8 @@ def dashboard():
                 ).group_by(DailyPlayerStats.player_id).all())
 
                 # Get ALL players in this club from cumulative DB
-                club_filters = [DailyPlayerStats.club == club_name]
+                club_filters = [DailyPlayerStats.club == club_name,
+                                DailyPlayerStats.role != 'Name Entry']
                 if upload_ids_filter:
                     club_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
                 club_players_db = DailyPlayerStats.query.with_entities(
