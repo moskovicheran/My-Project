@@ -258,9 +258,18 @@ def dashboard():
         ).group_by(DailyPlayerStats.player_id).all()
 
         # Build agent structure from DB data
+        # First, get actual sa_id per player (for correct direct player filtering)
+        player_sa_lookup = dict(DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.sa_id)
+        ).filter(or_(
+            DailyPlayerStats.sa_id.in_(all_sa_ids),
+            DailyPlayerStats.agent_id.in_(all_sa_ids)
+        )).group_by(DailyPlayerStats.player_id).all())
+
         all_my_player_ids = set()
         agents_map = {}  # agent_id -> {nick, members, totals}
         direct_players = []
+        child_sa_players = []  # players under child SAs, not direct
         for pid, nick, club, ag_id, role, pnl, rake, hands in my_players_db:
             pnl = round(float(pnl or 0), 2)
             rake = round(float(rake or 0), 2)
@@ -277,7 +286,11 @@ def dashboard():
                 agents_map[ag_id]['total_rake'] += rake
                 agents_map[ag_id]['total_hands'] += hands
             else:
-                direct_players.append(member)
+                # Only add as direct if their sa_id is directly ours (not a child SA)
+                actual_sa = player_sa_lookup.get(pid, '')
+                if actual_sa in known_ids:
+                    direct_players.append(member)
+                # else: belongs to child SA, will be handled by child_sas section
 
         # Fetch missing players for agents found in the initial query
         # (agent may be under a different SA, or agent is also an SA with direct players)
