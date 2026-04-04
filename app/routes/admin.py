@@ -28,20 +28,56 @@ def overview():
     ct = get_cumulative_totals()
     meta['period'] = ct['period']
 
-    # Agent stats
+    # Agent stats - resolve all known IDs like the agent dashboard does
+    from sqlalchemy import or_
+    from app.union_data import get_transfer_adjustments
     agent_users = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
     agents_data = []
     for u in agent_users:
+        uid = u.player_id
+        known_ids = {uid}
+        # Resolve actual SA/Agent ID if player_id doesn't match directly
+        is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == uid).first() is not None
+        is_ag = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == uid).first() is not None
+        if not is_sa and not is_ag:
+            own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == uid).first()
+            if own_row:
+                role_lower = (own_row.role or '').lower()
+                if 'super' in role_lower or role_lower in ('sa',):
+                    if own_row.sa_id and own_row.sa_id != '-':
+                        known_ids.add(own_row.sa_id)
+                elif 'agent' in role_lower:
+                    if own_row.agent_id and own_row.agent_id != '-':
+                        known_ids.add(own_row.agent_id)
+        known_ids.discard('')
+        known_ids.discard('-')
+        id_list = list(known_ids)
+
         stats = DailyPlayerStats.query.with_entities(
             sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
             sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.pnl),
             sqlfunc.sum(DailyPlayerStats.hands),
-        ).filter(DailyPlayerStats.sa_id == u.player_id).first()
+        ).filter(or_(
+            DailyPlayerStats.sa_id.in_(id_list),
+            DailyPlayerStats.agent_id.in_(id_list)
+        )).first()
         player_count = stats[0] or 0
         rake = round(float(stats[1] or 0), 2)
         pnl = round(float(stats[2] or 0), 2)
         hands = int(stats[3] or 0)
+
+        # Transfer adjustments
+        if player_count > 0:
+            player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
+                sqlfunc.distinct(DailyPlayerStats.player_id)
+            ).filter(or_(
+                DailyPlayerStats.sa_id.in_(id_list),
+                DailyPlayerStats.agent_id.in_(id_list)
+            )).all()]
+            xfer_adj = get_transfer_adjustments(player_ids)
+            pnl = round(pnl + sum(xfer_adj.values()), 2)
+
         agents_data.append({
             'username': u.username, 'player_id': u.player_id,
             'players': player_count, 'rake': rake, 'pnl': pnl, 'hands': hands,
