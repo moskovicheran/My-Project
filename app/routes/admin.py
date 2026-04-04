@@ -668,8 +668,45 @@ def reports():
 @admin_bp.route('/logins')
 @admin_required
 def logins():
+    import re
     from datetime import timedelta
+
+    def parse_ua(ua):
+        if not ua:
+            return '-', '-'
+        # Device
+        if 'iPhone' in ua:
+            device = 'iPhone'
+        elif 'iPad' in ua:
+            device = 'iPad'
+        elif 'Android' in ua:
+            m = re.search(r'Android[^;]*;\s*([^)]+)', ua)
+            device = m.group(1).strip().split(' Build')[0] if m else 'Android'
+        elif 'Macintosh' in ua:
+            device = 'Mac'
+        elif 'Windows' in ua:
+            device = 'Windows PC'
+        elif 'Linux' in ua:
+            device = 'Linux PC'
+        else:
+            device = '-'
+        # Browser
+        if 'Edg/' in ua:
+            browser = 'Edge'
+        elif 'OPR/' in ua or 'Opera' in ua:
+            browser = 'Opera'
+        elif 'Chrome/' in ua and 'Safari/' in ua:
+            browser = 'Chrome'
+        elif 'Safari/' in ua and 'Chrome' not in ua:
+            browser = 'Safari'
+        elif 'Firefox/' in ua:
+            browser = 'Firefox'
+        else:
+            browser = '-'
+        return device, browser
+
     logs = LoginLog.query.order_by(LoginLog.created_at.desc()).limit(100).all()
     for log in logs:
         log.created_at = log.created_at + timedelta(hours=3)
+        log.device, log.browser = parse_ua(log.user_agent)
     return render_template('admin/logins.html', logs=logs)
