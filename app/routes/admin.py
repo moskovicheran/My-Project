@@ -98,6 +98,33 @@ def agent_view(sa_id):
         else:
             direct_players.append(member)
 
+    # Fetch missing players for agents found in the initial query
+    if agents_map:
+        found_agent_ids = list(agents_map.keys())
+        all_found_pids = set(p[0] for p in my_players_db)
+        missing_players = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+            sqlfunc.max(DailyPlayerStats.role),
+            sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(
+            DailyPlayerStats.agent_id.in_(found_agent_ids),
+            DailyPlayerStats.player_id.notin_(list(all_found_pids))
+        ).group_by(DailyPlayerStats.player_id).all()
+        for pid, nick, club, ag_id, role, pnl, rake, hands in missing_players:
+            if (role or '').lower() in ('name entry',):
+                continue
+            pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
+            rake = round(float(rake or 0), 2)
+            hands = int(hands or 0)
+            member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
+            if ag_id in agents_map:
+                agents_map[ag_id]['members'].append(member)
+                agents_map[ag_id]['total_pnl'] += pnl
+                agents_map[ag_id]['total_rake'] += rake
+                agents_map[ag_id]['total_hands'] += hands
+
     # Agent nicknames from Excel
     for sa in my_sas + child_sas:
         for ag_id, ag in sa.get('agents', {}).items():

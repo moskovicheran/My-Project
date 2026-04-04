@@ -756,7 +756,37 @@ def get_agent_totals(player_id):
     total_pnl = round(float(stats[2] or 0), 2)
     total_hands = int(stats[3] or 0)
 
-    # Managed clubs - same logic as agent dashboard (line 396-473)
+    # Fetch missing players for agents found in the initial query
+    initial_pids = set(r[0] for r in DailyPlayerStats.query.with_entities(
+        sqlfunc.distinct(DailyPlayerStats.player_id)
+    ).filter(or_(
+        DailyPlayerStats.sa_id.in_(all_ids),
+        DailyPlayerStats.agent_id.in_(all_ids)
+    )).all())
+    found_agent_ids = set(r[0] for r in DailyPlayerStats.query.with_entities(
+        sqlfunc.distinct(DailyPlayerStats.agent_id)
+    ).filter(or_(
+        DailyPlayerStats.sa_id.in_(all_ids),
+        DailyPlayerStats.agent_id.in_(all_ids)
+    ), DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id != '-').all())
+    if found_agent_ids:
+        extra = DailyPlayerStats.query.with_entities(
+            sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+            sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(
+            DailyPlayerStats.agent_id.in_(list(found_agent_ids)),
+            DailyPlayerStats.player_id.notin_(list(initial_pids)),
+            DailyPlayerStats.role != 'Name Entry'
+        ).first()
+        if extra and extra[0]:
+            player_count += extra[0]
+            total_rake += round(float(extra[1] or 0), 2)
+            total_pnl += round(float(extra[2] or 0), 2)
+            total_hands += int(extra[3] or 0)
+
+    # Managed clubs - same logic as agent dashboard
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
     if rake_cfgs:
         from app.union_data import get_members_hierarchy
