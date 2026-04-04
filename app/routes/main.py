@@ -524,6 +524,10 @@ def dashboard():
 
         player_id = current_user.player_id
         cs = get_cumulative_stats([player_id]).get(player_id)
+        if cs:
+            from app.union_data import get_transfer_adjustments
+            xfer_adj = get_transfer_adjustments([player_id])
+            cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
         sessions = PlayerSession.query.filter_by(player_id=player_id).all()
         session_list = [{'table_name': s.table_name, 'game_type': s.game_type,
                          'blinds': s.blinds or '', 'pnl': round(s.pnl, 2)} for s in sessions]
