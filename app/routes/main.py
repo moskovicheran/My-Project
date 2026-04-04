@@ -818,6 +818,10 @@ def export_player(player_id):
         flash('שחקן לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
 
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([player_id])
+    cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
+
     sessions = PlayerSession.query.filter_by(player_id=player_id).all()
     session_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
                      'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
@@ -844,12 +848,21 @@ def export_agent_account():
 
     sa_id = current_user.player_id
 
-    # Personal rake
+    # Personal rake + transfer adjustments
+    from app.union_data import get_transfer_adjustments
+    from sqlalchemy import or_
     personal = DailyPlayerStats.query.with_entities(
         sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.pnl)
     ).filter(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.role != 'Name Entry').first()
     personal_rake = round(float(personal[0] or 0), 2)
     personal_pnl = round(float(personal[1] or 0), 2)
+    # Adjust PnL by transfers
+    all_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
+        sqlfunc.distinct(DailyPlayerStats.player_id)
+    ).filter(or_(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.agent_id == sa_id)).all()]
+    if all_pids:
+        xfer_adj = get_transfer_adjustments(all_pids)
+        personal_pnl = round(personal_pnl + sum(xfer_adj.values()), 2)
 
     # Club rakes
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
@@ -1101,10 +1114,13 @@ def export_agent_club(club_id):
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
 
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+
     rows = [{'שחקן': p[1], 'ID': p[0],
              'Super Agent': all_nicks.get(p[2], p[2]) if p[2] and p[2] != '-' else '',
              'Agent': all_nicks.get(p[3], p[3]) if p[3] and p[3] != '-' else '',
-             'תפקיד': p[4], 'P&L': round(float(p[5] or 0), 2),
+             'תפקיד': p[4], 'P&L': round(float(p[5] or 0) + xfer_adj.get(p[0], 0), 2),
              'Rake': round(float(p[6] or 0), 2), 'Hands': int(p[7] or 0)} for p in players]
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 

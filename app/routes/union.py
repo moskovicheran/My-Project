@@ -105,6 +105,8 @@ def agents():
                 all_pids.add(m['player_id'])
     if all_pids:
         cumul = get_cumulative_stats(list(all_pids))
+        from app.union_data import get_transfer_adjustments
+        xfer_adj = get_transfer_adjustments(list(all_pids))
         for sa in sa_tables:
             sa_rake = 0
             sa_pnl = 0
@@ -112,7 +114,7 @@ def agents():
             for m in sa.get('direct', []):
                 c = cumul.get(m['player_id'])
                 if c:
-                    m['pnl'] = c['pnl']
+                    m['pnl'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
                     m['rake'] = c['rake']
                     m['hands'] = c.get('hands', 0)
                 sa_rake += m.get('rake', 0)
@@ -125,7 +127,7 @@ def agents():
                 for m in ag.get('members', []):
                     c = cumul.get(m['player_id'])
                     if c:
-                        m['pnl'] = c['pnl']
+                        m['pnl'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
                         m['rake'] = c['rake']
                         m['hands'] = c.get('hands', 0)
                     ag_rake += m.get('rake', 0)
