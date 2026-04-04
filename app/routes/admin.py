@@ -105,25 +105,27 @@ def agent_view(sa_id):
         missing_players = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
             sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+            sqlfunc.max(DailyPlayerStats.sa_id),
             sqlfunc.max(DailyPlayerStats.role),
             sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(
-            DailyPlayerStats.agent_id.in_(found_agent_ids),
-            DailyPlayerStats.player_id.notin_(list(all_found_pids))
+            or_(DailyPlayerStats.agent_id.in_(found_agent_ids),
+                DailyPlayerStats.sa_id.in_(found_agent_ids)),
+            DailyPlayerStats.player_id.notin_(list(all_found_pids)),
+            DailyPlayerStats.role != 'Name Entry'
         ).group_by(DailyPlayerStats.player_id).all()
-        for pid, nick, club, ag_id, role, pnl, rake, hands in missing_players:
-            if (role or '').lower() in ('name entry',):
-                continue
+        for pid, nick, club, ag_id, sa_id_val, role, pnl, rake, hands in missing_players:
             pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
             rake = round(float(rake or 0), 2)
             hands = int(hands or 0)
             member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
-            if ag_id in agents_map:
-                agents_map[ag_id]['members'].append(member)
-                agents_map[ag_id]['total_pnl'] += pnl
-                agents_map[ag_id]['total_rake'] += rake
-                agents_map[ag_id]['total_hands'] += hands
+            target_ag = ag_id if ag_id in agents_map else (sa_id_val if sa_id_val in agents_map else None)
+            if target_ag:
+                agents_map[target_ag]['members'].append(member)
+                agents_map[target_ag]['total_pnl'] += pnl
+                agents_map[target_ag]['total_rake'] += rake
+                agents_map[target_ag]['total_hands'] += hands
 
     # Agent nicknames from Excel
     for sa in my_sas + child_sas:
