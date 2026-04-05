@@ -73,6 +73,11 @@
                     </form>
                     {% else %}
                     <span class="muted small">{{ exp.charges|length }} חויבו</span>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק הוצאה שכבר חויבה? החיובים יימחקו גם.');">
+                        <input type="hidden" name="action" value="force_delete">
+                        <input type="hidden" name="expense_id" value="{{ exp.id }}">
+                        <button type="submit" class="btn btn-outline btn-sm" style="color:#ef233c; font-size:0.7rem;">🗑</button>
+                    </form>
                     {% endif %}
                 </td>
             </tr>

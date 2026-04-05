@@ -757,6 +757,15 @@ def expenses():
                     flash('הוצאה נמחקה.', 'success')
                 elif exp and exp.charged:
                     flash('לא ניתן למחוק הוצאה שכבר חויבה.', 'warning')
+
+            elif action == 'force_delete':
+                exp_id = request.form.get('expense_id')
+                exp = SharedExpense.query.get(exp_id)
+                if exp:
+                    ExpenseCharge.query.filter_by(expense_id=exp.id).delete()
+                    db.session.delete(exp)
+                    db.session.commit()
+                    flash('הוצאה וכל החיובים שלה נמחקו.', 'success')
         except Exception as e:
             db.session.rollback()
             flash(f'שגיאה: {str(e)[:100]}', 'danger')
