@@ -19,11 +19,11 @@
     </div>
     <div class="stat-card income">
         <div class="stat-label">סה"כ רייק</div>
-        <div class="stat-value">{{ "%.2f"|format(grand.rake) }}</div>
+        <div class="stat-value">{{ grand.rake|comma }}</div>
     </div>
     <div class="stat-card {% if grand.pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">רווח / הפסד</div>
-        <div class="stat-value">{% if grand.pnl > 0 %}+{% endif %}{{ "%.2f"|format(grand.pnl) }}</div>
+        <div class="stat-value">{% if grand.pnl > 0 %}+{% endif %}{{ grand.pnl|comma }}</div>
     </div>
 </div>
 
@@ -40,9 +40,9 @@
         </div>
         <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
             <span class="summary-chip" style="background:#eef0ff; color:#4361ee;">{{ club.active_players|default(0) }} שחקנים</span>
-            <span class="summary-chip chip-win">R {{ "%.2f"|format(club.total_rake|default(0)) }}</span>
+            <span class="summary-chip chip-win">R {{ club.total_rake|default(0)|comma }}</span>
             <span class="summary-chip {% if club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                רווח/הפסד {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(club.total_pnl|default(0)) }}
+                רווח/הפסד {% if club.total_pnl|default(0) > 0 %}+{% endif %}{{ club.total_pnl|default(0)|comma }}
             </span>
         </div>
     </div>
@@ -75,9 +75,9 @@
                         {% set sa_rake.v = sa_rake.v + m.rake_total %}
                         {% set sa_pnl.v = sa_pnl.v + m.pnl_total %}
                     {% endfor %}
-                    <span class="summary-chip chip-win">R {{ "%.2f"|format(sa_rake.v) }}</span>
+                    <span class="summary-chip chip-win">R {{ sa_rake.v|comma }}</span>
                     <span class="summary-chip {% if sa_pnl.v >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                        רווח/הפסד {% if sa_pnl.v > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl.v) }}
+                        רווח/הפסד {% if sa_pnl.v > 0 %}+{% endif %}{{ sa_pnl.v|comma }}
                     </span>
                 </div>
             </div>
@@ -95,9 +95,9 @@
                             <span class="muted small">{{ agent.members|length }} שחקנים</span>
                         </div>
                         <div style="display:flex; gap:0.3rem;">
-                            <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(cag_rake) }}</span>
+                            <span class="summary-chip chip-win chip-sm">R {{ cag_rake|comma }}</span>
                             <span class="summary-chip {% if cag_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
-                                רווח/הפסד {% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}
+                                רווח/הפסד {% if cag_pnl > 0 %}+{% endif %}{{ cag_pnl|comma }}
                             </span>
                         </div>
                     </div>
@@ -109,9 +109,9 @@
                                 {% for m in agent.members %}
                                 <tr>
                                     <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                    <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                                    <td class="amount income">{{ m.rake_total|comma }}</td>
                                     <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                                        {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                        {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                                     </td>
                                     <td class="player-actions">
                                         <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -126,9 +126,9 @@
                             <tfoot>
                                 <tr class="total-row">
                                     <td><strong>סה"כ</strong></td>
-                                    <td class="amount income"><strong>{{ "%.2f"|format(cag_rake) }}</strong></td>
+                                    <td class="amount income"><strong>{{ cag_rake|comma }}</strong></td>
                                     <td class="amount {% if cag_pnl >= 0 %}income{% else %}expense{% endif %}">
-                                        <strong>{% if cag_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cag_pnl) }}</strong>
+                                        <strong>{% if cag_pnl > 0 %}+{% endif %}{{ cag_pnl|comma }}</strong>
                                     </td>
                                     <td></td>
                                 </tr>
@@ -150,9 +150,9 @@
                             {% for m in sa.direct_members %}
                             <tr>
                                 <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                                <td class="amount income">{{ m.rake_total|comma }}</td>
                                 <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                                    {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                    {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                                 </td>
                                 <td class="player-actions">
                                     <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -183,9 +183,9 @@
                     {% for m in club.no_sa_members %}
                     <tr>
                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount income">{{ m.rake_total|comma }}</td>
                         <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                            {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                         </td>
                         <td class="player-actions">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>

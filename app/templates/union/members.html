@@ -35,8 +35,8 @@
                     <td><strong>{{ m.nickname }}</strong></td>
                     <td class="muted">{{ m.club }}</td>
                     <td>{{ "{:,}".format(m.hands_total|int) }}</td>
-                    <td>{{ "%.2f"|format(m.rake_total) }}</td>
-                    <td class="amount income">+{{ "%.2f"|format(m.pnl_total) }}</td>
+                    <td>{{ m.rake_total|comma }}</td>
+                    <td class="amount income">+{{ m.pnl_total|comma }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -63,8 +63,8 @@
                     <td><strong>{{ m.nickname }}</strong></td>
                     <td class="muted">{{ m.club }}</td>
                     <td>{{ "{:,}".format(m.hands_total|int) }}</td>
-                    <td>{{ "%.2f"|format(m.rake_total) }}</td>
-                    <td class="amount expense">{{ "%.2f"|format(m.pnl_total) }}</td>
+                    <td>{{ m.rake_total|comma }}</td>
+                    <td class="amount expense">{{ m.pnl_total|comma }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

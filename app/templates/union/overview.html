@@ -30,7 +30,7 @@
     </div>
     <div class="stat-card {% if total.pnl >= 0 %}positive{% else %}negative{% endif %}">
         <div class="stat-label">Total Fee</div>
-        <div class="stat-value">{{ "%.2f"|format(total.total_fee) }}</div>
+        <div class="stat-value">{{ total.total_fee|comma }}</div>
     </div>
 </div>
 
@@ -59,9 +59,9 @@
                 <td>{{ club.master_nickname }}</td>
                 <td>{{ club.active_players }}</td>
                 <td>{{ "{:,}".format(club.total_hands|int) }}</td>
-                <td>{{ "%.2f"|format(club.total_fee) }}</td>
+                <td>{{ club.total_fee|comma }}</td>
                 <td class="amount {% if club.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if club.pnl >= 0 %}+{% endif %}{{ "%.2f"|format(club.pnl) }}
+                    {% if club.pnl >= 0 %}+{% endif %}{{ club.pnl|comma }}
                 </td>
             </tr>
             {% endif %}
@@ -72,9 +72,9 @@
                 <td colspan="4"><strong>TOTAL</strong></td>
                 <td><strong>{{ total.active_players }}</strong></td>
                 <td><strong>{{ "{:,}".format(total.total_hands|int) }}</strong></td>
-                <td><strong>{{ "%.2f"|format(total.total_fee) }}</strong></td>
+                <td><strong>{{ total.total_fee|comma }}</strong></td>
                 <td class="amount {% if total.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if total.pnl >= 0 %}+{% endif %}{{ "%.2f"|format(total.pnl) }}</strong>
+                    <strong>{% if total.pnl >= 0 %}+{% endif %}{{ total.pnl|comma }}</strong>
                 </td>
             </tr>
         </tfoot>

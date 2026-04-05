@@ -24,7 +24,7 @@
                 {% set bal = balances.get(p.player_id, 0) %}
                 {% if bal < 0 %}
                 <option value="{{ p.player_id }}|{{ p.nickname }}" data-balance="{{ bal|abs }}">
-                    {{ p.nickname }} — חוב: {{ "%.2f"|format(bal|abs) }}
+                    {{ p.nickname }} — חוב: {{ bal|abs|comma }}
                 </option>
                 {% endif %}
                 {% endfor %}
@@ -43,7 +43,7 @@
                 {% set bal = balances.get(p.player_id, 0) %}
                 {% if bal > 0 %}
                 <option value="{{ p.player_id }}|{{ p.nickname }}" data-balance="{{ bal }}">
-                    {{ p.nickname }} — זכות: {{ "%.2f"|format(bal) }}
+                    {{ p.nickname }} — זכות: {{ bal|comma }}
                 </option>
                 {% endif %}
                 {% endfor %}
@@ -88,7 +88,7 @@
                 <td class="muted">{{ t.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
                 <td><strong>{{ t.from_name }}</strong></td>
                 <td><strong>{{ t.to_name }}</strong></td>
-                <td class="amount income">{{ "%.2f"|format(t.amount) }}</td>
+                <td class="amount income">{{ t.amount|comma }}</td>
                 <td class="muted">{{ t.description or '-' }}</td>
                 <td>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק העברה זו?');">

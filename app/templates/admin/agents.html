@@ -409,13 +409,13 @@ function doTransfer(type, entityId, targetId) {
                 <td><strong>{{ sa.nick }}</strong> <span class="muted small">{{ sa.id }}</span></td>
                 <td class="muted">{{ sa.club }}</td>
                 <td>{{ "{:,}".format(total_hands|int) }}</td>
-                <td class="amount income">{{ "%.2f"|format(total_rake) }}</td>
+                <td class="amount income">{{ total_rake|comma }}</td>
                 <td>{% if pct > 0 %}<strong>{{ pct }}%</strong>{% else %}<span class="muted">-</span>{% endif %}</td>
                 <td class="amount {% if net_rake > 0 %}income{% endif %}">
-                    {% if pct > 0 %}{{ "%.2f"|format(net_rake) }}{% else %}-{% endif %}
+                    {% if pct > 0 %}{{ net_rake|comma }}{% else %}-{% endif %}
                 </td>
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}
+                    {% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}
                 </td>
             </tr>
             {% endif %}

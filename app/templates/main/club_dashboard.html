@@ -245,15 +245,15 @@ function updateDpInfo() {
     </div>
     <div class="stat-card income">
         <div class="stat-label">רייק כולל</div>
-        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+        <div class="stat-value">{{ total_rake|comma }}</div>
     </div>
     <div class="stat-card income">
-        <div class="stat-label">רייק נטו ({{ "%.0f"|format(rake_pct) }}%)</div>
-        <div class="stat-value">{{ "%.2f"|format(net_rake) }}</div>
+        <div class="stat-label">רייק נטו ({{ rake_pct|comma }}%)</div>
+        <div class="stat-value">{{ net_rake|comma }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">סך הכל {% if total_pnl >= 0 %}רווחים{% else %}הפסדים{% endif %}</div>
-        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div>
     </div>
 </div>
 
@@ -275,9 +275,9 @@ function updateDpInfo() {
             <span class="muted" style="font-size:0.85rem;">| {{ sa.agents|length }} סוכנים</span>
         </div>
         <div class="agent-card-stats">
-            <span class="summary-chip chip-win">R {{ "%.2f"|format(sa_rake) }}</span>
+            <span class="summary-chip chip-win">R {{ sa_rake|comma }}</span>
             <span class="summary-chip {% if sa_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                רווח/הפסד {% if sa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa_pnl) }}
+                רווח/הפסד {% if sa_pnl > 0 %}+{% endif %}{{ sa_pnl|comma }}
             </span>
         </div>
     </div>
@@ -296,9 +296,9 @@ function updateDpInfo() {
                     <span class="muted" style="font-size:0.85rem;">{{ agent.members|length }} שחקנים</span>
                 </div>
                 <div class="inner-agent-chips" style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                    <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(ag_rake) }}</span>
+                    <span class="summary-chip chip-win chip-sm">R {{ ag_rake|comma }}</span>
                     <span class="summary-chip {% if ag_pnl_val >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
-                        רווח/הפסד {% if ag_pnl_val > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl_val) }}
+                        רווח/הפסד {% if ag_pnl_val > 0 %}+{% endif %}{{ ag_pnl_val|comma }}
                     </span>
                 </div>
             </div>
@@ -310,9 +310,9 @@ function updateDpInfo() {
                         {% for m in agent.members %}
                         <tr>
                             <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                            <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                            <td class="amount income">{{ m.rake_total|comma }}</td>
                             <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                                {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                                {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                             </td>
                             <td class="player-actions">
                                 <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -327,9 +327,9 @@ function updateDpInfo() {
                     <tfoot>
                         <tr class="total-row">
                             <td><strong>סה"כ</strong></td>
-                            <td class="amount income"><strong>{{ "%.2f"|format(ag_rake) }}</strong></td>
+                            <td class="amount income"><strong>{{ ag_rake|comma }}</strong></td>
                             <td class="amount {% if ag_pnl_val >= 0 %}income{% else %}expense{% endif %}">
-                                <strong>{% if ag_pnl_val > 0 %}+{% endif %}{{ "%.2f"|format(ag_pnl_val) }}</strong>
+                                <strong>{% if ag_pnl_val > 0 %}+{% endif %}{{ ag_pnl_val|comma }}</strong>
                             </td>
                             <td></td>
                         </tr>
@@ -351,9 +351,9 @@ function updateDpInfo() {
                     {% for m in sa.direct_members %}
                     <tr>
                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount income">{{ m.rake_total|comma }}</td>
                         <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                            {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                         </td>
                         <td class="player-actions">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -369,9 +369,9 @@ function updateDpInfo() {
                     {% set dm_pnl = sa.direct_members|sum(attribute='pnl_total') %}
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
-                        <td class="amount income"><strong>{{ "%.2f"|format(sa.direct_members|sum(attribute='rake_total')) }}</strong></td>
+                        <td class="amount income"><strong>{{ sa.direct_members|sum(attribute='rake_total')|comma }}</strong></td>
                         <td class="amount {% if dm_pnl >= 0 %}income{% else %}expense{% endif %}">
-                            <strong>{% if dm_pnl > 0 %}+{% endif %}{{ "%.2f"|format(dm_pnl) }}</strong>
+                            <strong>{% if dm_pnl > 0 %}+{% endif %}{{ dm_pnl|comma }}</strong>
                         </td>
                         <td></td>
                     </tr>
@@ -396,9 +396,9 @@ function updateDpInfo() {
         <div class="agent-card-stats">
             {% set nsa_rake = managed_club.no_sa_members|sum(attribute='rake_total') %}
             {% set nsa_pnl = managed_club.no_sa_members|sum(attribute='pnl_total') %}
-            <span class="summary-chip chip-win">R {{ "%.2f"|format(nsa_rake) }}</span>
+            <span class="summary-chip chip-win">R {{ nsa_rake|comma }}</span>
             <span class="summary-chip {% if nsa_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                רווח/הפסד {% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}
+                רווח/הפסד {% if nsa_pnl > 0 %}+{% endif %}{{ nsa_pnl|comma }}
             </span>
         </div>
     </div>
@@ -410,9 +410,9 @@ function updateDpInfo() {
                 {% for m in managed_club.no_sa_members %}
                 <tr>
                     <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                    <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                    <td class="amount income">{{ m.rake_total|comma }}</td>
                     <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                        {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                        {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                     </td>
                     <td class="player-actions">
                         <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -427,9 +427,9 @@ function updateDpInfo() {
             <tfoot>
                 <tr class="total-row">
                     <td><strong>סה"כ</strong></td>
-                    <td class="amount income"><strong>{{ "%.2f"|format(nsa_rake) }}</strong></td>
+                    <td class="amount income"><strong>{{ nsa_rake|comma }}</strong></td>
                     <td class="amount {% if nsa_pnl >= 0 %}income{% else %}expense{% endif %}">
-                        <strong>{% if nsa_pnl > 0 %}+{% endif %}{{ "%.2f"|format(nsa_pnl) }}</strong>
+                        <strong>{% if nsa_pnl > 0 %}+{% endif %}{{ nsa_pnl|comma }}</strong>
                     </td>
                     <td></td>
                 </tr>

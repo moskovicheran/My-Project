@@ -17,7 +17,7 @@
 <div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">יתרה (רווח/הפסד)</div>
-        <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ "%.2f"|format(player.pnl) }}</div>
+        <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ player.pnl|comma }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">משחקים</div>
@@ -49,7 +49,7 @@
                 <td><span class="badge badge-game">{{ s.game_type }}</span></td>
                 <td class="muted">{{ s.blinds }}</td>
                 <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if s.pnl > 0 %}+{% endif %}{{ "%.2f"|format(s.pnl) }}
+                    {% if s.pnl > 0 %}+{% endif %}{{ s.pnl|comma }}
                 </td>
             </tr>
             {% endfor %}
@@ -60,7 +60,7 @@
                 <td><span class="badge badge-game" style="background:#667eea; color:#fff;">העברה</span></td>
                 <td></td>
                 <td class="amount {% if t.amount >= 0 %}income{% else %}expense{% endif %}">
-                    {% if t.amount > 0 %}+{% endif %}{{ "%.2f"|format(t.amount) }}
+                    {% if t.amount > 0 %}+{% endif %}{{ t.amount|comma }}
                 </td>
             </tr>
             {% endfor %}
@@ -73,7 +73,7 @@
                 {% set xfer_total = transfer_rows|sum(attribute='amount') if transfer_rows is defined and transfer_rows else 0 %}
                 {% set total_pnl = games_pnl + xfer_total %}
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
                 </td>
             </tr>
         </tfoot>

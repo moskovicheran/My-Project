@@ -29,15 +29,15 @@
     </div>
     <div class="stat-card">
         <div class="stat-label">גבייה (Buy-in)</div>
-        <div class="stat-value">{{ "%.2f"|format(total_buyin) }}</div>
+        <div class="stat-value">{{ total_buyin|comma }}</div>
     </div>
     <div class="stat-card income">
         <div class="stat-label">סה"כ רייק</div>
-        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+        <div class="stat-value">{{ total_rake|comma }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">רווח / הפסד</div>
-        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div>
     </div>
 </div>
 
@@ -53,10 +53,10 @@
             {% set t_rake = table.players | sum(attribute='rake') %}
             {% set t_pnl = table.players | sum(attribute='pnl') %}
             {% set t_buyin = table.players | sum(attribute='buyin') %}
-            <span class="summary-chip">גבייה {{ "%.2f"|format(t_buyin) }}</span>
-            <span class="summary-chip chip-win">רייק {{ "%.2f"|format(t_rake) }}</span>
+            <span class="summary-chip">גבייה {{ t_buyin|comma }}</span>
+            <span class="summary-chip chip-win">רייק {{ t_rake|comma }}</span>
             <span class="summary-chip {% if t_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                רווח/הפסד {% if t_pnl > 0 %}+{% endif %}{{ "%.2f"|format(t_pnl) }}
+                רווח/הפסד {% if t_pnl > 0 %}+{% endif %}{{ t_pnl|comma }}
             </span>
             <span class="muted small">{{ table.club }}</span>
         </div>
@@ -83,12 +83,12 @@
                     </a>
                 </td>
                 <td class="muted">{{ p.club_name }}</td>
-                <td>{{ "%.2f"|format(p.buyin) }}</td>
-                <td>{{ "%.2f"|format(p.cashout) }}</td>
+                <td>{{ p.buyin|comma }}</td>
+                <td>{{ p.cashout|comma }}</td>
                 <td>{{ p.hands|int }}</td>
-                <td class="amount income">{{ "%.2f"|format(p.rake) }}</td>
+                <td class="amount income">{{ p.rake|comma }}</td>
                 <td class="amount {% if p.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if p.pnl > 0 %}+{% endif %}{{ "%.2f"|format(p.pnl) }}
+                    {% if p.pnl > 0 %}+{% endif %}{{ p.pnl|comma }}
                 </td>
             </tr>
             {% endfor %}
@@ -97,10 +97,10 @@
             <tr class="total-row">
                 <td colspan="5"><strong>סה"כ</strong></td>
                 <td class="amount income">
-                    <strong>{{ "%.2f"|format(table.players | sum(attribute='rake')) }}</strong>
+                    <strong>{{ table.players | sum(attribute='rake')|comma }}</strong>
                 </td>
                 <td class="amount">
-                    <strong>{{ "%.2f"|format(table.players | sum(attribute='pnl')) }}</strong>
+                    <strong>{{ table.players | sum(attribute='pnl')|comma }}</strong>
                 </td>
             </tr>
         </tfoot>

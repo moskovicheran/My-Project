@@ -46,9 +46,9 @@
                 <td class="muted">{{ c.sa_nick if c.sa_nick != '-' else '' }}</td>
                 <td class="muted">{{ c.agent_nick if c.agent_nick != '-' else '' }}</td>
                 <td>{{ "{:,}".format(c.hands_total|int) }}</td>
-                <td class="amount income">{{ "%.2f"|format(c.rake_total) }}</td>
+                <td class="amount income">{{ c.rake_total|comma }}</td>
                 <td class="amount {% if c.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                    {% if c.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(c.pnl_total) }}
+                    {% if c.pnl_total > 0 %}+{% endif %}{{ c.pnl_total|comma }}
                 </td>
             </tr>
             {% endfor %}
@@ -57,9 +57,9 @@
             <tr class="total-row">
                 <td colspan="3"><strong>סה"כ כל הקלאבים</strong></td>
                 <td><strong>{{ "{:,}".format(club_entries | sum(attribute='hands_total') | int) }}</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(club_entries | sum(attribute='rake_total')) }}</strong></td>
+                <td class="amount income"><strong>{{ club_entries | sum(attribute='rake_total')|comma }}</strong></td>
                 <td class="amount {% if club_entries | sum(attribute='pnl_total') >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if club_entries | sum(attribute='pnl_total') > 0 %}+{% endif %}{{ "%.2f"|format(club_entries | sum(attribute='pnl_total')) }}</strong>
+                    <strong>{% if club_entries | sum(attribute='pnl_total') > 0 %}+{% endif %}{{ club_entries | sum(attribute='pnl_total')|comma }}</strong>
                 </td>
             </tr>
         </tfoot>
@@ -74,11 +74,11 @@
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
         <div class="stat-label">רווח/הפסד</div>
-        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div>
     </div>
     <div class="stat-card income">
         <div class="stat-label">Rake</div>
-        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+        <div class="stat-value">{{ total_rake|comma }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Hands</div>
@@ -107,7 +107,7 @@
                 <td><span class="badge badge-game">{{ s.game_type }}</span></td>
                 <td>{{ s.blinds }}</td>
                 <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if s.pnl > 0 %}+{% endif %}{{ "%.2f"|format(s.pnl) }}
+                    {% if s.pnl > 0 %}+{% endif %}{{ s.pnl|comma }}
                 </td>
             </tr>
             {% endfor %}
@@ -116,7 +116,7 @@
             <tr class="total-row">
                 <td colspan="3"><strong>סה"כ</strong></td>
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
                 </td>
             </tr>
         </tfoot>

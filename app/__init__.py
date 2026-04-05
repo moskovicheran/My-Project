@@ -33,6 +33,17 @@ def create_app():
 
     app.jinja_env.filters['enumerate'] = enumerate
 
+    def comma_format(value):
+        """Format number with commas: 29344.97 -> 29,344.97"""
+        try:
+            val = float(value)
+            if val == int(val) and '.' not in str(value):
+                return f'{int(val):,}'
+            return f'{val:,.2f}'
+        except (ValueError, TypeError):
+            return value
+    app.jinja_env.filters['comma'] = comma_format
+
     @app.context_processor
     def inject_last_upload():
         from datetime import timedelta

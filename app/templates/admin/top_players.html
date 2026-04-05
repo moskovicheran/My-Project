@@ -9,11 +9,11 @@
     </div>
     <div class="stat-card income">
         <div class="stat-label">הרווח הגדול ביותר</div>
-        <div class="stat-value">+{{ "%.0f"|format(biggest_winner) }}</div>
+        <div class="stat-value">+{{ biggest_winner|comma }}</div>
     </div>
     <div class="stat-card expense">
         <div class="stat-label">ההפסד הגדול ביותר</div>
-        <div class="stat-value">{{ "%.0f"|format(biggest_loser) }}</div>
+        <div class="stat-value">{{ biggest_loser|comma }}</div>
     </div>
 </div>
 
@@ -30,7 +30,7 @@
                     <td><strong>{{ loop.index }}</strong></td>
                     <td><a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a></td>
                     <td class="muted">{{ p.club }}</td>
-                    <td class="amount income"><strong>+{{ "%.2f"|format(p.pnl_total) }}</strong></td>
+                    <td class="amount income"><strong>+{{ p.pnl_total|comma }}</strong></td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -48,7 +48,7 @@
                     <td><strong>{{ loop.index }}</strong></td>
                     <td><a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a></td>
                     <td class="muted">{{ p.club }}</td>
-                    <td class="amount expense"><strong>{{ "%.2f"|format(p.pnl_total) }}</strong></td>
+                    <td class="amount expense"><strong>{{ p.pnl_total|comma }}</strong></td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -66,7 +66,7 @@
                     <td><strong>{{ loop.index }}</strong></td>
                     <td><a href="{{ url_for('union.player_detail', player_id=p.player_id) }}" class="player-link">{{ p.nickname }}</a></td>
                     <td class="muted">{{ p.club }}</td>
-                    <td class="amount income"><strong>{{ "%.2f"|format(p.rake) }}</strong></td>
+                    <td class="amount income"><strong>{{ p.rake|comma }}</strong></td>
                 </tr>
                 {% endfor %}
             </tbody>

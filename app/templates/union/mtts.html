@@ -25,11 +25,11 @@
     </div>
     <div class="stat-card">
         <div class="stat-label">Total Prize Pool</div>
-        <div class="stat-value">{{ "%.0f"|format(totals.prize_pool) }}</div>
+        <div class="stat-value">{{ totals.prize_pool|comma }}</div>
     </div>
     <div class="stat-card income">
         <div class="stat-label">Total Rake</div>
-        <div class="stat-value">{{ "%.2f"|format(totals.total_rake) }}</div>
+        <div class="stat-value">{{ totals.total_rake|comma }}</div>
     </div>
 </div>
 
@@ -60,8 +60,8 @@
                 <td class="muted">{{ t.reentry }}</td>
                 <td>{{ "{:,}".format(t.gtd|int) if t.gtd else '-' }}</td>
                 <td>{{ t.entries|int }}</td>
-                <td class="amount income">{{ "%.2f"|format(t.fee * t.entries) }}</td>
-                <td class="amount income">{{ "%.2f"|format(t.prize_pool) }}</td>
+                <td class="amount income">{{ t.fee * t.entries|comma }}</td>
+                <td class="amount income">{{ t.prize_pool|comma }}</td>
                 <td class="muted">{{ t.start }}</td>
                 <td class="muted">{{ t.duration }}</td>
             </tr>
@@ -75,8 +75,8 @@
         <tfoot>
             <tr class="total-row">
                 <td colspan="7"><strong>TOTAL</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(totals.total_rake) }}</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(totals.prize_pool) }}</strong></td>
+                <td class="amount income"><strong>{{ totals.total_rake|comma }}</strong></td>
+                <td class="amount income"><strong>{{ totals.prize_pool|comma }}</strong></td>
                 <td colspan="2"></td>
             </tr>
         </tfoot>

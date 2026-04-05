@@ -30,9 +30,9 @@
         </div>
         <div class="sa-summary-chips">
             <span class="summary-chip {% if sa.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                רווח/הפסד {% if sa.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(sa.total_pnl) }}
+                רווח/הפסד {% if sa.total_pnl > 0 %}+{% endif %}{{ sa.total_pnl|comma }}
             </span>
-            <span class="summary-chip">Rake {{ "%.2f"|format(sa.total_rake) }}</span>
+            <span class="summary-chip">Rake {{ sa.total_rake|comma }}</span>
             <span class="summary-chip">Hands {{ "{:,}".format(sa.total_hands|int) }}</span>
         </div>
     </div>
@@ -45,9 +45,9 @@
             <a href="{{ url_for('union.player_detail', player_id=ag.id) }}" class="player-link">{{ ag.nick }}</a>
             <span class="muted small">{{ ag.id }}</span>
             <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
-                {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
+                {% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}
             </span>
-            <span class="summary-chip chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
+            <span class="summary-chip chip-sm">R {{ ag.total_rake|comma }}</span>
             <span class="summary-chip chip-sm">H {{ "{:,}".format(ag.total_hands|int) }}</span>
         </div>
         <table class="table table-sm agent-members-table">
@@ -70,9 +70,9 @@
                     </td>
                     <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
                     <td>{{ m.hands|int }}</td>
-                    <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                    <td class="amount income">{{ m.rake|comma }}</td>
                     <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                        {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                        {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
                     </td>
                 </tr>
                 {% endfor %}
@@ -81,9 +81,9 @@
                 <tr class="total-row">
                     <td colspan="2"><strong>סה"כ Agent</strong></td>
                     <td><strong>{{ "{:,}".format(ag.total_hands|int) }}</strong></td>
-                    <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
+                    <td class="amount income"><strong>{{ ag.total_rake|comma }}</strong></td>
                     <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                        <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
+                        <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}</strong>
                     </td>
                 </tr>
             </tfoot>
@@ -117,9 +117,9 @@
                     </td>
                     <td><span class="role-badge role-{{ m.role|lower|replace(' ','-') }}">{{ m.role }}</span></td>
                     <td>{{ m.hands|int }}</td>
-                    <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                    <td class="amount income">{{ m.rake|comma }}</td>
                     <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                        {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                        {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
                     </td>
                 </tr>
                 {% endfor %}

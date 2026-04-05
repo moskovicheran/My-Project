@@ -76,29 +76,29 @@
     </div>
     <div class="stat-card income">
         <div class="stat-label">רייק אישי</div>
-        <div class="stat-value">{{ "%.2f"|format(personal_rake) }}</div>
+        <div class="stat-value">{{ personal_rake|comma }}</div>
     </div>
     {% if managed_clubs is defined and managed_clubs %}
     <div class="stat-card income">
         <div class="stat-label">רייק מועדונים</div>
-        <div class="stat-value">{{ "%.2f"|format(clubs_total_rake) }}</div>
+        <div class="stat-value">{{ clubs_total_rake|comma }}</div>
     </div>
     {% endif %}
     {% if rake_refund_list is defined and rake_refund_list %}
     <div class="stat-card" style="cursor:pointer; border:2px solid #667eea;" onclick="toggleRakeRefund()">
         <div class="stat-label" style="color:#667eea;">החזרי רייק</div>
-        <div class="stat-value" style="color:#667eea;">{{ "%.2f"|format(total_rake_refund) }}</div>
+        <div class="stat-value" style="color:#667eea;">{{ total_rake_refund|comma }}</div>
     </div>
     {% endif %}
     {% if my_rake_pct is defined and my_rake_pct %}
     <div class="stat-card" style="cursor:pointer; border:2px solid #2ec4b6;" onclick="toggleMyRake()">
         <div class="stat-label" style="color:#2ec4b6;">הרייק שלי ({{ my_rake_pct|int }}%)</div>
-        <div class="stat-value" style="color:#2ec4b6;">{{ "%.2f"|format(my_rake_earning) }}</div>
+        <div class="stat-value" style="color:#2ec4b6;">{{ my_rake_earning|comma }}</div>
     </div>
     {% endif %}
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">רווח/הפסד</div>
-        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div>
     </div>
 </div>
 
@@ -117,14 +117,14 @@
                 {% if r.type == 'player' %}<span class="muted" style="font-size:0.75rem;">שחקן</span>{% endif %}
             </div>
             <div style="display:flex; gap:1rem; align-items:center;">
-                <span class="muted">רייק {{ "%.2f"|format(r.total_rake) }}</span>
-                <span style="color:#667eea; font-weight:700;">{{ "%.2f"|format(r.refund) }}</span>
+                <span class="muted">רייק {{ r.total_rake|comma }}</span>
+                <span style="color:#667eea; font-weight:700;">{{ r.refund|comma }}</span>
             </div>
         </div>
         {% endfor %}
         <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:0.95rem; font-weight:700;">
             <span>סה"כ החזר</span>
-            <span style="color:#667eea;">{{ "%.2f"|format(total_rake_refund) }}</span>
+            <span style="color:#667eea;">{{ total_rake_refund|comma }}</span>
         </div>
     </div>
 </div>
@@ -145,7 +145,7 @@ function toggleRakeRefund() {
     <div style="padding:0.5rem 1rem 0.8rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
             <span>רייק כולל</span>
-            <strong>{{ "%.2f"|format(personal_rake) }}</strong>
+            <strong>{{ personal_rake|comma }}</strong>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
             <span>האחוז שלי</span>
@@ -153,7 +153,7 @@ function toggleRakeRefund() {
         </div>
         <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:1.05rem; font-weight:700;">
             <span>הרייק שלי</span>
-            <span style="color:#2ec4b6;">{{ "%.2f"|format(my_rake_earning) }}</span>
+            <span style="color:#2ec4b6;">{{ my_rake_earning|comma }}</span>
         </div>
     </div>
 </div>
@@ -169,7 +169,7 @@ function toggleMyRake() {
 <div id="expenseBalloon" style="position:fixed; left:1rem; bottom:1.5rem; z-index:100; cursor:pointer;" onclick="toggleExpenseDetails()">
     <div style="background:linear-gradient(135deg, #ef233c, #d90429); color:#fff; border-radius:12px; padding:0.4rem 0.75rem; box-shadow:0 3px 10px rgba(239,35,60,0.35); text-align:center; min-width:90px;">
         <div style="font-size:0.6rem; opacity:0.9;">הוצאות שוטפות</div>
-        <div style="font-size:1rem; font-weight:700;">{{ "%.2f"|format(total_expenses) }}</div>
+        <div style="font-size:1rem; font-weight:700;">{{ total_expenses|comma }}</div>
         <div style="font-size:0.55rem; opacity:0.8;">{{ expense_charges|length }} חיובים</div>
     </div>
 </div>
@@ -182,12 +182,12 @@ function toggleMyRake() {
     {% for c in expense_charges %}
     <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid #f0f0f0; font-size:0.85rem;">
         <span>{{ c.expense.description }}</span>
-        <span style="color:#ef233c; font-weight:600;">{{ "%.2f"|format(c.charge_amount) }}</span>
+        <span style="color:#ef233c; font-weight:600;">{{ c.charge_amount|comma }}</span>
     </div>
     {% endfor %}
     <div style="display:flex; justify-content:space-between; padding:0.5rem 0 0; font-size:0.9rem; font-weight:700;">
         <span>סה"כ</span>
-        <span style="color:#ef233c;">{{ "%.2f"|format(total_expenses) }}</span>
+        <span style="color:#ef233c;">{{ total_expenses|comma }}</span>
     </div>
 </div>
 
@@ -222,9 +222,9 @@ function toggleExpenseDetails() {
                 <strong style="color:#2e7d32; font-size:1.05rem;">{{ managed_club.name }}</strong>
             </div>
             <div style="display:flex; gap:0.4rem;">
-                <span class="summary-chip chip-win">R {{ "%.2f"|format(managed_club.total_rake|default(0)) }}</span>
+                <span class="summary-chip chip-win">R {{ managed_club.total_rake|default(0)|comma }}</span>
                 <span class="summary-chip {% if managed_club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                    רווח/הפסד {% if managed_club.total_pnl|default(0) > 0 %}+{% endif %}{{ "%.2f"|format(managed_club.total_pnl|default(0)) }}
+                    רווח/הפסד {% if managed_club.total_pnl|default(0) > 0 %}+{% endif %}{{ managed_club.total_pnl|default(0)|comma }}
                 </span>
             </div>
         </div>
@@ -241,9 +241,9 @@ function toggleExpenseDetails() {
                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
                         <td class="muted" style="font-size:0.8rem;">{{ m.sa_nick }}</td>
                         <td class="muted" style="font-size:0.8rem;">{{ m.agent_nick }}</td>
-                        <td class="amount income">{{ "%.2f"|format(m.rake_total) }}</td>
+                        <td class="amount income">{{ m.rake_total|comma }}</td>
                         <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
-                            {% if m.pnl_total > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl_total) }}
+                            {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                         </td>
                         <td class="player-actions">
                             <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="btn btn-outline btn-sm">רקורד</a>
@@ -255,9 +255,9 @@ function toggleExpenseDetails() {
                 <tfoot>
                     <tr class="total-row">
                         <td colspan="3"><strong>סה"כ ({{ managed_club.all_members|length }})</strong></td>
-                        <td class="amount income"><strong>{{ "%.2f"|format(managed_club.total_rake) }}</strong></td>
+                        <td class="amount income"><strong>{{ managed_club.total_rake|comma }}</strong></td>
                         <td class="amount {% if managed_club.total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                            <strong>{% if managed_club.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(managed_club.total_pnl) }}</strong>
+                            <strong>{% if managed_club.total_pnl > 0 %}+{% endif %}{{ managed_club.total_pnl|comma }}</strong>
                         </td>
                         <td></td>
                     </tr>
@@ -299,10 +299,10 @@ function toggleExpenseDetails() {
                 <span class="muted">{{ ag.members|length }} שחקנים</span>
             </div>
             <div class="agent-card-stats">
-                <span class="summary-chip chip-win">R {{ "%.2f"|format(ag.total_rake) }}</span>
-                {% if ag.rake_pct %}<span class="summary-chip chip-rake-net">{{ "%.2f"|format(ag.agent_net_rake) }}</span>{% endif %}
+                <span class="summary-chip chip-win">R {{ ag.total_rake|comma }}</span>
+                {% if ag.rake_pct %}<span class="summary-chip chip-rake-net">{{ ag.agent_net_rake|comma }}</span>{% endif %}
                 <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                    רווח/הפסד {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}
+                    רווח/הפסד {% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}
                 </span>
             </div>
         </div>
@@ -313,9 +313,9 @@ function toggleExpenseDetails() {
                     {% for m in ag.members %}
                     <tr>
                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
-                        <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                        <td class="amount income">{{ m.rake|comma }}</td>
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                            {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                            {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
                         </td>
                         <td class="player-actions">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -330,9 +330,9 @@ function toggleExpenseDetails() {
                 <tfoot>
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
-                        <td class="amount income"><strong>{{ "%.2f"|format(ag.total_rake) }}</strong></td>
+                        <td class="amount income"><strong>{{ ag.total_rake|comma }}</strong></td>
                         <td class="amount {% if ag.total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                            <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</strong>
+                            <strong>{% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}</strong>
                         </td>
                         <td></td>
                     </tr>
@@ -353,9 +353,9 @@ function toggleExpenseDetails() {
                 <span class="muted">{{ my_sa.direct|length }} שחקנים</span>
             </div>
             <div class="agent-card-stats">
-                <span class="summary-chip chip-win">R {{ "%.2f"|format(direct_rake) }}</span>
+                <span class="summary-chip chip-win">R {{ direct_rake|comma }}</span>
                 <span class="summary-chip {% if direct_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                    רווח/הפסד {% if direct_pnl > 0 %}+{% endif %}{{ "%.2f"|format(direct_pnl) }}
+                    רווח/הפסד {% if direct_pnl > 0 %}+{% endif %}{{ direct_pnl|comma }}
                 </span>
             </div>
         </div>
@@ -366,9 +366,9 @@ function toggleExpenseDetails() {
                     {% for m in my_sa.direct %}
                     <tr>
                         <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
-                        <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                        <td class="amount income">{{ m.rake|comma }}</td>
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                            {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                            {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
                         </td>
                         <td class="player-actions">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
@@ -383,9 +383,9 @@ function toggleExpenseDetails() {
                 <tfoot>
                     <tr class="total-row">
                         <td><strong>סה"כ</strong></td>
-                        <td class="amount income"><strong>{{ "%.2f"|format(direct_rake) }}</strong></td>
+                        <td class="amount income"><strong>{{ direct_rake|comma }}</strong></td>
                         <td class="amount {% if direct_pnl >= 0 %}income{% else %}expense{% endif %}">
-                            <strong>{% if direct_pnl > 0 %}+{% endif %}{{ "%.2f"|format(direct_pnl) }}</strong>
+                            <strong>{% if direct_pnl > 0 %}+{% endif %}{{ direct_pnl|comma }}</strong>
                         </td>
                         <td></td>
                     </tr>
@@ -422,9 +422,9 @@ function toggleExpenseDetails() {
                 <span class="muted small">{{ cs.sa_id }} @ {{ cs.club }}</span>
             </div>
             <div style="display:flex; gap:0.4rem;">
-                <span class="summary-chip chip-win">R {{ "%.2f"|format(cs.total_rake) }}</span>
+                <span class="summary-chip chip-win">R {{ cs.total_rake|comma }}</span>
                 <span class="summary-chip {% if cs.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
-                    רווח/הפסד {% if cs.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(cs.total_pnl) }}
+                    רווח/הפסד {% if cs.total_pnl > 0 %}+{% endif %}{{ cs.total_pnl|comma }}
                 </span>
                 <span class="summary-chip">H {{ "{:,}".format(cs.total_hands|int) }}</span>
             </div>
@@ -440,8 +440,8 @@ function toggleExpenseDetails() {
                         <span class="muted small">{{ ag.members|length }} שחקנים</span>
                     </div>
                     <div style="display:flex; gap:0.3rem;">
-                        <span class="summary-chip chip-win chip-sm">R {{ "%.2f"|format(ag.total_rake) }}</span>
-                        <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">רווח/הפסד {% if ag.total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(ag.total_pnl) }}</span>
+                        <span class="summary-chip chip-win chip-sm">R {{ ag.total_rake|comma }}</span>
+                        <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">רווח/הפסד {% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}</span>
                     </div>
                 </div>
                 <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
@@ -451,9 +451,9 @@ function toggleExpenseDetails() {
                             {% for m in ag.members %}
                             <tr>
                                 <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                                <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                                <td class="amount income">{{ m.rake|comma }}</td>
                                 <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                                    {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                                    {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
                                 </td>
                                 <td class="player-actions">
                                     <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
@@ -476,9 +476,9 @@ function toggleExpenseDetails() {
                         {% for m in cs.direct %}
                         <tr>
                             <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
-                            <td class="amount income">{{ "%.2f"|format(m.rake) }}</td>
+                            <td class="amount income">{{ m.rake|comma }}</td>
                             <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
-                                {% if m.pnl > 0 %}+{% endif %}{{ "%.2f"|format(m.pnl) }}
+                                {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
                             </td>
                             <td class="player-actions">
                                 <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>

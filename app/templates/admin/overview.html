@@ -17,11 +17,11 @@
     </div>
     <div class="stat-card income">
         <div class="stat-label">סה"כ רייק</div>
-        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+        <div class="stat-value">{{ total_rake|comma }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">רווח / הפסד</div>
-        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div>
     </div>
 </div>
 
@@ -32,7 +32,7 @@
     </div>
     <div class="stat-card">
         <div class="stat-label">Total Fee (Union)</div>
-        <div class="stat-value">{{ "%.2f"|format(total.total_fee) }}</div>
+        <div class="stat-value">{{ total.total_fee|comma }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">תקופה</div>
@@ -64,12 +64,12 @@
                     <span class="ao-stat-label">Hands</span>
                 </div>
                 <div class="ao-stat">
-                    <span class="ao-stat-val" style="color:#2ec4b6;">{{ "%.0f"|format(ag.rake) }}</span>
+                    <span class="ao-stat-val" style="color:#2ec4b6;">{{ ag.rake|comma }}</span>
                     <span class="ao-stat-label">Rake</span>
                 </div>
                 <div class="ao-stat">
                     <span class="ao-stat-val" style="color:{% if ag.pnl >= 0 %}#2ec4b6{% else %}#ef233c{% endif %};">
-                        {% if ag.pnl > 0 %}+{% endif %}{{ "%.0f"|format(ag.pnl) }}
+                        {% if ag.pnl > 0 %}+{% endif %}{{ ag.pnl|comma }}
                     </span>
                     <span class="ao-stat-label">רווח/הפסד</span>
                 </div>
@@ -126,9 +126,9 @@ body.dark .ao-stat-label { color: #777; }
                 <td><strong>{{ club.club_name }}</strong></td>
                 <td>{{ club.active_players }}</td>
                 <td>{{ "{:,}".format(club.total_hands|int) }}</td>
-                <td>{{ "%.2f"|format(club.total_fee) }}</td>
+                <td>{{ club.total_fee|comma }}</td>
                 <td class="amount {% if club.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if club.pnl > 0 %}+{% endif %}{{ "%.2f"|format(club.pnl) }}
+                    {% if club.pnl > 0 %}+{% endif %}{{ club.pnl|comma }}
                 </td>
             </tr>
             {% endif %}

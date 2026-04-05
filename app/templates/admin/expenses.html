@@ -48,9 +48,9 @@
             <tr>
                 <td class="muted">{{ exp.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
                 <td><strong>{{ exp.description }}</strong></td>
-                <td class="amount expense">{{ "%.2f"|format(exp.amount) }}</td>
+                <td class="amount expense">{{ exp.amount|comma }}</td>
                 <td class="muted">
-                    {% if agents_count > 0 %}{{ "%.2f"|format(exp.amount / agents_count) }}{% else %}-{% endif %}
+                    {% if agents_count > 0 %}{{ exp.amount / agents_count|comma }}{% else %}-{% endif %}
                 </td>
                 <td>
                     {% if exp.charged %}
@@ -103,7 +103,7 @@
                 <td class="muted">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
                 <td><strong>{{ c.agent_name }}</strong> <span class="muted small">{{ c.agent_player_id }}</span></td>
                 <td>{{ c.expense.description }}</td>
-                <td class="amount expense">{{ "%.2f"|format(c.charge_amount) }}</td>
+                <td class="amount expense">{{ c.charge_amount|comma }}</td>
             </tr>
             {% endfor %}
         </tbody>

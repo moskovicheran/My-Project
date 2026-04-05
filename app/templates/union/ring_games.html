@@ -25,7 +25,7 @@
     </div>
     <div class="stat-card">
         <div class="stat-label">Total Rake</div>
-        <div class="stat-value">{{ "%.2f"|format(totals.rake) }}</div>
+        <div class="stat-value">{{ totals.rake|comma }}</div>
     </div>
 </div>
 
@@ -55,8 +55,8 @@
                 <td>{{ g.creator }}</td>
                 <td>{{ g.players }}</td>
                 <td>{{ "{:,}".format(g.hands|int) }}</td>
-                <td>{{ "%.2f"|format(g.buy_in) }}</td>
-                <td class="amount income">{{ "%.2f"|format(g.rake) }}</td>
+                <td>{{ g.buy_in|comma }}</td>
+                <td class="amount income">{{ g.rake|comma }}</td>
                 <td class="muted">{{ g.duration }}</td>
             </tr>
             {% endfor %}
@@ -65,8 +65,8 @@
             <tr class="total-row">
                 <td colspan="6"><strong>TOTAL</strong></td>
                 <td><strong>{{ "{:,}".format(totals.hands|int) }}</strong></td>
-                <td><strong>{{ "%.2f"|format(totals.buy_in) }}</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(totals.rake) }}</strong></td>
+                <td><strong>{{ totals.buy_in|comma }}</strong></td>
+                <td class="amount income"><strong>{{ totals.rake|comma }}</strong></td>
                 <td></td>
             </tr>
         </tfoot>

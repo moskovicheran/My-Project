@@ -9,11 +9,11 @@
     </div>
     <div class="stat-card income">
         <div class="stat-label">סה"כ רייק</div>
-        <div class="stat-value">{{ "%.2f"|format(total_rake) }}</div>
+        <div class="stat-value">{{ total_rake|comma }}</div>
     </div>
     <div class="stat-card {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">רווח / הפסד</div>
-        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</div>
+        <div class="stat-value">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div>
     </div>
 </div>
 
@@ -35,9 +35,9 @@
                 <td><strong>{{ club_name }}</strong></td>
                 <td>{{ data.sessions }}</td>
                 <td>{{ "{:,}".format(data.hands) }}</td>
-                <td class="amount income">{{ "%.2f"|format(data.rake) }}</td>
+                <td class="amount income">{{ data.rake|comma }}</td>
                 <td class="amount {% if data.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if data.pnl > 0 %}+{% endif %}{{ "%.2f"|format(data.pnl) }}
+                    {% if data.pnl > 0 %}+{% endif %}{{ data.pnl|comma }}
                 </td>
             </tr>
             {% endfor %}
@@ -45,9 +45,9 @@
         <tfoot>
             <tr class="total-row">
                 <td colspan="3"><strong>סה"כ</strong></td>
-                <td class="amount income"><strong>{{ "%.2f"|format(total_rake) }}</strong></td>
+                <td class="amount income"><strong>{{ total_rake|comma }}</strong></td>
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ "%.2f"|format(total_pnl) }}</strong>
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
                 </td>
             </tr>
         </tfoot>

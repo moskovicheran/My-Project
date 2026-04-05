@@ -10,15 +10,15 @@
 <div class="stats-grid">
     <div class="stat-card income">
         <div class="stat-label">סה"כ הכנסות</div>
-        <div class="stat-value">₪{{ "%.2f"|format(total_income) }}</div>
+        <div class="stat-value">₪{{ total_income|comma }}</div>
     </div>
     <div class="stat-card expense">
         <div class="stat-label">סה"כ הוצאות</div>
-        <div class="stat-value">₪{{ "%.2f"|format(total_expense) }}</div>
+        <div class="stat-value">₪{{ total_expense|comma }}</div>
     </div>
     <div class="stat-card balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
         <div class="stat-label">יתרה</div>
-        <div class="stat-value">₪{{ "%.2f"|format(balance) }}</div>
+        <div class="stat-value">₪{{ balance|comma }}</div>
     </div>
 </div>
 
@@ -46,7 +46,7 @@
                 <td>{{ tx.category }}</td>
                 <td>{{ tx.description or '-' }}</td>
                 <td><span class="badge badge-{{ tx.type }}">{{ 'הכנסה' if tx.type == 'income' else 'הוצאה' }}</span></td>
-                <td class="amount {{ tx.type }}">{% if tx.type == 'expense' %}-{% endif %}₪{{ "%.2f"|format(tx.amount) }}</td>
+                <td class="amount {{ tx.type }}">{% if tx.type == 'expense' %}-{% endif %}₪{{ tx.amount|comma }}</td>
             </tr>
             {% endfor %}
         </tbody>
