@@ -367,53 +367,6 @@ def dashboard():
                 ag['total_pnl'] += m['pnl']
             ag['total_pnl'] = round(ag['total_pnl'], 2)
 
-        # Override child_sas Excel data with cumulative DB data
-        from app.union_data import get_cumulative_stats
-        all_child_player_ids = set()
-        for cs in child_sas:
-            for m in cs.get('direct', []):
-                all_child_player_ids.add(m['player_id'])
-            for ag in cs.get('agents', {}).values():
-                for m in ag.get('members', []):
-                    all_child_player_ids.add(m['player_id'])
-        if all_child_player_ids:
-            cumul = get_cumulative_stats(list(all_child_player_ids))
-            for cs in child_sas:
-                cs_rake = 0
-                cs_pnl = 0
-                cs_hands = 0
-                for m in cs.get('direct', []):
-                    c = cumul.get(m['player_id'])
-                    if c:
-                        m['pnl'] = c['pnl']
-                        m['rake'] = c['rake']
-                        m['hands'] = c.get('hands', 0)
-                    cs_rake += m.get('rake', 0)
-                    cs_pnl += m.get('pnl', 0)
-                    cs_hands += m.get('hands', 0)
-                for ag in cs.get('agents', {}).values():
-                    ag_rake = 0
-                    ag_pnl = 0
-                    ag_hands = 0
-                    for m in ag.get('members', []):
-                        c = cumul.get(m['player_id'])
-                        if c:
-                            m['pnl'] = c['pnl']
-                            m['rake'] = c['rake']
-                            m['hands'] = c.get('hands', 0)
-                        ag_rake += m.get('rake', 0)
-                        ag_pnl += m.get('pnl', 0)
-                        ag_hands += m.get('hands', 0)
-                    ag['total_rake'] = round(ag_rake, 2)
-                    ag['total_pnl'] = round(ag_pnl, 2)
-                    ag['total_hands'] = ag_hands
-                    cs_rake += ag_rake
-                    cs_pnl += ag_pnl
-                    cs_hands += ag_hands
-                cs['total_rake'] = round(cs_rake, 2)
-                cs['total_pnl'] = round(cs_pnl, 2)
-                cs['total_hands'] = cs_hands
-
         # Fetch missing agents and players for child_sas from DB
         for cs in child_sas:
             sa_id_val = cs.get('sa_id')
@@ -484,17 +437,41 @@ def dashboard():
                         'hands': int(hands or 0),
                     })
 
-        # Recalculate totals for child_sas after adding missing agents/players
+        # Override ALL child_sas data with cumulative DB data (after missing players added)
+        from app.union_data import get_cumulative_stats
+        all_child_player_ids = set()
+        for cs in child_sas:
+            for m in cs.get('direct', []):
+                all_child_player_ids.add(m['player_id'])
+            for ag in cs.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    all_child_player_ids.add(m['player_id'])
+        if all_child_player_ids:
+            cumul = get_cumulative_stats(list(all_child_player_ids))
+        else:
+            cumul = {}
         for cs in child_sas:
             cs_rake = cs_pnl = cs_hands = 0
             for m in cs.get('direct', []):
+                c = cumul.get(m['player_id'])
+                if c:
+                    m['pnl'] = c['pnl']
+                    m['rake'] = c['rake']
+                    m['hands'] = c.get('hands', 0)
                 cs_rake += m.get('rake', 0)
                 cs_pnl += m.get('pnl', 0)
                 cs_hands += m.get('hands', 0)
             for ag in cs.get('agents', {}).values():
-                ag_r = sum(m.get('rake', 0) for m in ag.get('members', []))
-                ag_p = sum(m.get('pnl', 0) for m in ag.get('members', []))
-                ag_h = sum(m.get('hands', 0) for m in ag.get('members', []))
+                ag_r = ag_p = ag_h = 0
+                for m in ag.get('members', []):
+                    c = cumul.get(m['player_id'])
+                    if c:
+                        m['pnl'] = c['pnl']
+                        m['rake'] = c['rake']
+                        m['hands'] = c.get('hands', 0)
+                    ag_r += m.get('rake', 0)
+                    ag_p += m.get('pnl', 0)
+                    ag_h += m.get('hands', 0)
                 ag['total_rake'] = round(ag_r, 2)
                 ag['total_pnl'] = round(ag_p, 2)
                 ag['total_hands'] = ag_h
