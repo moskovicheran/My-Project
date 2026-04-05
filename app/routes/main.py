@@ -100,6 +100,7 @@ def dashboard():
 
             # Build SA structure
             club_sas = {}
+            agents_no_sa = {}
             no_sa = []
             total_rake = 0
             total_pnl = 0
@@ -127,12 +128,20 @@ def dashboard():
                     else:
                         sa['direct_members'].append(member)
                 else:
-                    no_sa.append(member)
+                    # No SA — check if there's an agent
+                    if ag_id_val and ag_id_val != '-':
+                        if ag_id_val not in agents_no_sa:
+                            ag_nick = all_nicks.get(ag_id_val, ag_id_val)
+                            agents_no_sa[ag_id_val] = {'nick': ag_nick, 'members': []}
+                        agents_no_sa[ag_id_val]['members'].append(member)
+                    else:
+                        no_sa.append(member)
 
             managed_club = {
                 'name': club_name, 'club_id': club_id,
                 'total_rake': round(total_rake, 2), 'total_pnl': round(total_pnl, 2),
-                'super_agents': club_sas, 'no_sa_members': no_sa,
+                'super_agents': club_sas, 'agents_no_sa': agents_no_sa,
+                'no_sa_members': no_sa,
             }
             player_count = len(club_players_db)
 
