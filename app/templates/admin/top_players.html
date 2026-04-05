@@ -22,43 +22,45 @@
     {# Top Winners #}
     <div class="section">
         <h2 class="section-title winners">🏆 טופ מרוויחים</h2>
-        <div class="table-scroll-wrap">
-        <table class="table table-sm">
-            <thead><tr><th>#</th><th>שחקן</th><th>קלאב</th><th>רווח/הפסד</th><th style="color:#0d9488;">רייק 💎</th></tr></thead>
+        <table class="table table-sm top-table">
+            <thead><tr><th>#</th><th>שחקן</th><th class="top-hide-mobile">קלאב</th><th>רווח/הפסד</th><th style="color:#0d9488;">רייק 💎</th></tr></thead>
             <tbody>
                 {% for p in top_winners %}
                 <tr>
                     <td><strong>{{ loop.index }}</strong></td>
-                    <td><a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a></td>
-                    <td class="muted">{{ p.club }}</td>
+                    <td>
+                        <a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a>
+                        <span class="top-club-inline muted">{{ p.club }}</span>
+                    </td>
+                    <td class="muted top-hide-mobile">{{ p.club }}</td>
                     <td class="amount income"><strong>+{{ p.pnl_total|comma }}</strong></td>
                     <td class="amount" style="color:#0d9488;">{{ p.rake_total|comma }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        </div>
     </div>
 
     {# Top Losers #}
     <div class="section">
         <h2 class="section-title losers">📉 טופ מפסידים</h2>
-        <div class="table-scroll-wrap">
-        <table class="table table-sm">
-            <thead><tr><th>#</th><th>שחקן</th><th>קלאב</th><th>רווח/הפסד</th><th style="color:#0d9488;">רייק 💎</th></tr></thead>
+        <table class="table table-sm top-table">
+            <thead><tr><th>#</th><th>שחקן</th><th class="top-hide-mobile">קלאב</th><th>רווח/הפסד</th><th style="color:#0d9488;">רייק 💎</th></tr></thead>
             <tbody>
                 {% for p in top_losers %}
                 <tr>
                     <td><strong>{{ loop.index }}</strong></td>
-                    <td><a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a></td>
-                    <td class="muted">{{ p.club }}</td>
+                    <td>
+                        <a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a>
+                        <span class="top-club-inline muted">{{ p.club }}</span>
+                    </td>
+                    <td class="muted top-hide-mobile">{{ p.club }}</td>
                     <td class="amount expense"><strong>{{ p.pnl_total|comma }}</strong></td>
                     <td class="amount" style="color:#0d9488;">{{ p.rake_total|comma }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        </div>
     </div>
 
     {# Top Rake #}
@@ -98,4 +100,19 @@
     </div>
 
 </div>
+
+<style>
+/* Top tables: club shown inline under player name on mobile */
+.top-club-inline { display: none; }
+.top-table { min-width: 0 !important; width: 100%; }
+.top-table td, .top-table th { white-space: nowrap; padding: 0.45rem 0.5rem; font-size: 0.88rem; }
+
+@media (max-width: 640px) {
+    .top-hide-mobile { display: none !important; }
+    .top-club-inline { display: block; font-size: 0.72rem; line-height: 1.2; }
+    .top-table td, .top-table th { padding: 0.4rem 0.3rem; font-size: 0.8rem; }
+    .top-table .amount { font-size: 0.78rem; }
+    .top-table td:first-child, .top-table th:first-child { width: 1.5rem; }
+}
+</style>
 {% endblock %}
