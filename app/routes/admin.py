@@ -59,12 +59,14 @@ def agent_view(sa_id):
     from app.union_data import get_super_agent_tables, get_members_hierarchy, get_cumulative_stats
     from app.models import DailyPlayerStats
     from sqlalchemy import func as sqlfunc
+    from sqlalchemy import or_
 
+    known_ids = [sa_id]
     sa_tables = get_super_agent_tables()
     my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
-    all_sa_ids = [sa_id] + child_sa_ids
+    all_sa_ids = known_ids + child_sa_ids
 
     # Get players from cumulative DB
     my_players_db = DailyPlayerStats.query.with_entities(
@@ -73,21 +75,33 @@ def agent_view(sa_id):
         sqlfunc.max(DailyPlayerStats.role),
         sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
         sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids)
-    ).group_by(DailyPlayerStats.player_id).all()
+    ).filter(or_(
+        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        DailyPlayerStats.agent_id.in_(all_sa_ids)
+    )).group_by(DailyPlayerStats.player_id).all()
+
+    # Get actual sa_id per player (for correct direct player filtering)
+    player_sa_lookup = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.sa_id)
+    ).filter(or_(
+        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        DailyPlayerStats.agent_id.in_(all_sa_ids)
+    )).group_by(DailyPlayerStats.player_id).all())
 
     # Transfer adjustments
     from app.union_data import get_transfer_adjustments
-    xfer_adj = get_transfer_adjustments([p[0] for p in my_players_db])
-
+    all_my_player_ids = set()
     agents_map = {}
     direct_players = []
     for pid, nick, club, ag_id, role, pnl, rake, hands in my_players_db:
-        pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
+        pnl = round(float(pnl or 0), 2)
         rake = round(float(rake or 0), 2)
         hands = int(hands or 0)
+        all_my_player_ids.add(pid)
         member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
-        if ag_id and ag_id != '-' and ag_id != sa_id:
+        actual_sa = player_sa_lookup.get(pid, '')
+        if ag_id and ag_id != '-' and ag_id != sa_id and actual_sa in known_ids:
+            # Agent directly under our SA
             if ag_id not in agents_map:
                 agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
                                      'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
@@ -95,37 +109,53 @@ def agent_view(sa_id):
             agents_map[ag_id]['total_pnl'] += pnl
             agents_map[ag_id]['total_rake'] += rake
             agents_map[ag_id]['total_hands'] += hands
-        else:
+        elif actual_sa in known_ids and (not ag_id or ag_id == '-' or ag_id == sa_id):
+            # Direct player under our SA
             direct_players.append(member)
+        # else: belongs to child SA, handled by child_sas section
 
     # Fetch missing players for agents found in the initial query
+    # Only for agents whose sa_id is directly ours (not child SAs - those are handled separately)
     if agents_map:
-        found_agent_ids = list(agents_map.keys())
-        all_found_pids = set(p[0] for p in my_players_db)
-        missing_players = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-            sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
-            sqlfunc.max(DailyPlayerStats.sa_id),
-            sqlfunc.max(DailyPlayerStats.role),
-            sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-            sqlfunc.sum(DailyPlayerStats.hands),
-        ).filter(
-            or_(DailyPlayerStats.agent_id.in_(found_agent_ids),
-                DailyPlayerStats.sa_id.in_(found_agent_ids)),
-            DailyPlayerStats.player_id.notin_(list(all_found_pids)),
-            DailyPlayerStats.role != 'Name Entry'
-        ).group_by(DailyPlayerStats.player_id).all()
-        for pid, nick, club, ag_id, sa_id_val, role, pnl, rake, hands in missing_players:
-            pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
-            rake = round(float(rake or 0), 2)
-            hands = int(hands or 0)
-            member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
-            target_ag = ag_id if ag_id in agents_map else (sa_id_val if sa_id_val in agents_map else None)
-            if target_ag:
-                agents_map[target_ag]['members'].append(member)
-                agents_map[target_ag]['total_pnl'] += pnl
-                agents_map[target_ag]['total_rake'] += rake
-                agents_map[target_ag]['total_hands'] += hands
+        direct_agent_ids = [ag_id for ag_id in agents_map.keys()
+                            if player_sa_lookup.get(ag_id, '') in known_ids]
+        if direct_agent_ids:
+            missing_players = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+                sqlfunc.max(DailyPlayerStats.sa_id),
+                sqlfunc.max(DailyPlayerStats.role),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                or_(DailyPlayerStats.agent_id.in_(direct_agent_ids),
+                    DailyPlayerStats.sa_id.in_(direct_agent_ids)),
+                DailyPlayerStats.player_id.notin_(list(all_my_player_ids)),
+                DailyPlayerStats.role != 'Name Entry'
+            ).group_by(DailyPlayerStats.player_id).all()
+            for pid, nick, club, ag_id, sa_id_val, role, pnl, rake, hands in missing_players:
+                pnl = round(float(pnl or 0), 2)
+                rake = round(float(rake or 0), 2)
+                hands = int(hands or 0)
+                all_my_player_ids.add(pid)
+                member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
+                target_ag = ag_id if ag_id in agents_map else (sa_id_val if sa_id_val in agents_map else None)
+                if target_ag:
+                    agents_map[target_ag]['members'].append(member)
+                    agents_map[target_ag]['total_pnl'] += pnl
+                    agents_map[target_ag]['total_rake'] += rake
+                    agents_map[target_ag]['total_hands'] += hands
+
+    # Apply transfer adjustments
+    xfer_adj = get_transfer_adjustments(all_my_player_ids)
+    for m in direct_players:
+        m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+    for ag in agents_map.values():
+        ag['total_pnl'] = 0
+        for m in ag['members']:
+            m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+            ag['total_pnl'] += m['pnl']
+        ag['total_pnl'] = round(ag['total_pnl'], 2)
 
     # Agent nicknames from Excel
     for sa in my_sas + child_sas:
@@ -160,6 +190,98 @@ def agent_view(sa_id):
                 ag['total_rake'] = round(ag_r, 2); ag['total_pnl'] = round(ag_p, 2); ag['total_hands'] = ag_h
                 cs_rake += ag_r; cs_pnl += ag_p; cs_hands += ag_h
             cs['total_rake'] = round(cs_rake, 2); cs['total_pnl'] = round(cs_pnl, 2); cs['total_hands'] = cs_hands
+
+    # Fetch missing agents and players for child_sas from DB
+    for cs in child_sas:
+        sa_id_val = cs.get('sa_id')
+        if sa_id_val:
+            existing_agent_ids = set(cs.get('agents', {}).keys())
+            # Find agents in DB that are missing from Excel
+            db_agents = DailyPlayerStats.query.with_entities(
+                sqlfunc.distinct(DailyPlayerStats.agent_id)
+            ).filter(
+                DailyPlayerStats.sa_id == sa_id_val,
+                DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id != '-',
+                DailyPlayerStats.agent_id != sa_id_val,
+            ).all()
+            all_nicks_map = dict(DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+            ).group_by(DailyPlayerStats.player_id).all())
+            for (ag_id_db,) in db_agents:
+                if ag_id_db not in existing_agent_ids:
+                    ag_nick = all_nicks_map.get(ag_id_db, ag_id_db)
+                    cs['agents'][ag_id_db] = {'id': ag_id_db, 'nick': ag_nick, 'members': [],
+                                               'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
+
+    for cs in child_sas:
+        for ag_id, ag in cs.get('agents', {}).items():
+            existing_pids = set(m['player_id'] for m in ag.get('members', []))
+            db_members = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.role),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.agent_id == ag_id,
+                DailyPlayerStats.player_id.notin_(list(existing_pids)) if existing_pids else True,
+                DailyPlayerStats.role != 'Name Entry'
+            ).group_by(DailyPlayerStats.player_id).all()
+            for pid, nick, role, pnl, rake, hands in db_members:
+                ag['members'].append({
+                    'player_id': pid, 'nickname': nick,
+                    'pnl': round(float(pnl or 0), 2),
+                    'rake': round(float(rake or 0), 2),
+                    'hands': int(hands or 0),
+                })
+
+        # Also check direct players under child SA
+        sa_id_val = cs.get('sa_id')
+        if sa_id_val:
+            existing_direct_pids = set(m['player_id'] for m in cs.get('direct', []))
+            existing_agent_pids = set()
+            for ag in cs.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    existing_agent_pids.add(m['player_id'])
+            all_existing = existing_direct_pids | existing_agent_pids | {sa_id_val}
+            db_direct = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.role),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.sa_id == sa_id_val,
+                DailyPlayerStats.agent_id.in_(['', '-']),
+                DailyPlayerStats.player_id.notin_(list(all_existing)),
+                DailyPlayerStats.role != 'Name Entry'
+            ).group_by(DailyPlayerStats.player_id).all()
+            for pid, nick, role, pnl, rake, hands in db_direct:
+                cs['direct'].append({
+                    'player_id': pid, 'nickname': nick,
+                    'pnl': round(float(pnl or 0), 2),
+                    'rake': round(float(rake or 0), 2),
+                    'hands': int(hands or 0),
+                })
+
+    # Recalculate totals for child_sas after adding missing agents/players
+    for cs in child_sas:
+        cs_rake = cs_pnl = cs_hands = 0
+        for m in cs.get('direct', []):
+            cs_rake += m.get('rake', 0)
+            cs_pnl += m.get('pnl', 0)
+            cs_hands += m.get('hands', 0)
+        for ag in cs.get('agents', {}).values():
+            ag_r = sum(m.get('rake', 0) for m in ag.get('members', []))
+            ag_p = sum(m.get('pnl', 0) for m in ag.get('members', []))
+            ag_h = sum(m.get('hands', 0) for m in ag.get('members', []))
+            ag['total_rake'] = round(ag_r, 2)
+            ag['total_pnl'] = round(ag_p, 2)
+            ag['total_hands'] = ag_h
+            cs_rake += ag_r
+            cs_pnl += ag_p
+            cs_hands += ag_h
+        cs['total_rake'] = round(cs_rake, 2)
+        cs['total_pnl'] = round(cs_pnl, 2)
+        cs['total_hands'] = cs_hands
 
     total_rake = sum(m['rake'] for m in direct_players) + sum(a['total_rake'] for a in agents_map.values())
     total_pnl = sum(m['pnl'] for m in direct_players) + sum(a['total_pnl'] for a in agents_map.values())
