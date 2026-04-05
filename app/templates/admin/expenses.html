@@ -50,7 +50,7 @@
                 <td><strong>{{ exp.description }}</strong></td>
                 <td class="amount expense">{{ exp.amount|comma }}</td>
                 <td class="muted">
-                    {% if agents_count > 0 %}{{ exp.amount / agents_count|comma }}{% else %}-{% endif %}
+                    {% if agents_count > 0 %}{{ (exp.amount / agents_count)|comma }}{% else %}-{% endif %}
                 </td>
                 <td>
                     {% if exp.charged %}
