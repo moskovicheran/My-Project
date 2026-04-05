@@ -762,7 +762,6 @@ def expenses():
                 exp_id = request.form.get('expense_id')
                 exp = SharedExpense.query.get(exp_id)
                 if exp:
-                    ExpenseCharge.query.filter_by(expense_id=exp.id).delete()
                     db.session.delete(exp)
                     db.session.commit()
                     flash('הוצאה וכל החיובים שלה נמחקו.', 'success')
