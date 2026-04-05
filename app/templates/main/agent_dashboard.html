@@ -553,13 +553,19 @@ body.dark .rake-split-badge { background: linear-gradient(135deg, #5a6fd6, #6a40
 /* Agent cards */
 .agent-card { margin-bottom: 0.7rem; border: 1px solid #e0e4ef; border-radius: 12px; overflow: hidden; transition: box-shadow 0.2s; }
 .agent-card:hover { box-shadow: 0 3px 12px rgba(67,97,238,0.08); }
-.agent-card-header { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 1.2rem; cursor: pointer; background: #fafbfc; }
+.agent-card-header { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 1.2rem; cursor: pointer; background: #fafbfc; flex-wrap: wrap; gap: 0.4rem; }
 .agent-card-header:hover { background: #f0f3ff; }
-.agent-card-name { display: flex; align-items: center; gap: 0.6rem; }
+.agent-card-name { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .agent-card-name strong { font-size: 1.05rem; }
 .agent-card-name .muted { font-size: 0.88rem; }
-.agent-card-stats { display: flex; gap: 0.5rem; }
+.agent-card-stats { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .agent-card-stats .summary-chip { font-size: 1rem; padding: 0.35rem 0.9rem; font-weight: 700; }
+@media (max-width: 640px) {
+    .agent-card-header { flex-direction: column; align-items: flex-end; }
+    .agent-card-name { width: 100%; justify-content: flex-end; }
+    .agent-card-stats { width: 100%; justify-content: flex-start; }
+    .agent-card-stats .summary-chip { font-size: 0.85rem; padding: 0.25rem 0.6rem; }
+}
 body.dark .agent-card { border-color: #333; }
 body.dark .agent-card-header { background: #1e1e2e; }
 body.dark .agent-card-header:hover { background: #252540; }
