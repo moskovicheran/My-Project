@@ -234,7 +234,17 @@ def dashboard():
         child_sa_ids = []
         for kid in known_ids:
             child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
-        child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
+        # Get managed club names to exclude child SAs that belong to managed clubs
+        managed_club_names = set()
+        rake_cfgs_early = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+        if rake_cfgs_early:
+            clubs_data_early, _ = get_members_hierarchy()
+            for cfg in rake_cfgs_early:
+                for c in clubs_data_early:
+                    if c['club_id'] == cfg.managed_club_id:
+                        managed_club_names.add(c['name'])
+        child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids
+                     and sa.get('club', '') not in managed_club_names]
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
