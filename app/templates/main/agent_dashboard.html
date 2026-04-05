@@ -334,7 +334,7 @@ function toggleExpenseDetails() {
                 <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     רווח/הפסד {% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}
                 </span>
-                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showExportChoice('{{ ag_id }}', '{{ ag.nick }}')" style="color:#217346; font-weight:bold; font-size:0.75rem;">📥 XLS</button>
+                <a href="{{ url_for('main.export_single_agent', agent_id=ag_id) }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.75rem;">📥 XLS</a>
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
