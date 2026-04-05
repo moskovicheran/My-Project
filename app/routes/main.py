@@ -960,6 +960,91 @@ def export_agent_account():
     return _make_excel(sheets, f'{current_user.username}_account.xlsx')
 
 
+@main_bp.route('/export/agent/single/<agent_id>')
+@login_required
+def export_single_agent(agent_id):
+    """Export a single agent's players report."""
+    if current_user.role not in ('agent', 'admin') :
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats
+    from app.union_data import get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_
+
+    # Get all players under this agent/SA (by agent_id or sa_id)
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+        sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(
+        or_(DailyPlayerStats.agent_id == agent_id, DailyPlayerStats.sa_id == agent_id),
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+
+    # Agent/SA nickname
+    agent_nick = DailyPlayerStats.query.with_entities(
+        sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id == agent_id).scalar() or agent_id
+
+    # Nickname lookup
+    all_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+
+    # Group by agent for multi-sheet export
+    agent_groups = {}
+    direct_rows = []
+    for p in players:
+        raw_pnl = round(float(p[4] or 0), 2)
+        row = {
+            'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+            'רווח/הפסד': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
+            'Rake': round(float(p[5] or 0), 2),
+            'Hands': int(p[6] or 0),
+        }
+        ag = p[3]
+        if ag and ag != '-' and ag != agent_id:
+            ag_name = all_nicks.get(ag, ag)
+            if ag_name not in agent_groups:
+                agent_groups[ag_name] = []
+            agent_groups[ag_name].append(row)
+        else:
+            direct_rows.append(row)
+
+    sheets = {}
+    # Sheet per sub-agent
+    for ag_name, ag_rows in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+        ag_rows.sort(key=lambda x: x['Rake'], reverse=True)
+        ag_rows.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in ag_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in ag_rows), 2),
+            'Hands': sum(r['Hands'] for r in ag_rows),
+        })
+        import re
+        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
+        sheets[safe_name] = ag_rows
+
+    # Direct players sheet
+    if direct_rows:
+        direct_rows.sort(key=lambda x: x['Rake'], reverse=True)
+        direct_rows.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in direct_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in direct_rows), 2),
+            'Hands': sum(r['Hands'] for r in direct_rows),
+        })
+        sheets['שחקנים ישירים'] = direct_rows
+
+    if not sheets:
+        sheets[agent_nick[:31]] = []
+
+    return _make_excel(sheets, f'{agent_nick}_players.xlsx')
+
+
 @main_bp.route('/export/agent/players')
 @login_required
 def export_agent_players():
