@@ -245,6 +245,25 @@ def dashboard():
                         managed_club_names.add(c['name'])
         child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids
                      and sa.get('club', '') not in managed_club_names]
+        # Deduplicate child_sas by sa_id (same SA may appear in multiple clubs)
+        seen_sa_ids = set()
+        deduped = []
+        for cs in child_sas:
+            if cs['sa_id'] not in seen_sa_ids:
+                seen_sa_ids.add(cs['sa_id'])
+                deduped.append(cs)
+            else:
+                # Merge members into existing entry
+                existing = next(x for x in deduped if x['sa_id'] == cs['sa_id'])
+                for m in cs.get('direct', []):
+                    existing['direct'].append(m)
+                for ag_id, ag in cs.get('agents', {}).items():
+                    if ag_id in existing['agents']:
+                        existing['agents'][ag_id]['members'].extend(ag.get('members', []))
+                    else:
+                        existing['agents'][ag_id] = ag
+                existing['club'] += ', ' + cs.get('club', '')
+        child_sas = deduped
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
