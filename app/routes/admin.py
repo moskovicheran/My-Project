@@ -879,3 +879,12 @@ def logins():
             ip_city_cache[ip] = get_ip_city(ip)
         log.city = ip_city_cache[ip]
     return render_template('admin/logins.html', logs=logs)
+
+
+@admin_bp.route('/clear-logins', methods=['POST'])
+@admin_required
+def clear_logins():
+    LoginLog.query.delete()
+    db.session.commit()
+    flash('כל ההתחברויות נמחקו.', 'success')
+    return redirect(url_for('admin.logins'))

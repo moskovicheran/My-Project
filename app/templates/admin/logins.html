@@ -3,7 +3,14 @@
 
 {% block content %}
 <div class="section">
-    <h2 class="section-title">התחברויות אחרונות ({{ logs|length }})</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 class="section-title">התחברויות אחרונות ({{ logs|length }})</h2>
+        {% if logs %}
+        <form method="POST" action="{{ url_for('admin.clear_logins') }}" onsubmit="return confirm('למחוק את כל ההתחברויות?')">
+            <button type="submit" class="btn btn-outline btn-sm" style="color:#ef233c; border-color:#ef233c;">🗑 איפוס</button>
+        </form>
+        {% endif %}
+    </div>
 
     {% if logs %}
     <table class="table table-sm">
