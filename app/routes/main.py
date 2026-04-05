@@ -446,14 +446,36 @@ def dashboard():
             for ag in cs.get('agents', {}).values():
                 for m in ag.get('members', []):
                     all_child_player_ids.add(m['player_id'])
-        if all_child_player_ids:
-            cumul = get_cumulative_stats(list(all_child_player_ids))
-        else:
-            cumul = {}
         for cs in child_sas:
+            # Get cumulative stats filtered by THIS SA only (not all SAs a player belongs to)
+            cs_sa = cs.get('sa_id')
+            cs_player_ids = set()
+            for m in cs.get('direct', []):
+                cs_player_ids.add(m['player_id'])
+            for ag in cs.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    cs_player_ids.add(m['player_id'])
+            # Query cumulative filtered by sa_id
+            cumul_cs = {}
+            if cs_player_ids and cs_sa:
+                sa_stats = DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id,
+                    sqlfunc.sum(DailyPlayerStats.pnl),
+                    sqlfunc.sum(DailyPlayerStats.rake),
+                    sqlfunc.sum(DailyPlayerStats.hands),
+                ).filter(
+                    DailyPlayerStats.sa_id == cs_sa,
+                    DailyPlayerStats.player_id.in_(list(cs_player_ids)),
+                    DailyPlayerStats.role != 'Name Entry'
+                ).group_by(DailyPlayerStats.player_id).all()
+                for pid, pnl, rake, hands in sa_stats:
+                    cumul_cs[pid] = {'pnl': round(float(pnl or 0), 2),
+                                     'rake': round(float(rake or 0), 2),
+                                     'hands': int(hands or 0)}
+
             cs_rake = cs_pnl = cs_hands = 0
             for m in cs.get('direct', []):
-                c = cumul.get(m['player_id'])
+                c = cumul_cs.get(m['player_id'])
                 if c:
                     m['pnl'] = c['pnl']
                     m['rake'] = c['rake']
@@ -464,7 +486,7 @@ def dashboard():
             for ag in cs.get('agents', {}).values():
                 ag_r = ag_p = ag_h = 0
                 for m in ag.get('members', []):
-                    c = cumul.get(m['player_id'])
+                    c = cumul_cs.get(m['player_id'])
                     if c:
                         m['pnl'] = c['pnl']
                         m['rake'] = c['rake']
