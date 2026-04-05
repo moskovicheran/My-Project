@@ -655,7 +655,15 @@ def dashboard():
                                      key=lambda x: x[1].get('total_rake', 0), reverse=True))
         my_sa_combined['agents'] = agents_sorted
 
-        personal_rake = round(my_sa_combined['total_rake'], 2)
+        # Add child SAs totals to overall totals
+        child_sas_rake = round(sum(cs.get('total_rake', 0) for cs in child_sas), 2)
+        child_sas_pnl = round(sum(cs.get('total_pnl', 0) for cs in child_sas), 2)
+        child_sas_hands = sum(cs.get('total_hands', 0) for cs in child_sas)
+        total_rake += child_sas_rake
+        total_pnl += child_sas_pnl
+        total_hands += child_sas_hands
+
+        personal_rake = round(my_sa_combined['total_rake'] + child_sas_rake, 2)
         clubs_total_rake = round(sum(c.get('total_rake', 0) for c in managed_clubs), 2)
         sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
