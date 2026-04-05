@@ -19,6 +19,20 @@
     </div>
     <div id="searchResults" style="display:none; position:absolute; top:100%; right:0; left:0; z-index:50; background:#fff; border:1px solid #e0e4ef; border-radius:0 0 12px 12px; box-shadow:0 6px 20px rgba(0,0,0,0.1); max-height:300px; overflow-y:auto;"></div>
 </div>
+<script>
+var _allPlayers = [
+{% if my_sa.direct %}{% for m in my_sa.direct %}{n:"{{ m.nickname }}", id:"{{ m.player_id }}"},{% endfor %}{% endif %}
+{% for ag_id, ag in my_sa.agents.items() %}
+{% for m in ag.members %}{n:"{{ m.nickname }}", id:"{{ m.player_id }}"},{% endfor %}
+{% endfor %}
+{% for cs in child_sas %}
+{% if cs.direct %}{% for m in cs.direct %}{n:"{{ m.nickname }}", id:"{{ m.player_id }}"},{% endfor %}{% endif %}
+{% for ag_id, ag in cs.agents.items() %}
+{% for m in ag.members %}{n:"{{ m.nickname }}", id:"{{ m.player_id }}"},{% endfor %}
+{% endfor %}
+{% endfor %}
+];
+</script>
 
 {# ── Stats Cards ── #}
 <div class="stats-grid stats-4" style="margin-bottom:1.5rem;">
@@ -352,13 +366,16 @@ function filterDashboard(query) {
 
     cards.forEach(function(c) { c.style.display = ''; });
 
-    if (!q) {
+    if (!q || q.length < 2) {
         results.style.display = 'none';
         results.innerHTML = '';
         return;
     }
 
     var html = '';
+    var shown = new Set();
+
+    // Search agents/SAs cards
     cards.forEach(function(card, idx) {
         var dataName = (card.getAttribute('data-name') || '');
         var nameLower = dataName.toLowerCase();
@@ -369,14 +386,39 @@ function filterDashboard(query) {
             var badgeText = badge ? badge.textContent.trim() : '';
             var rakeChip = card.querySelector('.chip-win');
             var rakeText = rakeChip ? rakeChip.textContent.trim() : '';
-            html += '<div onclick="jumpToCard(' + idx + ')" style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 1rem; cursor:pointer; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseover="this.style.background=\'#f0f3ff\'" onmouseout="this.style.background=\'\'">';
+            shown.add(name);
+            html += '<div onclick="jumpToCard(' + idx + ')" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; cursor:pointer; border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background=\'#f0f3ff\'" onmouseout="this.style.background=\'\'">';
             html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
-            if (badgeText) html += '<span class="role-badge role-agent" style="font-size:0.7rem;">' + badgeText + '</span>';
+            if (badgeText) html += '<span class="role-badge role-agent" style="font-size:0.65rem;">' + badgeText + '</span>';
             html += '<strong>' + name + '</strong></div>';
-            if (rakeText) html += '<span class="muted" style="font-size:0.85rem;">' + rakeText + '</span>';
+            if (rakeText) html += '<span class="muted" style="font-size:0.8rem;">' + rakeText + '</span>';
             html += '</div>';
         }
     });
+
+    // Search individual players
+    var playerHtml = '';
+    var playerCount = 0;
+    if (typeof _allPlayers !== 'undefined') {
+        _allPlayers.forEach(function(p) {
+            if (p.n.toLowerCase().indexOf(q) !== -1 && !shown.has(p.n) && playerCount < 15) {
+                playerCount++;
+                playerHtml += '<div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background=\'#f8f9ff\'" onmouseout="this.style.background=\'\'">';
+                playerHtml += '<div style="display:flex; align-items:center; gap:0.5rem;">';
+                playerHtml += '<span class="role-badge role-player" style="font-size:0.6rem;">שחקן</span>';
+                playerHtml += '<span>' + p.n + '</span></div>';
+                playerHtml += '<div style="display:flex; gap:0.3rem;">';
+                playerHtml += '<a href="/union/player/' + p.id + '" style="font-size:0.7rem; color:#4361ee; text-decoration:none; font-weight:600;">רקורד</a>';
+                playerHtml += '<a href="/export/player/' + p.id + '" style="font-size:0.7rem; color:#217346; text-decoration:none; font-weight:700;">📥 XLS</a>';
+                playerHtml += '</div></div>';
+            }
+        });
+    }
+
+    if (playerHtml) {
+        if (html) html += '<div style="padding:0.3rem 1rem; background:#f8f8f8; font-size:0.75rem; color:#888; font-weight:600;">שחקנים</div>';
+        html += playerHtml;
+    }
 
     if (html) {
         results.innerHTML = html;
