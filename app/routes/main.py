@@ -994,20 +994,25 @@ def export_single_agent(agent_id):
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
 
-    # Group by agent for multi-sheet export
+    import re
+    full_mode = request.args.get('mode') == 'full'
+
+    all_rows = []
     agent_groups = {}
     direct_rows = []
     for p in players:
         raw_pnl = round(float(p[4] or 0), 2)
+        ag = p[3]
+        ag_name = all_nicks.get(ag, ag) if ag and ag != '-' and ag != agent_id else ''
         row = {
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+            'סוכן': ag_name,
             'רווח/הפסד': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[5] or 0), 2),
             'Hands': int(p[6] or 0),
         }
-        ag = p[3]
-        if ag and ag != '-' and ag != agent_id:
-            ag_name = all_nicks.get(ag, ag)
+        all_rows.append(row)
+        if ag_name:
             if ag_name not in agent_groups:
                 agent_groups[ag_name] = []
             agent_groups[ag_name].append(row)
@@ -1015,29 +1020,43 @@ def export_single_agent(agent_id):
             direct_rows.append(row)
 
     sheets = {}
-    # Sheet per sub-agent
-    for ag_name, ag_rows in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
-        ag_rows.sort(key=lambda x: x['Rake'], reverse=True)
-        ag_rows.append({
-            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
-            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in ag_rows), 2),
-            'Rake': round(sum(r['Rake'] for r in ag_rows), 2),
-            'Hands': sum(r['Hands'] for r in ag_rows),
-        })
-        import re
-        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
-        sheets[safe_name] = ag_rows
 
-    # Direct players sheet
-    if direct_rows:
-        direct_rows.sort(key=lambda x: x['Rake'], reverse=True)
-        direct_rows.append({
-            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
-            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in direct_rows), 2),
-            'Rake': round(sum(r['Rake'] for r in direct_rows), 2),
-            'Hands': sum(r['Hands'] for r in direct_rows),
+    if full_mode:
+        # Single sheet with all players sorted by rake
+        all_rows.sort(key=lambda x: x['Rake'], reverse=True)
+        all_rows.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'סוכן': '',
+            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in all_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in all_rows), 2),
+            'Hands': sum(r['Hands'] for r in all_rows),
         })
-        sheets['שחקנים ישירים'] = direct_rows
+        sheets[agent_nick[:31]] = all_rows
+    else:
+        # Sheet per sub-agent
+        for ag_name, ag_rows in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+            ag_rows_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'קלאב': r['קלאב'],
+                              'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in ag_rows]
+            ag_rows_clean.sort(key=lambda x: x['Rake'], reverse=True)
+            ag_rows_clean.append({
+                'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in ag_rows_clean), 2),
+                'Rake': round(sum(r['Rake'] for r in ag_rows_clean), 2),
+                'Hands': sum(r['Hands'] for r in ag_rows_clean),
+            })
+            safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
+            sheets[safe_name] = ag_rows_clean
+
+        if direct_rows:
+            dr_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'קלאב': r['קלאב'],
+                         'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in direct_rows]
+            dr_clean.sort(key=lambda x: x['Rake'], reverse=True)
+            dr_clean.append({
+                'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in dr_clean), 2),
+                'Rake': round(sum(r['Rake'] for r in dr_clean), 2),
+                'Hands': sum(r['Hands'] for r in dr_clean),
+            })
+            sheets['שחקנים ישירים'] = dr_clean
 
     if not sheets:
         sheets[agent_nick[:31]] = []

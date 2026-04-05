@@ -436,7 +436,7 @@ function toggleExpenseDetails() {
                     <strong>{{ cs.sa_nick }}</strong>
                     <span class="role-badge role-sa" style="font-size:0.65rem;">SA</span>
                 </div>
-                <a href="{{ url_for('main.export_single_agent', agent_id=cs.sa_id) }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</a>
+                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showExportChoice('{{ cs.sa_id }}', '{{ cs.sa_nick }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
             </div>
             <div style="display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.3rem;">
                 <span class="summary-chip chip-win chip-sm">R {{ cs.total_rake|comma }}</span>
@@ -845,5 +845,53 @@ body.dark .dp-reset { color:#ff6b6b; }
 @media (max-width: 640px) {
     .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; min-width:auto; width:auto; transform:none; }
 }
+/* Export choice modal */
+.export-modal-overlay {
+    display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.4); z-index:200; align-items:center; justify-content:center;
+}
+.export-modal-overlay.active { display:flex; }
+.export-modal {
+    background:#fff; border-radius:16px; padding:1.5rem; max-width:340px; width:90%;
+    box-shadow:0 10px 40px rgba(0,0,0,0.2); text-align:center;
+}
+.export-modal h3 { margin:0 0 0.5rem; font-size:1.1rem; }
+.export-modal p { margin:0 0 1rem; color:#666; font-size:0.85rem; }
+.export-modal-btns { display:flex; flex-direction:column; gap:0.5rem; }
+.export-modal-btns a {
+    display:block; padding:0.7rem; border-radius:10px; text-decoration:none;
+    font-weight:700; font-size:0.95rem; transition:background 0.15s;
+}
+.export-btn-full { background:#217346; color:#fff; }
+.export-btn-full:hover { background:#1a5c38; }
+.export-btn-agents { background:#4361ee; color:#fff; }
+.export-btn-agents:hover { background:#3451d1; }
+.export-btn-cancel { background:#f0f0f0; color:#666; }
+.export-btn-cancel:hover { background:#e0e0e0; }
 </style>
+
+{# ── Export Choice Modal ── #}
+<div class="export-modal-overlay" id="exportModal" onclick="if(event.target===this)closeExportModal()">
+    <div class="export-modal">
+        <h3 id="exportModalTitle">הורדת דוח</h3>
+        <p>בחר סוג דוח:</p>
+        <div class="export-modal-btns">
+            <a id="exportFullLink" href="#" class="export-btn-full">📊 דוח מלא - כל הסוכנים והשחקנים</a>
+            <a id="exportAgentsLink" href="#" class="export-btn-agents">📋 דוח לפי סוכנים - גיליון לכל סוכן</a>
+            <a href="#" onclick="closeExportModal(); return false;" class="export-btn-cancel">ביטול</a>
+        </div>
+    </div>
+</div>
+
+<script>
+function showExportChoice(agentId, agentNick) {
+    document.getElementById('exportModalTitle').textContent = 'דוח ' + agentNick;
+    document.getElementById('exportFullLink').href = '/export/agent/single/' + agentId + '?mode=full';
+    document.getElementById('exportAgentsLink').href = '/export/agent/single/' + agentId;
+    document.getElementById('exportModal').classList.add('active');
+}
+function closeExportModal() {
+    document.getElementById('exportModal').classList.remove('active');
+}
+</script>
 {% endblock %}
