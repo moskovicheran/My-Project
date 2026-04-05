@@ -92,6 +92,7 @@ def agent_view(sa_id):
     from app.union_data import get_transfer_adjustments
     all_my_player_ids = set()
     agents_map = {}
+    has_child_sas = len(child_sa_ids) > 0
     direct_players = []
     for pid, nick, club, ag_id, role, pnl, rake, hands in my_players_db:
         pnl = round(float(pnl or 0), 2)
@@ -100,8 +101,8 @@ def agent_view(sa_id):
         all_my_player_ids.add(pid)
         member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
         actual_sa = player_sa_lookup.get(pid, '')
-        if ag_id and ag_id != '-' and ag_id != sa_id and ag_id not in child_sa_ids and actual_sa in known_ids:
-            # Agent directly under our SA (exclude child SAs)
+        sa_ok = actual_sa in known_ids if has_child_sas else True
+        if ag_id and ag_id != '-' and ag_id != sa_id and ag_id not in child_sa_ids and sa_ok:
             if ag_id not in agents_map:
                 agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
                                      'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
@@ -109,8 +110,7 @@ def agent_view(sa_id):
             agents_map[ag_id]['total_pnl'] += pnl
             agents_map[ag_id]['total_rake'] += rake
             agents_map[ag_id]['total_hands'] += hands
-        elif actual_sa in known_ids and (not ag_id or ag_id == '-' or ag_id == sa_id):
-            # Direct player under our SA
+        elif (not ag_id or ag_id == '-' or ag_id == sa_id) and sa_ok:
             direct_players.append(member)
         # else: belongs to child SA, handled by child_sas section
 
