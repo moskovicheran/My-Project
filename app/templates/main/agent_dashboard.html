@@ -628,11 +628,12 @@ function filterDashboard(query) {
         if (nameLower.indexOf(q) !== -1) {
             var displayName = card.querySelector('strong');
             var name = displayName ? displayName.textContent : dataName.split(' ')[0];
+            if (shown.has(name)) return;
+            shown.add(name);
             var badge = card.querySelector('.role-badge');
             var badgeText = badge ? badge.textContent.trim() : '';
             var rakeChip = card.querySelector('.chip-win');
             var rakeText = rakeChip ? rakeChip.textContent.trim() : '';
-            shown.add(name);
             html += '<div onclick="jumpToCard(' + idx + ')" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; cursor:pointer; border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background=\'#f0f3ff\'" onmouseout="this.style.background=\'\'">';
             html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
             if (badgeText) html += '<span class="role-badge role-agent" style="font-size:0.65rem;">' + badgeText + '</span>';
