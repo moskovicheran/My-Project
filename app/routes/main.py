@@ -277,7 +277,9 @@ def dashboard():
             all_my_player_ids.add(pid)
             member = {'player_id': pid, 'nickname': nick, 'role': role or 'Player',
                       'pnl': pnl, 'rake': rake, 'hands': hands}
-            if ag_id and ag_id != '-' and ag_id != sa_id:
+            actual_sa = player_sa_lookup.get(pid, '')
+            if ag_id and ag_id != '-' and ag_id != sa_id and actual_sa in known_ids:
+                # Agent directly under our SA
                 if ag_id not in agents_map:
                     agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
                                          'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
@@ -285,12 +287,10 @@ def dashboard():
                 agents_map[ag_id]['total_pnl'] += pnl
                 agents_map[ag_id]['total_rake'] += rake
                 agents_map[ag_id]['total_hands'] += hands
-            else:
-                # Only add as direct if their sa_id is directly ours (not a child SA)
-                actual_sa = player_sa_lookup.get(pid, '')
-                if actual_sa in known_ids:
-                    direct_players.append(member)
-                # else: belongs to child SA, will be handled by child_sas section
+            elif actual_sa in known_ids and (not ag_id or ag_id == '-' or ag_id == sa_id):
+                # Direct player under our SA
+                direct_players.append(member)
+            # else: belongs to child SA, handled by child_sas section
 
         # Fetch missing players for agents found in the initial query
         # Only for agents whose sa_id is directly ours (not child SAs - those are handled separately)
