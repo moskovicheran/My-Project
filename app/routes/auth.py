@@ -68,6 +68,8 @@ def login():
         user = User.query.filter_by(email=login_id).first()
         if not user:
             user = User.query.filter_by(username=login_id).first()
+        if not user:
+            user = User.query.filter_by(player_id=login_id).first()
 
         if not user or not user.check_password(password):
             flash('שם משתמש או סיסמה שגויים.', 'danger')
@@ -118,20 +120,43 @@ def users():
             error = None
             player_id = ''
             username = ''
+            lookup_mode = request.form.get('lookup_mode', 'list')
 
             if user_type == 'club':
-                club_key = request.form.get('club_key', '').strip()
                 role = 'club'
-                if '|' in club_key:
-                    player_id, username = club_key.split('|', 1)
-                else:
-                    error = 'יש לבחור מועדון מהרשימה.'
+                if lookup_mode == 'list':
+                    club_key = request.form.get('club_key', '').strip()
+                    if '|' in club_key:
+                        player_id, username = club_key.split('|', 1)
+                    else:
+                        error = 'יש לבחור מועדון מהרשימה.'
+                elif lookup_mode == 'name':
+                    username = request.form.get('manual_username', '').strip()
+                    player_id = request.form.get('manual_id', '').strip()
+                    if not username:
+                        error = 'יש להזין שם מועדון.'
+                elif lookup_mode == 'id':
+                    player_id = request.form.get('manual_id', '').strip()
+                    username = request.form.get('manual_username', '').strip() or player_id
+                    if not player_id:
+                        error = 'יש להזין Club ID.'
             else:
-                member_key = request.form.get('member_key', '').strip()
-                if '|' in member_key:
-                    player_id, username = member_key.split('|', 1)
-                else:
-                    error = 'יש לבחור שחקן מהרשימה.'
+                if lookup_mode == 'list':
+                    member_key = request.form.get('member_key', '').strip()
+                    if '|' in member_key:
+                        player_id, username = member_key.split('|', 1)
+                    else:
+                        error = 'יש לבחור שחקן מהרשימה.'
+                elif lookup_mode == 'user':
+                    username = request.form.get('manual_username', '').strip()
+                    player_id = request.form.get('manual_id', '').strip()
+                    if not username:
+                        error = 'יש להזין שם משתמש.'
+                elif lookup_mode == 'id':
+                    player_id = request.form.get('manual_id', '').strip()
+                    username = request.form.get('manual_username', '').strip() or player_id
+                    if not player_id:
+                        error = 'יש להזין Player ID.'
 
             if not error and (not password or len(password) < 6):
                 error = 'הסיסמה חייבת להכיל לפחות 6 תווים.'

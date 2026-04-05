@@ -19,65 +19,134 @@
         <button type="button" class="tab" id="tab-club" onclick="switchTab('club')">מועדון</button>
     </div>
 
-    {# Member form #}
-    <form method="POST" id="form-member" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap;">
+    {# ── Member form ── #}
+    <form method="POST" id="form-member" style="display:block;">
         <input type="hidden" name="action" value="add">
         <input type="hidden" name="user_type" value="member">
+        <input type="hidden" name="lookup_mode" id="memberLookupMode" value="list">
 
-        <div style="flex:2; min-width:250px; position:relative;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">בחר שחקן / סוכן</label>
-            <input type="hidden" name="member_key" id="memberKeyInput">
-            <input type="text" id="memberSearch" placeholder="הקלד שם לחיפוש..." autocomplete="off"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;"
-                   oninput="filterMembers()" onfocus="filterMembers()">
-            <div id="memberDropdown" class="autocomplete-dropdown" style="display:none;"></div>
+        {# Lookup mode toggle #}
+        <div style="display:flex; gap:0.5rem; margin-bottom:1rem; align-items:center;">
+            <span style="font-size:0.85rem; color:var(--muted); margin-left:0.3rem;">זיהוי לפי:</span>
+            <button type="button" class="lookup-btn active" data-mode="list" data-form="member" onclick="switchLookup('member','list')">📋 רשימה</button>
+            <button type="button" class="lookup-btn" data-mode="user" data-form="member" onclick="switchLookup('member','user')">👤 יוזר</button>
+            <button type="button" class="lookup-btn" data-mode="id" data-form="member" onclick="switchLookup('member','id')">🔢 ID</button>
         </div>
 
-        <div style="min-width:120px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">תפקיד</label>
-            <select name="role" style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-                <option value="agent">סוכן</option>
-                <option value="player">שחקן</option>
-                <option value="admin">מנהל</option>
-            </select>
-        </div>
+        <div style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap;">
+            {# List mode (default) #}
+            <div id="member-input-list" style="flex:2; min-width:250px; position:relative;">
+                <label class="field-label">בחר שחקן / סוכן</label>
+                <input type="hidden" name="member_key" id="memberKeyInput">
+                <input type="text" id="memberSearch" placeholder="הקלד שם לחיפוש..." autocomplete="off"
+                       class="field-input" oninput="filterMembers()" onfocus="filterMembers()">
+                <div id="memberDropdown" class="autocomplete-dropdown" style="display:none;"></div>
+            </div>
 
-        <div style="min-width:140px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סיסמה</label>
-            <input type="password" name="password" required minlength="6" placeholder="לפחות 6 תווים"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-        </div>
+            {# Username mode #}
+            <div id="member-input-user" style="flex:2; min-width:250px; display:none;">
+                <label class="field-label">שם משתמש (Username)</label>
+                <input type="text" name="manual_username" placeholder="הזן שם משתמש..." class="field-input field-input-highlight" disabled>
+                <div style="margin-top:0.4rem;">
+                    <label class="field-label">Player ID (אופציונלי)</label>
+                    <input type="text" name="manual_id" placeholder="לדוגמה: 2197-2365" class="field-input" dir="ltr" disabled>
+                </div>
+            </div>
 
-        <div>
-            <button type="submit" class="btn btn-primary">צור משתמש</button>
+            {# ID mode #}
+            <div id="member-input-id" style="flex:2; min-width:250px; display:none;">
+                <label class="field-label">Player ID</label>
+                <input type="text" name="manual_id" placeholder="לדוגמה: 2197-2365" class="field-input field-input-highlight" dir="ltr" disabled>
+                <div style="margin-top:0.4rem;">
+                    <label class="field-label">שם משתמש (אופציונלי - אם ריק, ה-ID ישמש כ-username)</label>
+                    <input type="text" name="manual_username" placeholder="הזן שם משתמש..." class="field-input" disabled>
+                </div>
+            </div>
+
+            <div style="min-width:120px;">
+                <label class="field-label">תפקיד</label>
+                <select name="role" class="field-input">
+                    <option value="agent">סוכן</option>
+                    <option value="player">שחקן</option>
+                    <option value="admin">מנהל</option>
+                </select>
+            </div>
+
+            <div style="min-width:140px;">
+                <label class="field-label">סיסמה</label>
+                <input type="password" name="password" required minlength="6" placeholder="לפחות 6 תווים" class="field-input">
+            </div>
+
+            <div>
+                <button type="submit" class="btn btn-primary">צור משתמש</button>
+            </div>
         </div>
     </form>
 
-    {# Club form #}
-    <form method="POST" id="form-club" style="display:none; align-items:flex-end; gap:0.8rem; flex-wrap:wrap;">
+    {# ── Club form ── #}
+    <form method="POST" id="form-club" style="display:none;">
         <input type="hidden" name="action" value="add">
         <input type="hidden" name="user_type" value="club">
+        <input type="hidden" name="lookup_mode" id="clubLookupMode" value="list">
 
-        <div style="flex:2; min-width:250px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">בחר מועדון</label>
-            <select name="club_key" required style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-                <option value="">בחר מועדון...</option>
-                {% for c in clubs %}
-                <option value="{{ c.club_id }}|{{ c.name }}">{{ c.name }} (ID: {{ c.club_id }})</option>
-                {% endfor %}
-            </select>
+        {# Lookup mode toggle #}
+        <div style="display:flex; gap:0.5rem; margin-bottom:1rem; align-items:center;">
+            <span style="font-size:0.85rem; color:var(--muted); margin-left:0.3rem;">זיהוי לפי:</span>
+            <button type="button" class="lookup-btn active" data-mode="list" data-form="club" onclick="switchLookup('club','list')">📋 רשימה</button>
+            <button type="button" class="lookup-btn" data-mode="name" data-form="club" onclick="switchLookup('club','name')">🏠 שם מועדון</button>
+            <button type="button" class="lookup-btn" data-mode="id" data-form="club" onclick="switchLookup('club','id')">🔢 ID</button>
         </div>
 
-        <div style="min-width:140px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סיסמה</label>
-            <input type="password" name="password" required minlength="6" placeholder="לפחות 6 תווים"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-        </div>
+        <div style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap;">
+            {# List mode (default) #}
+            <div id="club-input-list" style="flex:2; min-width:250px;">
+                <label class="field-label">בחר מועדון</label>
+                <select name="club_key" class="field-input">
+                    <option value="">בחר מועדון...</option>
+                    {% for c in clubs %}
+                    <option value="{{ c.club_id }}|{{ c.name }}">{{ c.name }} (ID: {{ c.club_id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
 
-        <div>
-            <button type="submit" class="btn btn-primary">צור משתמש מועדון</button>
+            {# Club name mode #}
+            <div id="club-input-name" style="flex:2; min-width:250px; display:none;">
+                <label class="field-label">שם מועדון</label>
+                <input type="text" name="manual_username" placeholder="הזן שם מועדון..." class="field-input field-input-highlight" disabled>
+                <div style="margin-top:0.4rem;">
+                    <label class="field-label">Club ID (אופציונלי)</label>
+                    <input type="text" name="manual_id" placeholder="לדוגמה: 2625373" class="field-input" dir="ltr" disabled>
+                </div>
+            </div>
+
+            {# Club ID mode #}
+            <div id="club-input-id" style="flex:2; min-width:250px; display:none;">
+                <label class="field-label">Club ID</label>
+                <input type="text" name="manual_id" placeholder="לדוגמה: 2625373" class="field-input field-input-highlight" dir="ltr" disabled>
+                <div style="margin-top:0.4rem;">
+                    <label class="field-label">שם מועדון (אופציונלי - אם ריק, ה-ID ישמש כ-username)</label>
+                    <input type="text" name="manual_username" placeholder="הזן שם מועדון..." class="field-input" disabled>
+                </div>
+            </div>
+
+            <div style="min-width:140px;">
+                <label class="field-label">סיסמה</label>
+                <input type="password" name="password" required minlength="6" placeholder="לפחות 6 תווים" class="field-input">
+            </div>
+
+            <div>
+                <button type="submit" class="btn btn-primary">צור משתמש מועדון</button>
+            </div>
         </div>
     </form>
+</div>
+
+{# ── Info: login options ── #}
+<div class="section" style="margin-bottom:1.5rem; background:var(--card-bg); border:1px solid var(--success, #2e7d32); border-radius:12px; padding:1rem 1.2rem;">
+    <div style="font-size:0.95rem; color:var(--success, #2e7d32); margin-bottom:0.4rem;">💡 התחברות למערכת</div>
+    <div style="font-size:0.85rem; color:var(--muted); line-height:1.6;">
+        כל משתמש יכול להתחבר גם עם <strong>שם המשתמש</strong> שלו וגם עם <strong>ה-ID</strong> שלו + הסיסמה.
+    </div>
 </div>
 
 {# ── Users table ── #}
@@ -135,14 +204,49 @@
 </div>
 
 <script>
+/* ── Tab switching (member / club) ── */
 function switchTab(type) {
-    document.getElementById('form-member').style.display = type === 'member' ? 'flex' : 'none';
-    document.getElementById('form-club').style.display = type === 'club' ? 'flex' : 'none';
+    document.getElementById('form-member').style.display = type === 'member' ? 'block' : 'none';
+    document.getElementById('form-club').style.display = type === 'club' ? 'block' : 'none';
     document.getElementById('tab-member').classList.toggle('active', type === 'member');
     document.getElementById('tab-club').classList.toggle('active', type === 'club');
 }
 
-// Autocomplete for member search
+/* ── Lookup mode switching ── */
+function switchLookup(formType, mode) {
+    // Update hidden field
+    var hiddenField = formType === 'member' ? 'memberLookupMode' : 'clubLookupMode';
+    document.getElementById(hiddenField).value = mode;
+
+    // Determine possible modes per form type
+    var modes = formType === 'member' ? ['list', 'user', 'id'] : ['list', 'name', 'id'];
+
+    // Toggle button styles
+    var buttons = document.querySelectorAll('.lookup-btn[data-form="' + formType + '"]');
+    buttons.forEach(function(btn) {
+        if (btn.dataset.mode === mode) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Show/hide input sections and enable/disable fields
+    modes.forEach(function(m) {
+        var el = document.getElementById(formType + '-input-' + m);
+        if (el) {
+            var isActive = (m === mode);
+            el.style.display = isActive ? 'block' : 'none';
+            // Enable/disable inputs so only active ones submit
+            var inputs = el.querySelectorAll('input[name], select[name]');
+            inputs.forEach(function(inp) {
+                inp.disabled = !isActive;
+            });
+        }
+    });
+}
+
+/* ── Autocomplete for member search ── */
 var allMembers = [
     {% for m in members %}
     {key: "{{ m.player_id }}|{{ m.nickname }}", label: "{{ m.nickname }} ({{ m.player_id }}) - {{ m.club }} - {{ m.role }}"},
@@ -191,13 +295,59 @@ document.addEventListener('click', function(e) {
 </script>
 
 <style>
+/* Field labels & inputs */
+.field-label {
+    font-size: 0.85rem;
+    color: var(--muted, #666);
+    display: block;
+    margin-bottom: 0.3rem;
+}
+.field-input {
+    width: 100%;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--input-bg, #fff);
+    color: var(--text, #333);
+    box-sizing: border-box;
+}
+.field-input-highlight {
+    border-color: var(--primary, #4361ee);
+    box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
+}
+
+/* Lookup toggle buttons */
+.lookup-btn {
+    padding: 0.35rem 0.9rem;
+    border-radius: 20px;
+    border: 1px solid var(--border, #ddd);
+    background: transparent;
+    color: var(--muted, #888);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.lookup-btn.active {
+    background: var(--primary, #4361ee);
+    color: #fff;
+    border-color: var(--primary, #4361ee);
+}
+.lookup-btn:hover:not(.active) {
+    border-color: var(--primary, #4361ee);
+    color: var(--primary, #4361ee);
+}
+
+/* Autocomplete */
 .autocomplete-dropdown {
     position: absolute;
     top: 100%;
     right: 0;
     left: 0;
-    background: #fff;
-    border: 1px solid #ddd;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border, #ddd);
     border-radius: 0 0 8px 8px;
     max-height: 250px;
     overflow-y: auto;
@@ -208,13 +358,20 @@ document.addEventListener('click', function(e) {
     padding: 0.5rem 0.8rem;
     cursor: pointer;
     font-size: 0.88rem;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--border-light, #f0f0f0);
 }
 .autocomplete-item:hover {
-    background: #eef0ff;
+    background: var(--hover-bg, #eef0ff);
 }
+
+/* Dark mode overrides */
 body.dark .autocomplete-dropdown { background: #1e1e2e; border-color: #444; }
 body.dark .autocomplete-item { border-bottom-color: #333; color: #ddd; }
 body.dark .autocomplete-item:hover { background: #252545; }
+body.dark .lookup-btn { border-color: #555; color: #aaa; }
+body.dark .lookup-btn.active { background: #4361ee; color: #fff; border-color: #4361ee; }
+body.dark .lookup-btn:hover:not(.active) { border-color: #4361ee; color: #4361ee; }
+body.dark .field-input { background: var(--input-bg, #0f0f1a); color: #e0e0e0; border-color: #444; }
+body.dark .field-input-highlight { border-color: #4361ee; }
 </style>
 {% endblock %}
