@@ -228,7 +228,7 @@ function toggleExpenseDetails() {
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
     {% for managed_club in managed_clubs %}
-    <div style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
+    <div class="searchable" data-name="{{ managed_club.name }}" style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
         {# Club header - clickable #}
         <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
             <div style="display:flex; align-items:center; gap:0.5rem;">

@@ -10,6 +10,16 @@
     <a href="{{ url_for('admin.overview') }}" class="btn btn-outline">← חזור לסקירה</a>
 </div>
 
+{# ── Search Bar ── #}
+<div style="position:relative; margin-bottom:1rem;">
+    <div class="search-bar" style="display:flex; align-items:center; gap:0.5rem; background:#fff; border:2px solid #e0e4ef; border-radius:12px; padding:0.5rem 1rem; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <span style="color:#aaa; font-size:1.1rem;">🔍</span>
+        <input type="text" id="dashboardSearch" placeholder="חיפוש סוכן או שחקן..." oninput="filterDashboard(this.value)" autocomplete="off" style="border:none; outline:none; font-size:1rem; width:100%; background:transparent; direction:rtl;">
+        <span id="searchClear" onclick="clearDashboardSearch()" style="cursor:pointer; color:#ccc; font-size:1.2rem; display:none;">✕</span>
+    </div>
+    <div id="searchResults" style="display:none; position:absolute; top:100%; right:0; left:0; z-index:50; background:#fff; border:1px solid #e0e4ef; border-radius:0 0 12px 12px; box-shadow:0 6px 20px rgba(0,0,0,0.1); max-height:300px; overflow-y:auto;"></div>
+</div>
+
 {# ── Stats Cards ── #}
 <div class="stats-grid stats-4" style="margin-bottom:1.5rem;">
     <div class="stat-card">
@@ -42,7 +52,7 @@
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
     {% for ag_id, ag in my_sa.agents.items() %}
-    <div class="agent-card">
+    <div class="agent-card searchable" data-name="{{ ag.nick }} {{ ag.members|map(attribute='nickname')|join(' ') }}">
         <div class="agent-card-header" onclick="toggleAccordion(this)">
             <div class="agent-card-name">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">&#9654;</span>
@@ -55,6 +65,7 @@
                 <span class="summary-chip {% if ag.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     רווח/הפסד {% if ag.total_pnl > 0 %}+{% endif %}{{ ag.total_pnl|comma }}
                 </span>
+                <a href="/export/agent/single/{{ ag_id }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.75rem;">📥 XLS</a>
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
@@ -96,7 +107,7 @@
     {% endfor %}
 
     {% if my_sa.direct %}
-    <div class="agent-card">
+    <div class="agent-card searchable" data-name="שחקנים ישירים {{ my_sa.direct|map(attribute='nickname')|join(' ') }}">
         <div class="agent-card-header" onclick="toggleAccordion(this)">
             <div class="agent-card-name">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.8rem;">&#9654;</span>
@@ -146,7 +157,7 @@
     </div>
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
     {% for cs in child_sas %}
-    <div class="agent-card">
+    <div class="agent-card searchable" data-name="{{ cs.sa_nick }} {{ cs.agents.values()|map(attribute='nick')|join(' ') }}">
         <div class="agent-card-header" onclick="toggleAccordion(this)">
             <div class="agent-card-name">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">&#9654;</span>
@@ -159,6 +170,7 @@
                 <span class="summary-chip {% if cs.total_pnl >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     רווח/הפסד {% if cs.total_pnl > 0 %}+{% endif %}{{ cs.total_pnl|comma }}
                 </span>
+                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showExportChoice('{{ cs.sa_id }}', '{{ cs.sa_nick }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥 XLS</button>
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
@@ -171,6 +183,7 @@
                         <strong style="font-size:0.9rem;">{{ ag.nick }}</strong>
                         <span class="muted small">{{ ag.members|length }} שחקנים</span>
                     </div>
+                    <a href="/export/agent/single/{{ ag_id }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.65rem;">📥 XLS</a>
                 </div>
                 <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
                     <div class="table-scroll-wrap">
@@ -237,7 +250,7 @@
     </div>
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
     {% for mc in managed_clubs %}
-    <div class="agent-card" style="margin-bottom:0.5rem;">
+    <div class="agent-card searchable" data-name="{{ mc.name }}" style="margin-bottom:0.5rem;">
         <div class="agent-card-header" onclick="toggleAccordion(this)">
             <div class="agent-card-name">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">&#9654;</span>
@@ -328,5 +341,128 @@ function toggleRecord(btn, playerId) {
             container.innerHTML = html;
         });
 }
+
+function filterDashboard(query) {
+    var clear = document.getElementById('searchClear');
+    var results = document.getElementById('searchResults');
+    clear.style.display = query ? 'block' : 'none';
+
+    var cards = document.querySelectorAll('.searchable');
+    var q = query.toLowerCase().trim();
+
+    cards.forEach(function(c) { c.style.display = ''; });
+
+    if (!q) {
+        results.style.display = 'none';
+        results.innerHTML = '';
+        return;
+    }
+
+    var html = '';
+    cards.forEach(function(card, idx) {
+        var dataName = (card.getAttribute('data-name') || '');
+        var nameLower = dataName.toLowerCase();
+        if (nameLower.indexOf(q) !== -1) {
+            var displayName = card.querySelector('strong');
+            var name = displayName ? displayName.textContent : dataName.split(' ')[0];
+            var badge = card.querySelector('.role-badge');
+            var badgeText = badge ? badge.textContent.trim() : '';
+            var rakeChip = card.querySelector('.chip-win');
+            var rakeText = rakeChip ? rakeChip.textContent.trim() : '';
+            html += '<div onclick="jumpToCard(' + idx + ')" style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 1rem; cursor:pointer; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseover="this.style.background=\'#f0f3ff\'" onmouseout="this.style.background=\'\'">';
+            html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
+            if (badgeText) html += '<span class="role-badge role-agent" style="font-size:0.7rem;">' + badgeText + '</span>';
+            html += '<strong>' + name + '</strong></div>';
+            if (rakeText) html += '<span class="muted" style="font-size:0.85rem;">' + rakeText + '</span>';
+            html += '</div>';
+        }
+    });
+
+    if (html) {
+        results.innerHTML = html;
+        results.style.display = 'block';
+    } else {
+        results.innerHTML = '<div style="padding:0.8rem 1rem; color:#888;">לא נמצאו תוצאות</div>';
+        results.style.display = 'block';
+    }
+}
+
+function jumpToCard(idx) {
+    var cards = document.querySelectorAll('.searchable');
+    var card = cards[idx];
+    if (!card) return;
+
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('dashboardSearch').value = '';
+    document.getElementById('searchClear').style.display = 'none';
+
+    var parent = card.closest('.accordion-body');
+    if (parent && parent.style.display === 'none') {
+        parent.style.display = 'block';
+        var parentHeader = parent.previousElementSibling;
+        if (parentHeader) {
+            var arrow = parentHeader.querySelector('.accordion-arrow');
+            if (arrow) arrow.style.transform = 'rotate(90deg)';
+        }
+    }
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.boxShadow = '0 0 0 3px #4361ee';
+    setTimeout(function() { card.style.boxShadow = ''; }, 2000);
+}
+
+function clearDashboardSearch() {
+    document.getElementById('dashboardSearch').value = '';
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('searchClear').style.display = 'none';
+}
+
+function showExportChoice(agentId, agentNick) {
+    document.getElementById('exportModalTitle').textContent = 'דוח ' + agentNick;
+    document.getElementById('exportFullLink').href = '/export/agent/single/' + agentId + '?mode=full';
+    document.getElementById('exportAgentsLink').href = '/export/agent/single/' + agentId;
+    document.getElementById('exportModal').classList.add('active');
+}
+function closeExportModal() {
+    document.getElementById('exportModal').classList.remove('active');
+}
 </script>
+
+{# ── Export Choice Modal ── #}
+<style>
+.export-modal-overlay {
+    display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.4); z-index:200; align-items:center; justify-content:center;
+}
+.export-modal-overlay.active { display:flex; }
+.export-modal {
+    background:#fff; border-radius:16px; padding:1.5rem; max-width:340px; width:90%;
+    box-shadow:0 10px 40px rgba(0,0,0,0.2); text-align:center;
+}
+.export-modal h3 { margin:0 0 0.5rem; font-size:1.1rem; }
+.export-modal p { margin:0 0 1rem; color:#666; font-size:0.85rem; }
+.export-modal-btns { display:flex; flex-direction:column; gap:0.5rem; }
+.export-modal-btns a {
+    display:block; padding:0.7rem; border-radius:10px; text-decoration:none;
+    font-weight:700; font-size:0.95rem; transition:background 0.15s;
+}
+.export-btn-full { background:#217346; color:#fff; }
+.export-btn-full:hover { background:#1a5c38; }
+.export-btn-agents { background:#4361ee; color:#fff; }
+.export-btn-agents:hover { background:#3451d1; }
+.export-btn-cancel { background:#f0f0f0; color:#666; }
+.export-btn-cancel:hover { background:#e0e0e0; }
+</style>
+
+<div class="export-modal-overlay" id="exportModal" onclick="if(event.target===this)closeExportModal()">
+    <div class="export-modal">
+        <h3 id="exportModalTitle">הורדת דוח</h3>
+        <p>בחר סוג דוח:</p>
+        <div class="export-modal-btns">
+            <a id="exportFullLink" href="#" class="export-btn-full">📊 דוח מלא - כל הסוכנים והשחקנים</a>
+            <a id="exportAgentsLink" href="#" class="export-btn-agents">📋 דוח לפי סוכנים - גיליון לכל סוכן</a>
+            <a href="#" onclick="closeExportModal(); return false;" class="export-btn-cancel">ביטול</a>
+        </div>
+    </div>
+</div>
 {% endblock %}
