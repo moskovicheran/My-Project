@@ -100,8 +100,8 @@ def agent_view(sa_id):
         all_my_player_ids.add(pid)
         member = {'player_id': pid, 'nickname': nick, 'pnl': pnl, 'rake': rake, 'hands': hands}
         actual_sa = player_sa_lookup.get(pid, '')
-        if ag_id and ag_id != '-' and ag_id != sa_id and actual_sa in known_ids:
-            # Agent directly under our SA
+        if ag_id and ag_id != '-' and ag_id != sa_id and ag_id not in child_sa_ids and actual_sa in known_ids:
+            # Agent directly under our SA (exclude child SAs)
             if ag_id not in agents_map:
                 agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
                                      'total_pnl': 0, 'total_rake': 0, 'total_hands': 0}
