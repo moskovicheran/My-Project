@@ -486,7 +486,13 @@ def dashboard():
             cs['total_pnl'] = round(cs_pnl, 2)
             cs['total_hands'] = cs_hands
 
-        # Find agent nicknames from Excel
+        # Find agent nicknames from Excel + DB
+        all_nicks_db = dict(DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).group_by(DailyPlayerStats.player_id).all())
+        for ag_id in agents_map:
+            if agents_map[ag_id]['nick'] == ag_id:
+                agents_map[ag_id]['nick'] = all_nicks_db.get(ag_id, ag_id)
         for sa in my_sas + child_sas:
             for ag_id, ag in sa.get('agents', {}).items():
                 if ag_id in agents_map:
