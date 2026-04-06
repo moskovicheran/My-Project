@@ -60,7 +60,7 @@
                 <td class="muted">{{ t.reentry }}</td>
                 <td>{{ "{:,}".format(t.gtd|int) if t.gtd else '-' }}</td>
                 <td>{{ t.entries|int }}</td>
-                <td class="amount income">{{ t.fee * t.entries|comma }}</td>
+                <td class="amount income">{{ (t.fee * t.entries)|comma }}</td>
                 <td class="amount income">{{ t.prize_pool|comma }}</td>
                 <td class="muted">{{ t.start }}</td>
                 <td class="muted">{{ t.duration }}</td>

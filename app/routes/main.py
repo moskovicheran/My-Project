@@ -997,7 +997,7 @@ def export_agent_account():
 @login_required
 def export_single_agent(agent_id):
     """Export a single agent's players report."""
-    if current_user.role not in ('agent', 'admin') :
+    if current_user.role not in ('agent', 'admin', 'club') :
         return redirect(url_for('main.dashboard'))
 
     from app.models import DailyPlayerStats
