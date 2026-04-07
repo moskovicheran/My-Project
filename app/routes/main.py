@@ -788,6 +788,170 @@ def dashboard():
                            balance=balance)
 
 
+@main_bp.route('/top-players')
+@login_required
+def agent_top_players():
+    """Top players page for agent/club users — filtered to their own players."""
+    if current_user.role not in ('agent', 'club') or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats, SAHierarchy, SARakeConfig
+    from app.union_data import get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_
+
+    all_players = []
+
+    if current_user.role == 'agent':
+        sa_id = current_user.player_id
+        known_ids = {sa_id}
+
+        # Resolve actual SA/Agent ID
+        is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == sa_id).first() is not None
+        is_agent = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == sa_id).first() is not None
+        if not is_sa and not is_agent:
+            own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == sa_id).first()
+            if own_row:
+                role_lower = (own_row.role or '').lower()
+                if 'super' in role_lower or role_lower in ('sa',):
+                    if own_row.sa_id and own_row.sa_id != '-':
+                        known_ids.add(own_row.sa_id)
+                elif 'agent' in role_lower:
+                    if own_row.agent_id and own_row.agent_id != '-':
+                        known_ids.add(own_row.agent_id)
+        known_ids.discard('')
+        known_ids.discard('-')
+
+        # Child SAs
+        child_sa_ids = []
+        for kid in known_ids:
+            child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+        all_sa_ids = list(known_ids) + child_sa_ids
+
+        # Get ALL players under this SA hierarchy
+        players_db = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id,
+            sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.max(DailyPlayerStats.club),
+            sqlfunc.max(DailyPlayerStats.agent_id),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(
+            or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
+                DailyPlayerStats.agent_id.in_(all_sa_ids)),
+            DailyPlayerStats.role != 'Name Entry'
+        ).group_by(DailyPlayerStats.player_id).all()
+
+        # Also get managed club players
+        managed_club_pids = set(p[0] for p in players_db)
+        rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+        if rake_cfgs:
+            from app.union_data import get_members_hierarchy
+            clubs_data, _ = get_members_hierarchy()
+            club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
+            for cfg in rake_cfgs:
+                club_name = club_id_to_name.get(cfg.managed_club_id, '')
+                if club_name:
+                    club_players = DailyPlayerStats.query.with_entities(
+                        DailyPlayerStats.player_id,
+                        sqlfunc.max(DailyPlayerStats.nickname),
+                        sqlfunc.max(DailyPlayerStats.club),
+                        sqlfunc.max(DailyPlayerStats.agent_id),
+                        sqlfunc.sum(DailyPlayerStats.pnl),
+                        sqlfunc.sum(DailyPlayerStats.rake),
+                        sqlfunc.sum(DailyPlayerStats.hands),
+                    ).filter(
+                        DailyPlayerStats.club == club_name,
+                        DailyPlayerStats.role != 'Name Entry',
+                        DailyPlayerStats.player_id.notin_(list(managed_club_pids))
+                    ).group_by(DailyPlayerStats.player_id).all()
+                    players_db = list(players_db) + list(club_players)
+
+        # Nickname lookup for agent names
+        all_nicks = dict(DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).group_by(DailyPlayerStats.player_id).all())
+
+        xfer_adj = get_transfer_adjustments([p[0] for p in players_db])
+
+        for p in players_db:
+            pid, nick, club, ag_id, pnl, rake, hands = p
+            pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
+            rake = round(float(rake or 0), 2)
+            hands = int(hands or 0)
+            if hands == 0 and pnl == 0:
+                continue
+            ag_nick = all_nicks.get(ag_id, ag_id) if ag_id and ag_id != '-' and ag_id not in all_sa_ids else ''
+            all_players.append({
+                'player_id': pid, 'member_id': pid,
+                'nickname': nick, 'club': club or '',
+                'agent_nick': ag_nick,
+                'pnl': pnl, 'pnl_total': pnl,
+                'rake': rake, 'rake_total': rake,
+                'hands': hands, 'hands_total': hands,
+            })
+
+    elif current_user.role == 'club':
+        # Club user — get all players in managed club
+        from app.models import SARakeConfig as SRC2
+        club_id = current_user.player_id
+        from app.union_data import get_members_hierarchy
+        clubs_data, _ = get_members_hierarchy()
+        club_name = None
+        for c in clubs_data:
+            if str(c['club_id']) == str(club_id):
+                club_name = c['name']
+                break
+        if club_name:
+            all_nicks = dict(DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+            ).group_by(DailyPlayerStats.player_id).all())
+
+            club_players_db = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.club == club_name,
+                DailyPlayerStats.role != 'Name Entry'
+            ).group_by(DailyPlayerStats.player_id).all()
+
+            xfer_adj = get_transfer_adjustments([p[0] for p in club_players_db])
+
+            for p in club_players_db:
+                pid, nick, club, ag_id, pnl, rake, hands = p
+                pnl = round(float(pnl or 0) + xfer_adj.get(pid, 0), 2)
+                rake = round(float(rake or 0), 2)
+                hands = int(hands or 0)
+                if hands == 0 and pnl == 0:
+                    continue
+                ag_nick = all_nicks.get(ag_id, ag_id) if ag_id and ag_id != '-' else ''
+                all_players.append({
+                    'player_id': pid, 'member_id': pid,
+                    'nickname': nick, 'club': club or '',
+                    'agent_nick': ag_nick,
+                    'pnl': pnl, 'pnl_total': pnl,
+                    'rake': rake, 'rake_total': rake,
+                    'hands': hands, 'hands_total': hands,
+                })
+
+    top_winners = sorted(all_players, key=lambda x: x['pnl'], reverse=True)[:10]
+    top_losers = sorted(all_players, key=lambda x: x['pnl'])[:10]
+    top_rake = sorted(all_players, key=lambda x: x['rake'], reverse=True)[:10]
+    top_active = sorted(all_players, key=lambda x: x['hands'], reverse=True)[:10]
+
+    biggest_winner = top_winners[0]['pnl'] if top_winners else 0
+    biggest_loser = top_losers[0]['pnl'] if top_losers else 0
+
+    return render_template('main/agent_top_players.html',
+                           top_winners=top_winners, top_losers=top_losers,
+                           top_rake=top_rake, top_active=top_active,
+                           total_players=len(all_players),
+                           biggest_winner=biggest_winner,
+                           biggest_loser=biggest_loser)
+
+
 @main_bp.route('/agent/reports')
 @login_required
 def agent_reports():
