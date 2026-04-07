@@ -65,6 +65,11 @@
     </div>
 </div>
 
+{# Export button #}
+<div id="exportBar" style="display:none; margin-top:1rem; margin-bottom:0.5rem; text-align:center;">
+    <button onclick="exportResult()" style="background:linear-gradient(135deg,#217346,#1a5c38); color:#fff; border:none; border-radius:10px; padding:0.6rem 1.5rem; font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:0 3px 12px rgba(33,115,70,0.3); transition:all 0.2s;">📥 הורד לאקסל</button>
+</div>
+
 {# Results table #}
 <div class="section" id="reportResults" style="display:none;">
     <h2 class="section-title" id="reportTitle">תוצאות</h2>
@@ -187,6 +192,7 @@ function loadReport() {
 
     fetch(url).then(r => r.json()).then(data => {
         document.getElementById('summaryCards').style.display = 'grid';
+        document.getElementById('exportBar').style.display = 'block';
         document.getElementById('reportResults').style.display = 'block';
         document.getElementById('sumDays').textContent = data.days;
         document.getElementById('sumPlayers').textContent = data.players.length;
@@ -210,6 +216,15 @@ function loadReport() {
         });
         document.getElementById('reportBody').innerHTML = html;
     });
+}
+function exportResult() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    if (!from || !to) { alert('יש לבחור תאריכים'); return; }
+    var pid = document.getElementById('playerFilter').value;
+    var url = '/export/admin/period?from=' + from + '&to=' + to;
+    if (pid) url += '&player_id=' + pid;
+    window.location.href = url;
 }
 </script>
 {% endblock %}

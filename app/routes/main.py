@@ -1980,6 +1980,63 @@ def agent_transfers():
                            transfers=my_transfers)
 
 
+@main_bp.route('/export/admin/period')
+@login_required
+def export_admin_period():
+    """Export all players data for specific date range (admin)."""
+    if current_user.role != 'admin':
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats, DailyUpload
+    from sqlalchemy import func as sqlfunc
+    from datetime import datetime
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    player_id_filter = request.args.get('player_id', '')
+    if not from_date or not to_date:
+        flash('יש לבחור תאריכים.', 'danger')
+        return redirect(url_for('admin.reports'))
+
+    fd = datetime.strptime(from_date, '%Y-%m-%d').date()
+    td = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+    uploads = DailyUpload.query.filter(DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
+    upload_ids = [u.id for u in uploads]
+    if not upload_ids:
+        flash('אין נתונים בטווח התאריכים.', 'warning')
+        return redirect(url_for('admin.reports'))
+
+    base_filters = [
+        DailyPlayerStats.upload_id.in_(upload_ids),
+        DailyPlayerStats.role != 'Name Entry',
+    ]
+    if player_id_filter:
+        base_filters.append(DailyPlayerStats.player_id == player_id_filter)
+
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
+
+    from app.union_data import get_transfer_adjustments
+    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+
+    rows = []
+    for p in players:
+        raw_pnl = round(float(p[3] or 0), 2)
+        rows.append({'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+                     'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
+                     'Rake': round(float(p[4] or 0), 2),
+                     'Hands': int(p[5] or 0)})
+    rows.sort(key=lambda x: x['Rake'], reverse=True)
+
+    player_nick = rows[0]['שחקן'] if len(rows) == 1 else 'all'
+    return _make_excel({f'{from_date} - {to_date}': rows},
+                       f'{player_nick}_{from_date}_{to_date}.xlsx')
+
+
 @main_bp.route('/api/report')
 @login_required
 def report_api():
