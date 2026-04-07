@@ -253,6 +253,12 @@ def index():
 
         from app.models import db as _db
 
+        # Check if this file was already uploaded
+        existing = DailyUpload.query.filter_by(filename=filename).first()
+        if existing:
+            flash(f'קובץ זה כבר נמצא במערכת ({existing.upload_date.strftime("%d/%m/%Y")})', 'danger')
+            return redirect(url_for('upload.index'))
+
         # Step 1: Parse and store CUMULATIVE stats FIRST (most important)
         try:
             player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
