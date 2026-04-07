@@ -44,22 +44,26 @@
             </div>
 
             {# Username mode #}
-            <div id="member-input-user" style="flex:2; min-width:250px; display:none;">
+            <div id="member-input-user" style="flex:2; min-width:250px; position:relative; display:none;">
                 <label class="field-label">שם משתמש (Username)</label>
-                <input type="text" name="manual_username" placeholder="הזן שם משתמש..." class="field-input field-input-highlight" disabled>
+                <input type="text" name="manual_username" id="userModeUsername" placeholder="הקלד שם לחיפוש..." class="field-input field-input-highlight" disabled autocomplete="off"
+                       oninput="acSearch(this, 'userModeDropdown', 'name')" onfocus="acSearch(this, 'userModeDropdown', 'name')">
+                <div id="userModeDropdown" class="autocomplete-dropdown" style="display:none;"></div>
                 <div style="margin-top:0.4rem;">
                     <label class="field-label">Player ID (אופציונלי)</label>
-                    <input type="text" name="manual_id" placeholder="לדוגמה: 2197-2365" class="field-input" dir="ltr" disabled>
+                    <input type="text" name="manual_id" id="userModeId" placeholder="לדוגמה: 2197-2365" class="field-input" dir="ltr" disabled>
                 </div>
             </div>
 
             {# ID mode #}
-            <div id="member-input-id" style="flex:2; min-width:250px; display:none;">
+            <div id="member-input-id" style="flex:2; min-width:250px; position:relative; display:none;">
                 <label class="field-label">Player ID</label>
-                <input type="text" name="manual_id" placeholder="לדוגמה: 2197-2365" class="field-input field-input-highlight" dir="ltr" disabled>
+                <input type="text" name="manual_id" id="idModeId" placeholder="הקלד ID לחיפוש..." class="field-input field-input-highlight" dir="ltr" disabled autocomplete="off"
+                       oninput="acSearch(this, 'idModeDropdown', 'id')" onfocus="acSearch(this, 'idModeDropdown', 'id')">
+                <div id="idModeDropdown" class="autocomplete-dropdown" style="display:none;"></div>
                 <div style="margin-top:0.4rem;">
                     <label class="field-label">שם משתמש (אופציונלי - אם ריק, ה-ID ישמש כ-username)</label>
-                    <input type="text" name="manual_username" placeholder="הזן שם משתמש..." class="field-input" disabled>
+                    <input type="text" name="manual_username" id="idModeUsername" placeholder="הזן שם משתמש..." class="field-input" disabled>
                 </div>
             </div>
 
@@ -306,10 +310,56 @@ function selectMember(key, label) {
     document.getElementById('memberDropdown').style.display = 'none';
 }
 
+/* ── Generic autocomplete for user/ID modes ── */
+var allMembersRaw = [
+    {% for m in members %}
+    {pid: "{{ m.player_id }}", name: "{{ m.nickname }}", club: "{{ m.club }}", role: "{{ m.role }}"},
+    {% endfor %}
+];
+
+function acSearch(input, dropdownId, mode) {
+    var dropdown = document.getElementById(dropdownId);
+    var query = input.value.trim().toLowerCase();
+    if (query.length < 1) { dropdown.style.display = 'none'; return; }
+
+    var filtered = allMembersRaw.filter(function(m) {
+        if (mode === 'id') return m.pid.toLowerCase().indexOf(query) >= 0;
+        return m.name.toLowerCase().indexOf(query) >= 0 || m.pid.toLowerCase().indexOf(query) >= 0;
+    }).slice(0, 15);
+
+    if (filtered.length === 0) { dropdown.style.display = 'none'; return; }
+
+    var html = '';
+    filtered.forEach(function(m) {
+        html += '<div class="autocomplete-item" onclick="acSelect(\'' + dropdownId + '\', \'' + m.pid.replace(/'/g, "\\'") + '\', \'' + m.name.replace(/'/g, "\\'") + '\')">';
+        html += '<strong>' + m.name + '</strong> <span class="muted" style="font-size:0.8rem;">(' + m.pid + ') - ' + m.club + '</span>';
+        html += '</div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+}
+
+function acSelect(dropdownId, pid, name) {
+    document.getElementById(dropdownId).style.display = 'none';
+    if (dropdownId === 'userModeDropdown') {
+        document.getElementById('userModeUsername').value = name;
+        document.getElementById('userModeId').value = pid;
+    } else if (dropdownId === 'idModeDropdown') {
+        document.getElementById('idModeId').value = pid;
+        document.getElementById('idModeUsername').value = name;
+    }
+}
+
 // Close dropdown when clicking outside
 document.addEventListener('click', function(e) {
     if (!e.target.closest('#memberSearch') && !e.target.closest('#memberDropdown')) {
         document.getElementById('memberDropdown').style.display = 'none';
+    }
+    if (!e.target.closest('#userModeUsername') && !e.target.closest('#userModeDropdown')) {
+        document.getElementById('userModeDropdown').style.display = 'none';
+    }
+    if (!e.target.closest('#idModeId') && !e.target.closest('#idModeDropdown')) {
+        document.getElementById('idModeDropdown').style.display = 'none';
     }
 });
 </script>
