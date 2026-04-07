@@ -63,9 +63,12 @@
 
 {% if current_user.role == 'admin' %}
 <div class="section" style="margin-top:1.5rem; text-align:center; padding:1.5rem;">
-    <p style="color:#666; margin-bottom:0.8rem;">איפוס כל הנתונים המצטברים — שיוכים, רייקים ומשתמשים יישמרו</p>
-    <form method="POST" action="{{ url_for('upload.reset') }}" onsubmit="return confirm('האם לאפס את כל הנתונים המצטברים? שיוכים, הגדרות רייק ומשתמשים יישמרו.');">
-        <button type="submit" class="btn btn-danger">איפוס נתונים מצטברים</button>
+    <p style="color:#666; margin-bottom:0.8rem;">איפוס הקובץ הפעיל — הנתונים ההיסטוריים נשמרים (עד 60 יום אחורה)</p>
+    <form method="POST" action="{{ url_for('upload.reset') }}" onsubmit="return confirm('האם לאפס את הקובץ הפעיל? נתוני שחקנים היסטוריים יישמרו.');" style="display:inline-block;">
+        <button type="submit" class="btn btn-danger">איפוס קובץ פעיל</button>
+    </form>
+    <form method="POST" action="{{ url_for('upload.reset_all') }}" onsubmit="return confirm('שים לב: פעולה זו תמחק את כל הנתונים לצמיתות, כולל היסטוריית שחקנים. האם להמשיך?');" style="display:inline-block; margin-right:0.5rem;">
+        <button type="submit" class="btn btn-outline btn-sm" style="color:#ef233c; border-color:#ef233c;">איפוס מלא</button>
     </form>
 </div>
 {% endif %}

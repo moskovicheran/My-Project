@@ -209,6 +209,23 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             db.session.execute(TournamentStats.__table__.insert(), tournaments)
 
     db.session.commit()
+
+    # Auto-cleanup: remove data older than 60 days
+    try:
+        from datetime import timedelta
+        cutoff = date.today() - timedelta(days=60)
+        old_uploads = DailyUpload.query.filter(DailyUpload.upload_date < cutoff).all()
+        if old_uploads:
+            old_ids = [u.id for u in old_uploads]
+            from app.models import PlayerSession, TournamentStats
+            PlayerSession.query.filter(PlayerSession.upload_id.in_(old_ids)).delete(synchronize_session=False)
+            TournamentStats.query.filter(TournamentStats.upload_id.in_(old_ids)).delete(synchronize_session=False)
+            DailyPlayerStats.query.filter(DailyPlayerStats.upload_id.in_(old_ids)).delete(synchronize_session=False)
+            DailyUpload.query.filter(DailyUpload.id.in_(old_ids)).delete(synchronize_session=False)
+            db.session.commit()
+    except Exception:
+        pass  # Don't fail the upload if cleanup fails
+
     return len(rows)
 
 
@@ -330,12 +347,8 @@ def reset():
 
     from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession, TournamentStats
 
-    # Clear all data from DB
-    TournamentStats.query.delete()
-    PlayerSession.query.delete()
+    # Reset only active Excel file — keep historical data for player reports
     ActiveExcelData.query.delete()
-    DailyPlayerStats.query.delete()
-    DailyUpload.query.delete()
     db.session.commit()
 
     session.pop('uploaded_file', None)
@@ -354,5 +367,41 @@ def reset():
     except Exception:
         pass
 
-    flash('כל הנתונים המצטברים אופסו.', 'success')
+    flash('הקובץ הפעיל אופס. נתוני שחקנים היסטוריים נשמרים.', 'success')
+    return redirect(url_for('upload.index'))
+
+
+@upload_bp.route('/reset-all', methods=['POST'])
+@login_required
+def reset_all():
+    """Full data reset — clears ALL historical data."""
+    if not hasattr(current_user, 'role') or current_user.role != 'admin':
+        flash('אין הרשאה.', 'danger')
+        return redirect(url_for('upload.index'))
+
+    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession, TournamentStats
+
+    TournamentStats.query.delete()
+    PlayerSession.query.delete()
+    ActiveExcelData.query.delete()
+    DailyPlayerStats.query.delete()
+    DailyUpload.query.delete()
+    db.session.commit()
+
+    session.pop('uploaded_file', None)
+
+    try:
+        with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write('')
+        from app.union_data import set_excel_path
+        set_excel_path('')
+        if os.path.exists(UPLOAD_FOLDER):
+            for fname in os.listdir(UPLOAD_FOLDER):
+                fpath = os.path.join(UPLOAD_FOLDER, fname)
+                if os.path.isfile(fpath) and fname != '_active.txt':
+                    os.remove(fpath)
+    except Exception:
+        pass
+
+    flash('כל הנתונים המצטברים אופסו לגמרי.', 'success')
     return redirect(url_for('upload.index'))
