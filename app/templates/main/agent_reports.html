@@ -73,7 +73,10 @@
 </div>
 
 <div class="section" id="reportResults" style="display:none; margin-top:1rem;">
-    <h2 class="section-title" id="reportTitle">תוצאות</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h2 class="section-title" id="reportTitle" style="margin:0;">תוצאות</h2>
+        <button id="exportResultBtn" onclick="exportResult()" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold;">📥 הורד לאקסל</button>
+    </div>
     <div style="overflow-x:auto;">
         <table class="table table-sm">
             <thead>
@@ -156,7 +159,19 @@ function exportPeriod() {
     var from = document.getElementById('fromDate').value;
     var to = document.getElementById('toDate').value;
     if (!from || !to) { alert('יש לבחור תאריכים'); return; }
-    window.location.href = '/export/agent/period?from=' + from + '&to=' + to;
+    var pid = document.getElementById('playerFilter').value;
+    var url = '/export/agent/period?from=' + from + '&to=' + to;
+    if (pid) url += '&player_id=' + pid;
+    window.location.href = url;
+}
+function exportResult() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    if (!from || !to) { alert('יש לבחור תאריכים'); return; }
+    var pid = document.getElementById('playerFilter').value;
+    var url = '/export/agent/period?from=' + from + '&to=' + to;
+    if (pid) url += '&player_id=' + pid;
+    window.location.href = url;
 }
 function loadReport() {
     var from = document.getElementById('fromDate').value;

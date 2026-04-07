@@ -1499,6 +1499,7 @@ def export_agent_period():
 
     from_date = request.args.get('from', '')
     to_date = request.args.get('to', '')
+    player_id_filter = request.args.get('player_id', '')
     if not from_date or not to_date:
         flash('יש לבחור תאריכים.', 'danger')
         return redirect(url_for('main.agent_reports'))
@@ -1518,14 +1519,20 @@ def export_agent_period():
         flash('אין נתונים בטווח התאריכים.', 'warning')
         return redirect(url_for('main.agent_reports'))
 
+    base_filters = [
+        DailyPlayerStats.upload_id.in_(upload_ids),
+        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        DailyPlayerStats.role != 'Name Entry',
+    ]
+    if player_id_filter:
+        base_filters.append(DailyPlayerStats.player_id == player_id_filter)
+
     players = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
         sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
         sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
     ).filter(
-        DailyPlayerStats.upload_id.in_(upload_ids),
-        DailyPlayerStats.sa_id.in_(all_sa_ids),
-        DailyPlayerStats.role != 'Name Entry'
+        *base_filters
     ).group_by(DailyPlayerStats.player_id).all()
 
     # Transfer adjustments
@@ -1541,8 +1548,9 @@ def export_agent_period():
                      'Hands': int(p[5] or 0)})
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
+    player_nick = rows[0]['שחקן'] if len(rows) == 1 else current_user.username
     return _make_excel({f'{from_date} - {to_date}': rows},
-                       f'{current_user.username}_{from_date}_{to_date}.xlsx')
+                       f'{player_nick}_{from_date}_{to_date}.xlsx')
 
 
 @main_bp.route('/export/club/report')
