@@ -72,7 +72,11 @@
     </div>
 </div>
 
-<div class="section" id="reportResults" style="display:none; margin-top:1rem;">
+<div id="exportBar" style="display:none; margin-top:1rem; margin-bottom:0.5rem; text-align:center;">
+    <button onclick="exportResult()" style="background:linear-gradient(135deg,#217346,#1a5c38); color:#fff; border:none; border-radius:10px; padding:0.6rem 1.5rem; font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:0 3px 12px rgba(33,115,70,0.3); transition:all 0.2s;">📥 הורד לאקסל</button>
+</div>
+
+<div class="section" id="reportResults" style="display:none; margin-top:0.5rem;">
     <h2 class="section-title" id="reportTitle">תוצאות</h2>
     <div class="table-scroll-wrap">
         <table class="table table-sm">
@@ -157,7 +161,19 @@ function exportPeriod() {
     var from = document.getElementById('fromDate').value;
     var to = document.getElementById('toDate').value;
     if (!from || !to) { alert('יש לבחור תאריכים'); return; }
-    window.location.href = '/export/club/period?from=' + from + '&to=' + to;
+    var pid = document.getElementById('playerFilter').value;
+    var url = '/export/club/period?from=' + from + '&to=' + to;
+    if (pid) url += '&player_id=' + pid;
+    window.location.href = url;
+}
+function exportResult() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    if (!from || !to) { alert('יש לבחור תאריכים'); return; }
+    var pid = document.getElementById('playerFilter').value;
+    var url = '/export/club/period?from=' + from + '&to=' + to;
+    if (pid) url += '&player_id=' + pid;
+    window.location.href = url;
 }
 function loadReport() {
     var from = document.getElementById('fromDate').value;
@@ -174,6 +190,7 @@ function loadReport() {
         var totals = {pnl:0, rake:0, hands:0};
         filtered.forEach(p => { totals.pnl += p.pnl; totals.rake += p.rake; totals.hands += p.hands; });
         document.getElementById('summaryCards').style.display = 'grid';
+        document.getElementById('exportBar').style.display = 'block';
         document.getElementById('reportResults').style.display = 'block';
         document.getElementById('sumDays').textContent = data.days;
         document.getElementById('sumPlayers').textContent = filtered.length;
