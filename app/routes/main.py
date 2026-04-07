@@ -1492,7 +1492,7 @@ def export_agent_period():
     if current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats, DailyUpload
+    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats, DailyUpload, PlayerSession
     from app.union_data import get_members_hierarchy
     from sqlalchemy import func as sqlfunc
     from datetime import datetime
@@ -1548,9 +1548,24 @@ def export_agent_period():
                      'Hands': int(p[5] or 0)})
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
+    sheets = {f'{from_date} - {to_date}': rows}
+
+    # If single player selected, add game sessions sheet
+    if player_id_filter and rows:
+        sessions = PlayerSession.query.filter(
+            PlayerSession.upload_id.in_(upload_ids),
+            PlayerSession.player_id == player_id_filter
+        ).all()
+        if sessions:
+            sess_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
+                          'בליינדס': s.blinds or '', 'רווח/הפסד': round(s.pnl, 2)} for s in sessions]
+            sess_rows.sort(key=lambda x: x['רווח/הפסד'])
+            total_pnl = round(sum(s['רווח/הפסד'] for s in sess_rows), 2)
+            sess_rows.append({'משחק': 'סה"כ', 'סוג': '', 'בליינדס': '', 'רווח/הפסד': total_pnl})
+            sheets['משחקים'] = sess_rows
+
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else current_user.username
-    return _make_excel({f'{from_date} - {to_date}': rows},
-                       f'{player_nick}_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
 
 
 @main_bp.route('/export/club/report')
@@ -1724,7 +1739,7 @@ def export_club_period():
     if current_user.role != 'club' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import DailyPlayerStats, DailyUpload
+    from app.models import DailyPlayerStats, DailyUpload, PlayerSession
     from app.union_data import get_members_hierarchy
     from sqlalchemy import func as sqlfunc
     from datetime import datetime
@@ -1780,9 +1795,23 @@ def export_club_period():
              'Hands': int(p[5] or 0)} for p in players]
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
+    sheets = {f'{from_date} - {to_date}': rows}
+
+    if player_id_filter and rows:
+        sessions = PlayerSession.query.filter(
+            PlayerSession.upload_id.in_(upload_ids),
+            PlayerSession.player_id == player_id_filter
+        ).all()
+        if sessions:
+            sess_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
+                          'בליינדס': s.blinds or '', 'רווח/הפסד': round(s.pnl, 2)} for s in sessions]
+            sess_rows.sort(key=lambda x: x['רווח/הפסד'])
+            total_pnl = round(sum(s['רווח/הפסד'] for s in sess_rows), 2)
+            sess_rows.append({'משחק': 'סה"כ', 'סוג': '', 'בליינדס': '', 'רווח/הפסד': total_pnl})
+            sheets['משחקים'] = sess_rows
+
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else club_name
-    return _make_excel({f'{from_date} - {to_date}': rows},
-                       f'{player_nick}_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
 
 
 @main_bp.route('/club/transfers', methods=['GET', 'POST'])
@@ -1987,7 +2016,7 @@ def export_admin_period():
     if current_user.role != 'admin':
         return redirect(url_for('main.dashboard'))
 
-    from app.models import DailyPlayerStats, DailyUpload
+    from app.models import DailyPlayerStats, DailyUpload, PlayerSession
     from sqlalchemy import func as sqlfunc
     from datetime import datetime
 
@@ -2032,9 +2061,23 @@ def export_admin_period():
                      'Hands': int(p[5] or 0)})
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
+    sheets = {f'{from_date} - {to_date}': rows}
+
+    if player_id_filter and rows:
+        sessions = PlayerSession.query.filter(
+            PlayerSession.upload_id.in_(upload_ids),
+            PlayerSession.player_id == player_id_filter
+        ).all()
+        if sessions:
+            sess_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
+                          'בליינדס': s.blinds or '', 'רווח/הפסד': round(s.pnl, 2)} for s in sessions]
+            sess_rows.sort(key=lambda x: x['רווח/הפסד'])
+            total_pnl = round(sum(s['רווח/הפסד'] for s in sess_rows), 2)
+            sess_rows.append({'משחק': 'סה"כ', 'סוג': '', 'בליינדס': '', 'רווח/הפסד': total_pnl})
+            sheets['משחקים'] = sess_rows
+
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else 'all'
-    return _make_excel({f'{from_date} - {to_date}': rows},
-                       f'{player_nick}_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
 
 
 @main_bp.route('/api/report')
