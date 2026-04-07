@@ -190,6 +190,19 @@ def users():
             elif user and user.id == current_user.id:
                 flash('לא ניתן למחוק את עצמך.', 'warning')
 
+        elif action == 'change_password':
+            user_id = request.form.get('user_id')
+            new_password = request.form.get('new_password', '')
+            user = User.query.get(user_id)
+            if not user:
+                flash('משתמש לא נמצא.', 'danger')
+            elif len(new_password) < 6:
+                flash('הסיסמה חייבת להכיל לפחות 6 תווים.', 'danger')
+            else:
+                user.set_password(new_password)
+                db.session.commit()
+                flash(f'סיסמה עודכנה עבור {user.username}.', 'success')
+
         elif action == 'update_role':
             user_id = request.form.get('user_id')
             new_role = request.form.get('role')

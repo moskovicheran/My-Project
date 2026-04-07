@@ -188,8 +188,9 @@
                     {% endif %}
                 </td>
                 <td class="muted">{{ user.created_at.strftime('%d/%m/%Y') if user.created_at else '-' }}</td>
-                <td>
+                <td style="white-space:nowrap;">
                     {% if user.id != current_user.id %}
+                    <button type="button" class="btn btn-outline btn-sm" onclick="togglePasswordForm({{ user.id }})" style="font-size:0.75rem;">🔑 סיסמה</button>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק את {{ user.username }}?');">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="user_id" value="{{ user.id }}">
@@ -198,12 +199,31 @@
                     {% endif %}
                 </td>
             </tr>
+            {# Password change row (hidden) #}
+            <tr id="pw-row-{{ user.id }}" style="display:none;">
+                <td colspan="5" style="background:#f8f9ff; padding:0.5rem 1rem;">
+                    <form method="POST" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <input type="hidden" name="action" value="change_password">
+                        <input type="hidden" name="user_id" value="{{ user.id }}">
+                        <span class="muted" style="font-size:0.85rem;">סיסמה חדשה ל-<strong>{{ user.username }}</strong>:</span>
+                        <input type="password" name="new_password" required minlength="6" placeholder="לפחות 6 תווים" style="padding:0.35rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; width:160px;">
+                        <button type="submit" class="btn btn-primary btn-sm">עדכן</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="togglePasswordForm({{ user.id }})">ביטול</button>
+                    </form>
+                </td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
 <script>
+/* ── Password change toggle ── */
+function togglePasswordForm(userId) {
+    var row = document.getElementById('pw-row-' + userId);
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
 /* ── Tab switching (member / club) ── */
 function switchTab(type) {
     document.getElementById('form-member').style.display = type === 'member' ? 'block' : 'none';
