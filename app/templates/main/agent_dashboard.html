@@ -87,7 +87,7 @@ var _allPlayers = [
 </script>
 
 {# ── Stats Cards ── #}
-{% set base_cards = 4 %}
+{% set base_cards = 3 %}
 {% if managed_clubs is defined and managed_clubs %}{% set base_cards = base_cards + 2 %}{% endif %}
 {% if rake_refund_list is defined and rake_refund_list %}{% set base_cards = base_cards + 1 %}{% endif %}
 {% if my_rake_pct is defined and my_rake_pct %}{% set base_cards = base_cards + 1 %}{% endif %}
@@ -95,10 +95,6 @@ var _allPlayers = [
     <div class="stat-card">
         <div class="stat-label">שחקנים</div>
         <div class="stat-value">{{ player_count }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Hands</div>
-        <div class="stat-value">{{ "{:,}".format(total_hands) }}</div>
     </div>
     <div class="stat-card income">
         <div class="stat-label">רייק אישי</div>

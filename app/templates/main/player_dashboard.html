@@ -14,7 +14,7 @@
 </div>
 
 {# ── Stats Cards ── #}
-<div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
+<div class="stats-grid stats-2" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">יתרה (רווח/הפסד)</div>
         <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ player.pnl|comma }}</div>
@@ -22,10 +22,6 @@
     <div class="stat-card">
         <div class="stat-label">משחקים</div>
         <div class="stat-value">{{ sessions|length }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Hands</div>
-        <div class="stat-value">{{ "{:,}".format(player.hands|int) }}</div>
     </div>
 </div>
 
