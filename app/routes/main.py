@@ -936,8 +936,8 @@ def agent_top_players():
                     'hands': hands, 'hands_total': hands,
                 })
 
-    top_winners = sorted(all_players, key=lambda x: x['pnl'], reverse=True)[:10]
-    top_losers = sorted(all_players, key=lambda x: x['pnl'])[:10]
+    top_winners = [p for p in sorted(all_players, key=lambda x: x['pnl'], reverse=True) if p['pnl'] > 0][:10]
+    top_losers = [p for p in sorted(all_players, key=lambda x: x['pnl']) if p['pnl'] < 0][:10]
     top_rake = sorted(all_players, key=lambda x: x['rake'], reverse=True)[:10]
     top_active = sorted(all_players, key=lambda x: x['hands'], reverse=True)[:10]
 
