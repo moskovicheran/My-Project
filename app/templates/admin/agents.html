@@ -182,8 +182,18 @@
                 </td>
                 <td><strong>{{ rc.entity_name }}</strong></td>
                 <td class="muted">{{ rc.entity_id }}</td>
-                <td><strong>{{ rc.rake_percent }}%</strong></td>
                 <td>
+                    <span id="rake-val-{{ rc.id }}"><strong>{{ rc.rake_percent }}%</strong></span>
+                    <form method="POST" id="rake-edit-{{ rc.id }}" style="display:none; gap:0.3rem; align-items:center;">
+                        <input type="hidden" name="action" value="update_rake_config">
+                        <input type="hidden" name="rc_id" value="{{ rc.id }}">
+                        <input type="number" name="new_percent" value="{{ rc.rake_percent }}" step="0.1" min="0" max="100" style="width:70px; padding:0.25rem 0.4rem; border:1px solid #4361ee; border-radius:6px; font-size:0.85rem; font-family:inherit;">
+                        <button type="submit" class="btn btn-primary btn-sm" style="font-size:0.75rem;">שמור</button>
+                        <button type="button" class="btn btn-outline btn-sm" style="font-size:0.75rem;" onclick="toggleRakeEdit({{ rc.id }})">ביטול</button>
+                    </form>
+                </td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="toggleRakeEdit({{ rc.id }})" style="font-size:0.75rem;">✏️ ערוך</button>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק הגדרת רייק?');">
                         <input type="hidden" name="action" value="delete_rake_config">
                         <input type="hidden" name="rc_id" value="{{ rc.id }}">
@@ -501,5 +511,17 @@ document.addEventListener('click', function(e) {
             dd.style.display = 'none';
     });
 });
+
+function toggleRakeEdit(rcId) {
+    var val = document.getElementById('rake-val-' + rcId);
+    var form = document.getElementById('rake-edit-' + rcId);
+    if (form.style.display === 'none') {
+        val.style.display = 'none';
+        form.style.display = 'flex';
+    } else {
+        val.style.display = '';
+        form.style.display = 'none';
+    }
+}
 </script>
 {% endblock %}

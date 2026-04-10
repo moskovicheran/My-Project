@@ -67,7 +67,7 @@
 </div>
 {% else %}
 {# Single club - show classic stats cards #}
-<div class="stats-grid stats-5">
+<div class="stats-grid stats-4">
     <div class="stat-card">
         <div class="stat-label">קלאב</div>
         <div class="stat-value small-val">{{ member.club }}</div>
@@ -83,10 +83,6 @@
     <div class="stat-card">
         <div class="stat-label">Hands</div>
         <div class="stat-value">{{ "{:,}".format(total_hands|int) }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">סשנים</div>
-        <div class="stat-value">{{ sessions|length }}</div>
     </div>
 </div>
 {% endif %}

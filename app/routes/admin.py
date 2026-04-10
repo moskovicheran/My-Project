@@ -608,6 +608,19 @@ def agents():
             else:
                 flash('יש לבחור ישות ולהזין אחוז.', 'warning')
 
+        elif action == 'update_rake_config':
+            rc_id = request.form.get('rc_id')
+            try:
+                new_pct = float(request.form.get('new_percent', 0))
+            except ValueError:
+                new_pct = 0
+            rc = RakeConfig.query.get(rc_id)
+            if rc and new_pct >= 0:
+                old_pct = rc.rake_percent
+                rc.rake_percent = new_pct
+                db.session.commit()
+                flash(f'אחוז רייק ל-{rc.entity_name} עודכן מ-{old_pct}% ל-{new_pct}%.', 'success')
+
         elif action == 'delete_rake_config':
             rc = RakeConfig.query.get(request.form.get('rc_id'))
             if rc:
