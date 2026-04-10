@@ -791,6 +791,10 @@ def dashboard():
                                selected_dates=selected_dates,
                                view_as_username=view_as_username)
 
+    # DEBUG: show role info (remove after fixing)
+    if hasattr(current_user, 'role') and current_user.role not in ('admin', 'agent', 'club'):
+        flash(f'DEBUG: role=[{current_user.role}] pid=[{current_user.player_id}]', 'warning')
+
     if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
         from app.union_data import get_cumulative_stats
         from app.models import PlayerSession, MoneyTransfer
