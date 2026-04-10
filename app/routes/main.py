@@ -276,18 +276,26 @@ def dashboard():
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
-        # Step 1: Find all player_ids that belong to this SA (from ANY upload)
+        # Find player_ids who are agents/SAs (to exclude from player list)
+        agent_role_pids = set(r[0] for r in DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id
+        ).filter(DailyPlayerStats.role.in_(['Agent', 'Super Agent', 'SA'])).distinct().all())
+
+        # Step 1: Find all player_ids that belong to this SA (players only)
         my_player_ids_query = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id
         ).filter(
             or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
                 DailyPlayerStats.agent_id.in_(all_sa_ids)),
-            DailyPlayerStats.role != 'Name Entry'
+            DailyPlayerStats.role.notin_(['Name Entry', 'Agent', 'Super Agent', 'SA'])
         ).distinct()
-        my_player_id_list = [r[0] for r in my_player_ids_query.all()]
+        my_player_id_list = [r[0] for r in my_player_ids_query.all() if r[0] not in agent_role_pids]
 
         # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
-        base_agent_filters = [DailyPlayerStats.player_id.in_(my_player_id_list)]
+        base_agent_filters = [
+            DailyPlayerStats.player_id.in_(my_player_id_list),
+            DailyPlayerStats.role.notin_(['Name Entry', 'Agent', 'Super Agent', 'SA'])
+        ]
         if upload_ids_filter:
             base_agent_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
 
@@ -836,16 +844,21 @@ def agent_top_players():
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players under this SA hierarchy
-        # Step 1: Find player_ids from any upload
+        # Find player_ids who are agents/SAs (to exclude)
+        agent_pids = set(r[0] for r in DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id
+        ).filter(DailyPlayerStats.role.in_(['Agent', 'Super Agent', 'SA'])).distinct().all())
+
+        # Step 1: Find player_ids from any upload (exclude agents/SAs)
         my_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id
         ).filter(
             or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
                 DailyPlayerStats.agent_id.in_(all_sa_ids)),
-            DailyPlayerStats.role != 'Name Entry'
-        ).distinct().all()]
+            DailyPlayerStats.role.notin_(['Name Entry', 'Agent', 'Super Agent', 'SA'])
+        ).distinct().all() if r[0] not in agent_pids]
 
-        # Step 2: Get cumulative stats for all their history
+        # Step 2: Get cumulative stats for all their history (player rows only)
         players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -855,7 +868,8 @@ def agent_top_players():
             sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(
-            DailyPlayerStats.player_id.in_(my_pids)
+            DailyPlayerStats.player_id.in_(my_pids),
+            DailyPlayerStats.role.notin_(['Name Entry', 'Agent', 'Super Agent', 'SA'])
         ).group_by(DailyPlayerStats.player_id).all()
 
         # Also get managed club players
