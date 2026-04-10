@@ -70,7 +70,7 @@
     <div id="searchResults" style="display:none; position:absolute; top:100%; right:0; left:0; z-index:50; background:#fff; border:1px solid #e0e4ef; border-radius:0 0 12px 12px; box-shadow:0 6px 20px rgba(0,0,0,0.1); max-height:300px; overflow-y:auto;"></div>
 </div>
 <script>
-var _allPlayers = [
+var _allPlayersRaw = [
 {% for my_sa in my_sas %}
 {% for m in my_sa.direct %}{n:"{{ m.nickname }}", id:"{{ m.player_id }}"},{% endfor %}
 {% for ag_id, ag in my_sa.agents.items() %}
@@ -84,6 +84,12 @@ var _allPlayers = [
 {% endfor %}
 {% endfor %}
 ];
+var _seenIds = {};
+var _allPlayers = _allPlayersRaw.filter(function(p) {
+    if (_seenIds[p.id]) return false;
+    _seenIds[p.id] = true;
+    return true;
+});
 </script>
 
 {# ── Stats Cards ── #}
