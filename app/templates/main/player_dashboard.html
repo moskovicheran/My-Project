@@ -35,6 +35,95 @@
     {% endif %}
 </div>
 
+{# ── Game Type Stats ── #}
+{% if game_stats %}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">📊 סטטיסטיקה לפי סוג משחק</h2>
+
+    <div class="game-tabs">
+        <button class="game-tab active" onclick="switchGameView(this, 'all')">הכל <span class="tab-count">({{ total_sessions }})</span></button>
+        {% for gt in game_stats.keys()|sort %}
+        <button class="game-tab" onclick="switchGameView(this, '{{ gt|lower }}')">{{ gt }} <span class="tab-count">({{ game_stats[gt].count }})</span></button>
+        {% endfor %}
+    </div>
+
+    <div id="gv-all">
+        <div class="game-stats-grid">
+            <div class="game-stat-card"><div class="gs-label">סשנים</div><div class="gs-value">{{ total_sessions }}</div></div>
+            <div class="game-stat-card"><div class="gs-label">Win Rate</div><div class="gs-value" style="color:#4361ee;">{{ ((total_wins / total_sessions * 100) if total_sessions else 0)|round(1) }}%</div></div>
+            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value"><span class="income">{{ total_wins }}</span> / <span class="expense">{{ total_losses }}</span></div></div>
+        </div>
+        <div class="blinds-grid">
+            {% for gt, gs in game_stats.items()|sort(attribute='1.count', reverse=true) %}
+            <div class="blinds-card">
+                <div class="bc-header"><span class="bc-label">{{ gt }}</span><span class="bc-count">{{ gs.count }} סשנים</span></div>
+                <div class="bc-pnl {% if gs.pnl >= 0 %}income{% else %}expense{% endif %}">{% if gs.pnl > 0 %}+{% endif %}{{ gs.pnl|comma }}</div>
+                <div class="winrate-bar"><div class="winrate-fill" style="width:{{ (gs.wins / gs.count * 100) if gs.count else 0 }}%; background:{% if gs.pnl >= 0 %}#2ec4b6{% else %}#ef233c{% endif %};"></div></div>
+                <div class="bc-info">{{ ((gs.wins / gs.count * 100) if gs.count else 0)|round(1) }}% Win Rate • {{ gs.wins }}W / {{ gs.losses }}L</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% for gt, gs in game_stats.items() %}
+    <div id="gv-{{ gt|lower }}" style="display:none;">
+        {% set wr = ((gs.wins / gs.count * 100) if gs.count else 0)|round(1) %}
+        <div class="game-stats-grid">
+            <div class="game-stat-card"><div class="gs-label">סשנים</div><div class="gs-value">{{ gs.count }}</div></div>
+            <div class="game-stat-card"><div class="gs-label">רווח/הפסד</div><div class="gs-value {% if gs.pnl >= 0 %}income{% else %}expense{% endif %}">{% if gs.pnl > 0 %}+{% endif %}{{ gs.pnl|comma }}</div></div>
+            <div class="game-stat-card"><div class="gs-label">Win Rate</div><div class="gs-value" style="color:#4361ee;">{{ wr }}%</div></div>
+            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value"><span class="income">{{ gs.wins }}</span> / <span class="expense">{{ gs.losses }}</span></div></div>
+        </div>
+        <div class="blinds-grid">
+            {% for b, bd in gs.blinds.items()|sort(attribute='1.pnl', reverse=true) %}
+            <div class="blinds-card">
+                <div class="bc-header"><span class="bc-label">{{ b }}</span><span class="bc-count">{{ bd.count }} סשנים</span></div>
+                <div class="bc-pnl {% if bd.pnl >= 0 %}income{% else %}expense{% endif %}">{% if bd.pnl > 0 %}+{% endif %}{{ bd.pnl|comma }}</div>
+                <div class="winrate-bar"><div class="winrate-fill" style="width:{{ (bd.wins / bd.count * 100) if bd.count else 0 }}%; background:{% if bd.pnl >= 0 %}#2ec4b6{% else %}#ef233c{% endif %};"></div></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+.game-tabs { display:flex; gap:0.3rem; margin-bottom:1rem; flex-wrap:wrap; }
+.game-tab { padding:0.4rem 1rem; border-radius:20px; font-size:0.85rem; font-weight:600; cursor:pointer; border:2px solid #e0e4ef; background:#fff; color:#666; font-family:inherit; transition:all 0.2s; }
+.game-tab:hover { border-color:#4361ee; color:#4361ee; }
+.game-tab.active { background:#4361ee; color:#fff; border-color:#4361ee; }
+.tab-count { font-size:0.72rem; opacity:0.8; }
+.game-stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.6rem; margin-bottom:1rem; }
+.game-stat-card { background:#f8f9ff; border-radius:10px; padding:0.6rem 0.8rem; text-align:center; border:1px solid #f0f0f0; }
+.gs-label { font-size:0.72rem; color:#888; margin-bottom:0.15rem; }
+.gs-value { font-size:1.05rem; font-weight:700; }
+.blinds-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.6rem; }
+.blinds-card { background:#fff; border-radius:10px; padding:0.7rem 1rem; border:1px solid #e8ebff; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+.bc-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; }
+.bc-label { font-weight:700; font-size:0.95rem; }
+.bc-count { font-size:0.75rem; color:#888; }
+.bc-pnl { font-size:1.1rem; font-weight:700; }
+.bc-info { font-size:0.72rem; color:#888; margin-top:0.2rem; }
+.winrate-bar { height:6px; border-radius:3px; background:#f0f0f0; margin-top:0.4rem; overflow:hidden; }
+.winrate-fill { height:100%; border-radius:3px; }
+body.dark .game-tab { background:#1e1e2e; border-color:#333; color:#888; }
+body.dark .game-tab.active { background:#4361ee; color:#fff; }
+body.dark .game-stat-card { background:#252535; border-color:#333; }
+body.dark .blinds-card { background:#252535; border-color:#333; }
+body.dark .winrate-bar { background:#333; }
+@media (max-width:640px) { .game-stats-grid { grid-template-columns:repeat(2, 1fr); } .blinds-grid { grid-template-columns:1fr; } }
+</style>
+
+<script>
+function switchGameView(btn, view) {
+    document.querySelectorAll('.game-tab').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('[id^="gv-"]').forEach(function(el) { el.style.display = 'none'; });
+    document.getElementById('gv-' + view).style.display = 'block';
+}
+</script>
+{% endif %}
+
 {# ── Game Sessions ── #}
 <div class="section">
     <h2 class="section-title">המשחקים שלי ({{ sessions|length }})</h2>

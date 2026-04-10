@@ -791,10 +791,6 @@ def dashboard():
                                selected_dates=selected_dates,
                                view_as_username=view_as_username)
 
-    # DEBUG: show role info (remove after fixing)
-    if hasattr(current_user, 'role') and current_user.role not in ('admin', 'agent', 'club'):
-        flash(f'DEBUG: role=[{current_user.role}] pid=[{current_user.player_id}]', 'warning')
-
     if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
         from app.union_data import get_cumulative_stats
         from app.models import PlayerSession, MoneyTransfer
@@ -830,10 +826,41 @@ def dashboard():
         if player_rc and cs:
             rake_refund = round(cs['rake'] * player_rc.rake_percent / 100, 2)
 
+        # Build game type stats
+        game_stats = {}
+        for s in session_list:
+            gt = s.get('game_type', 'Other') or 'Other'
+            if gt not in game_stats:
+                game_stats[gt] = {'count': 0, 'pnl': 0, 'wins': 0, 'losses': 0, 'blinds': {}}
+            gs = game_stats[gt]
+            gs['count'] += 1
+            gs['pnl'] = round(gs['pnl'] + s['pnl'], 2)
+            if s['pnl'] >= 0:
+                gs['wins'] += 1
+            else:
+                gs['losses'] += 1
+            b = s.get('blinds', '-') or '-'
+            if b not in gs['blinds']:
+                gs['blinds'][b] = {'count': 0, 'pnl': 0, 'wins': 0, 'losses': 0}
+            gs['blinds'][b]['count'] += 1
+            gs['blinds'][b]['pnl'] = round(gs['blinds'][b]['pnl'] + s['pnl'], 2)
+            if s['pnl'] >= 0:
+                gs['blinds'][b]['wins'] += 1
+            else:
+                gs['blinds'][b]['losses'] += 1
+
+        total_sessions = sum(g['count'] for g in game_stats.values())
+        total_wins = sum(g['wins'] for g in game_stats.values())
+        total_losses = sum(g['losses'] for g in game_stats.values())
+
         return render_template('main/player_dashboard.html',
                                player=cs or {'nickname': current_user.username, 'club': '-', 'pnl': 0, 'rake': 0, 'hands': 0},
                                sessions=session_list, transfer_rows=transfer_rows,
-                               rake_refund=rake_refund)
+                               rake_refund=rake_refund,
+                               game_stats=game_stats,
+                               total_sessions=total_sessions,
+                               total_wins=total_wins,
+                               total_losses=total_losses)
 
     transactions = (Transaction.query
                     .filter_by(user_id=current_user.id)
