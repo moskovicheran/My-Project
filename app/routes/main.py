@@ -276,10 +276,18 @@ def dashboard():
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
-        base_agent_filters = [or_(
-            DailyPlayerStats.sa_id.in_(all_sa_ids),
-            DailyPlayerStats.agent_id.in_(all_sa_ids)
-        )]
+        # Step 1: Find all player_ids that belong to this SA (from ANY upload)
+        my_player_ids_query = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id
+        ).filter(
+            or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
+                DailyPlayerStats.agent_id.in_(all_sa_ids)),
+            DailyPlayerStats.role != 'Name Entry'
+        ).distinct()
+        my_player_id_list = [r[0] for r in my_player_ids_query.all()]
+
+        # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
+        base_agent_filters = [DailyPlayerStats.player_id.in_(my_player_id_list)]
         if upload_ids_filter:
             base_agent_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
 
@@ -828,6 +836,16 @@ def agent_top_players():
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Get ALL players under this SA hierarchy
+        # Step 1: Find player_ids from any upload
+        my_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id
+        ).filter(
+            or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
+                DailyPlayerStats.agent_id.in_(all_sa_ids)),
+            DailyPlayerStats.role != 'Name Entry'
+        ).distinct().all()]
+
+        # Step 2: Get cumulative stats for all their history
         players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -837,9 +855,7 @@ def agent_top_players():
             sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(
-            or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
-                DailyPlayerStats.agent_id.in_(all_sa_ids)),
-            DailyPlayerStats.role != 'Name Entry'
+            DailyPlayerStats.player_id.in_(my_pids)
         ).group_by(DailyPlayerStats.player_id).all()
 
         # Also get managed club players
