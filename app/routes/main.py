@@ -353,6 +353,7 @@ def dashboard():
             direct_agent_ids = [ag_id for ag_id in agents_map.keys()
                                 if player_sa_lookup.get(ag_id, '') in known_ids]
             if direct_agent_ids:
+                exclude_pids = list(all_my_player_ids | agent_role_pids)
                 missing_players = DailyPlayerStats.query.with_entities(
                     DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
                     sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
@@ -363,8 +364,8 @@ def dashboard():
                 ).filter(
                     or_(DailyPlayerStats.agent_id.in_(direct_agent_ids),
                         DailyPlayerStats.sa_id.in_(direct_agent_ids)),
-                    DailyPlayerStats.player_id.notin_(list(all_my_player_ids)),
-                    DailyPlayerStats.role != 'Name Entry'
+                    DailyPlayerStats.player_id.notin_(exclude_pids),
+                    DailyPlayerStats.role.notin_(['Name Entry', 'Agent', 'Super Agent', 'SA'])
                 ).group_by(DailyPlayerStats.player_id).all()
                 for pid, nick, club, ag_id, sa_id_val, role, pnl, rake, hands in missing_players:
                     pnl = round(float(pnl or 0), 2)
