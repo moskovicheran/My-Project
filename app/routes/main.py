@@ -392,6 +392,26 @@ def dashboard():
                 ag['total_pnl'] += m['pnl']
             ag['total_pnl'] = round(ag['total_pnl'], 2)
 
+        # Add agent's own player stats (for agents who also play)
+        for ag_id, ag in agents_map.items():
+            own_stats = DailyPlayerStats.query.with_entities(
+                sqlfunc.sum(DailyPlayerStats.pnl),
+                sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.player_id == ag_id,
+                DailyPlayerStats.role == 'Player'
+            ).first()
+            if own_stats and (own_stats[0] or own_stats[1] or own_stats[2]):
+                ag_nick = ag.get('nick', ag_id)
+                own_pnl = round(float(own_stats[0] or 0) + xfer_adj.get(ag_id, 0), 2)
+                ag['own_stats'] = {
+                    'player_id': ag_id, 'nickname': ag_nick,
+                    'pnl': own_pnl,
+                    'rake': round(float(own_stats[1] or 0), 2),
+                    'hands': int(own_stats[2] or 0),
+                }
+
         # Fetch missing agents and players for child_sas from DB
         for cs in child_sas:
             sa_id_val = cs.get('sa_id')

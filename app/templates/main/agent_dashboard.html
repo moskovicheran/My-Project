@@ -334,6 +334,24 @@ function toggleExpenseDetails() {
             </div>
         </div>
         <div class="accordion-body" style="display:none; padding:0.5rem 1rem;">
+            {% if ag.own_stats %}
+            <div style="background:linear-gradient(135deg, #f0f3ff, #e8ebff); border-radius:8px; padding:0.5rem 0.8rem; margin-bottom:0.6rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.3rem;">
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                    <span class="role-badge role-agent" style="font-size:0.65rem;">משחקים אישיים</span>
+                    <strong style="font-size:0.88rem;">{{ ag.own_stats.nickname }}</strong>
+                </div>
+                <div style="display:flex; gap:0.6rem; align-items:center; font-size:0.85rem;">
+                    <span class="amount income">R {{ ag.own_stats.rake|comma }}</span>
+                    <span class="amount {% if ag.own_stats.pnl >= 0 %}income{% else %}expense{% endif %}">
+                        {% if ag.own_stats.pnl > 0 %}+{% endif %}{{ ag.own_stats.pnl|comma }}
+                    </span>
+                    <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ ag.own_stats.player_id }}')" style="font-size:0.72rem;">רקורד</button>
+                </div>
+            </div>
+            <div class="record-row" style="display:none;">
+                <div class="record-container" id="record-{{ ag.own_stats.player_id }}"></div>
+            </div>
+            {% endif %}
             <table class="table" style="margin:0; font-size:0.95rem;">
                 <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                 <tbody>
