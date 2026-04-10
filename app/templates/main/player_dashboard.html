@@ -14,7 +14,7 @@
 </div>
 
 {# ── Stats Cards ── #}
-<div class="stats-grid stats-3" style="margin-bottom:1.5rem;">
+<div class="stats-grid stats-{% if rake_refund %}4{% else %}3{% endif %}" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">יתרה (רווח/הפסד)</div>
         <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ player.pnl|comma }}</div>
@@ -27,6 +27,12 @@
         <div class="stat-label">Hands</div>
         <div class="stat-value">{{ "{:,}".format(player.hands|int) }}</div>
     </div>
+    {% if rake_refund %}
+    <div class="stat-card" style="border:2px solid #667eea;">
+        <div class="stat-label" style="color:#667eea; font-weight:700;">החזר רייק</div>
+        <div class="stat-value" style="color:#667eea;">{{ rake_refund|comma }}</div>
+    </div>
+    {% endif %}
 </div>
 
 {# ── Game Sessions ── #}

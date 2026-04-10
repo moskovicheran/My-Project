@@ -819,9 +819,17 @@ def dashboard():
                 transfer_rows.append({'label': f'קבלת תשלום מ-{t.from_name}',
                                       'amount': round(-t.amount, 2)})
 
+        # Check if player has rake refund config
+        from app.models import RakeConfig
+        player_rc = RakeConfig.query.filter_by(entity_type='player', entity_id=player_id).first()
+        rake_refund = None
+        if player_rc and cs:
+            rake_refund = round(cs['rake'] * player_rc.rake_percent / 100, 2)
+
         return render_template('main/player_dashboard.html',
                                player=cs or {'nickname': current_user.username, 'club': '-', 'pnl': 0, 'rake': 0, 'hands': 0},
-                               sessions=session_list, transfer_rows=transfer_rows)
+                               sessions=session_list, transfer_rows=transfer_rows,
+                               rake_refund=rake_refund)
 
     transactions = (Transaction.query
                     .filter_by(user_id=current_user.id)
