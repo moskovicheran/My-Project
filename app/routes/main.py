@@ -393,7 +393,7 @@ def dashboard():
                 ag['total_pnl'] += m['pnl']
             ag['total_pnl'] = round(ag['total_pnl'], 2)
 
-        # Add agent's own player stats as a regular member (for agents who also play)
+        # Add agent's own game stats as a regular member (for agents who also play)
         for ag_id, ag in agents_map.items():
             own_stats = DailyPlayerStats.query.with_entities(
                 sqlfunc.sum(DailyPlayerStats.pnl),
@@ -401,9 +401,9 @@ def dashboard():
                 sqlfunc.sum(DailyPlayerStats.hands),
             ).filter(
                 DailyPlayerStats.player_id == ag_id,
-                DailyPlayerStats.role == 'Player'
+                DailyPlayerStats.role != 'Name Entry'
             ).first()
-            if own_stats and (own_stats[0] or own_stats[1] or own_stats[2]):
+            if own_stats and (float(own_stats[0] or 0) != 0 or float(own_stats[1] or 0) != 0):
                 ag_nick = ag.get('nick', ag_id)
                 own_pnl = round(float(own_stats[0] or 0) + xfer_adj.get(ag_id, 0), 2)
                 own_rake = round(float(own_stats[1] or 0), 2)
@@ -414,6 +414,26 @@ def dashboard():
                 ag['total_pnl'] = round(ag['total_pnl'] + own_pnl, 2)
                 ag['total_rake'] = round(ag['total_rake'] + own_rake, 2)
                 ag['total_hands'] += own_hands
+
+        # Add SA's own game stats as a direct player (if SA also plays)
+        for sid in known_ids:
+            sa_own = DailyPlayerStats.query.with_entities(
+                sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.sum(DailyPlayerStats.pnl),
+                sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.player_id == sid,
+                DailyPlayerStats.role != 'Name Entry'
+            ).first()
+            if sa_own and (float(sa_own[1] or 0) != 0 or float(sa_own[2] or 0) != 0):
+                sa_pnl = round(float(sa_own[1] or 0) + xfer_adj.get(sid, 0), 2)
+                sa_member = {'player_id': sid, 'nickname': sa_own[0] or sid, 'role': 'Player',
+                             'pnl': sa_pnl,
+                             'rake': round(float(sa_own[2] or 0), 2),
+                             'hands': int(sa_own[3] or 0)}
+                direct_players.insert(0, sa_member)
+                all_my_player_ids.add(sid)
 
         # Fetch missing agents and players for child_sas from DB
         for cs in child_sas:
