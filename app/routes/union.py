@@ -158,38 +158,101 @@ def players():
     all_pids = list(cumulative.keys())
     xfer_adj = get_transfer_adjustments(all_pids)
 
+    # Helper to update members with cumulative data
+    def _update_members(members, excel_pids):
+        total_pnl = 0
+        total_rake = 0
+        for m in members:
+            excel_pids.add(m['player_id'])
+            c = cumulative.get(m['player_id'])
+            if c:
+                m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+                m['rake_total'] = c['rake']
+            total_pnl += m['pnl_total']
+            total_rake += m['rake_total']
+        return total_pnl, total_rake
+
+    def _update_sa(sa, excel_pids):
+        sa_pnl = 0
+        sa_rake = 0
+        for ag in sa.get('agents', {}).values():
+            p, r = _update_members(ag.get('members', []), excel_pids)
+            sa_pnl += p
+            sa_rake += r
+        p, r = _update_members(sa.get('direct_members', []), excel_pids)
+        sa_pnl += p
+        sa_rake += r
+        # Child super agents (nested)
+        for child_sa in sa.get('child_super_agents', {}).values():
+            cp, cr = _update_sa(child_sa, excel_pids)
+            sa_pnl += cp
+            sa_rake += cr
+        return sa_pnl, sa_rake
+
+    # Track which player_ids are already in the hierarchy (from Excel)
+    excel_pids = set()
     grand_pnl = 0
     grand_rake = 0
     for club in clubs:
         club_pnl = 0
         club_rake = 0
         for sa in club.get('super_agents', {}).values():
-            for ag in sa.get('agents', {}).values():
-                for m in ag.get('members', []):
-                    c = cumulative.get(m['player_id'])
-                    if c:
-                        m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
-                        m['rake_total'] = c['rake']
-                    club_pnl += m['pnl_total']
-                    club_rake += m['rake_total']
-            for m in sa.get('direct_members', []):
-                c = cumulative.get(m['player_id'])
-                if c:
-                    m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
-                    m['rake_total'] = c['rake']
-                club_pnl += m['pnl_total']
-                club_rake += m['rake_total']
-        for m in club.get('no_sa_members', []):
-            c = cumulative.get(m['player_id'])
-            if c:
-                m['pnl_total'] = round(c['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
-                m['rake_total'] = c['rake']
-            club_pnl += m['pnl_total']
-            club_rake += m['rake_total']
+            sp, sr = _update_sa(sa, excel_pids)
+            club_pnl += sp
+            club_rake += sr
+        p, r = _update_members(club.get('no_sa_members', []), excel_pids)
+        club_pnl += p
+        club_rake += r
         club['total_pnl'] = round(club_pnl, 2)
         club['total_rake'] = round(club_rake, 2)
         grand_pnl += club_pnl
         grand_rake += club_rake
+
+    # Add players from cumulative DB that are NOT in the active Excel
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+    db_only_players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.sa_id),
+        sqlfunc.max(DailyPlayerStats.agent_id),
+    ).filter(
+        DailyPlayerStats.player_id.notin_(list(excel_pids)) if excel_pids else True,
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    club_map = {c['name']: c for c in clubs}
+    for pid, nick, club_name, sa_id, ag_id in db_only_players:
+        c = cumulative.get(pid)
+        if not c or (c['pnl'] == 0 and c['rake'] == 0 and c['hands'] == 0):
+            continue
+        pnl = round(c['pnl'] + xfer_adj.get(pid, 0), 2)
+        member = {
+            'player_id': pid, 'nickname': nick or pid,
+            'role': 'Player', 'country': '-',
+            'sa_id': sa_id or '-', 'sa_nick': '-',
+            'agent_id': ag_id or '-', 'agent_nick': '-',
+            'pnl_total': pnl, 'rake_total': c['rake'], 'hands_total': c['hands'],
+        }
+        # Place in correct club
+        if club_name and club_name in club_map:
+            club_map[club_name]['no_sa_members'].append(member)
+            club_map[club_name]['total_pnl'] = round(club_map[club_name].get('total_pnl', 0) + pnl, 2)
+            club_map[club_name]['total_rake'] = round(club_map[club_name].get('total_rake', 0) + c['rake'], 2)
+        else:
+            # Unknown club — create or use catch-all
+            if club_name and club_name not in club_map:
+                new_club = {'name': club_name, 'club_id': '', 'super_agents': {}, 'no_sa_members': [],
+                            'total_pnl': 0, 'total_rake': 0}
+                clubs.append(new_club)
+                club_map[club_name] = new_club
+            target = club_map.get(club_name, clubs[0] if clubs else None)
+            if target:
+                target['no_sa_members'].append(member)
+                target['total_pnl'] = round(target.get('total_pnl', 0) + pnl, 2)
+                target['total_rake'] = round(target.get('total_rake', 0) + c['rake'], 2)
+        grand_pnl += pnl
+        grand_rake += c['rake']
+
     grand = {'pnl': round(grand_pnl, 2), 'rake': round(grand_rake, 2)}
 
     return render_template('union/players.html', clubs=clubs, grand=grand)
