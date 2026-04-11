@@ -313,7 +313,7 @@ def player_detail(player_id):
                    .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
                    .add_columns(DailyUpload.upload_date)
                    .filter(PlayerSession.player_id == player_id)
-                   .order_by(DailyUpload.upload_date.desc())
+                   .order_by(DailyUpload.upload_date.asc())
                    .all())
     if db_sessions:
         sessions = []

@@ -2305,7 +2305,7 @@ def player_record_api(player_id):
                    .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
                    .add_columns(DailyUpload.upload_date)
                    .filter(PlayerSession.player_id == player_id)
-                   .order_by(DailyUpload.upload_date.desc())
+                   .order_by(DailyUpload.upload_date.asc())
                    .all())
     sessions = []
     for s, upload_date in db_sessions:
