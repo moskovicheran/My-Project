@@ -118,6 +118,7 @@ function applyFilter() {
 // ── Calendar logic ──
 var _calYear, _calMonth;
 function _initCal() {
+    console.log('[PDP] sessions:', _allSessions.length, 'dates:', _availableDates);
     var now = new Date();
     if (_availableDates.length) {
         var last = _availableDates[_availableDates.length - 1].split('-');
@@ -147,8 +148,12 @@ function renderCal() {
         cell.className = 'dp-day';
         cell.textContent = d;
         var hasData = _availableDates.includes(dateStr);
-        if (!hasData) { cell.classList.add('dp-disabled'); }
-        else {
+        if (!hasData) {
+            cell.classList.add('dp-disabled');
+            cell.style.color = '#ccc';
+        } else {
+            cell.style.color = '#222';
+            cell.style.fontWeight = '600';
             cell.style.cursor = 'pointer';
             if (_selectedDates.has(dateStr)) cell.classList.add('dp-selected');
             cell.onclick = (function(ds, c) { return function() {
