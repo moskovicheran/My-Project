@@ -801,9 +801,17 @@ def dashboard():
             from app.union_data import get_transfer_adjustments
             xfer_adj = get_transfer_adjustments([player_id])
             cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
-        sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+        from app.models import DailyUpload
+        sessions = (PlayerSession.query
+                    .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                    .add_columns(DailyUpload.upload_date)
+                    .filter(PlayerSession.player_id == player_id)
+                    .order_by(DailyUpload.upload_date.asc())
+                    .all())
         session_list = [{'table_name': s.table_name, 'game_type': s.game_type,
-                         'blinds': s.blinds or '', 'pnl': round(s.pnl, 2)} for s in sessions]
+                         'blinds': s.blinds or '', 'pnl': round(s.pnl, 2),
+                         'date': d.strftime('%Y-%m-%d') if d else ''}
+                        for s, d in sessions]
 
         # Get transfers for this player
         player_transfers = MoneyTransfer.query.filter(
