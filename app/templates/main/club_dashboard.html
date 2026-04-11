@@ -599,7 +599,8 @@ function toggleRecord(btn, playerId) {
             data.sessions.forEach(function(s) {
                 var cls = s.pnl >= 0 ? 'rec-plus' : 'rec-minus';
                 var sign = s.pnl > 0 ? '+' : '';
-                html += '<tr><td class="muted">' + s.game + '</td>';
+                html += '<tr><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + (s.date || '—') + '</td>';
+                html += '<td class="muted">' + s.game + '</td>';
                 html += '<td>' + s.table + '</td>';
                 html += '<td>' + s.blinds + '</td>';
                 html += '<td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';

@@ -2299,15 +2299,22 @@ def tournament_players_api():
 @main_bp.route('/api/player-record/<player_id>')
 @login_required
 def player_record_api(player_id):
-    from app.models import PlayerSession
-    # Read ALL sessions from cumulative DB
-    db_sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+    from app.models import PlayerSession, DailyUpload
+    # Read ALL sessions from cumulative DB with upload date
+    db_sessions = (PlayerSession.query
+                   .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                   .add_columns(DailyUpload.upload_date)
+                   .filter(PlayerSession.player_id == player_id)
+                   .order_by(DailyUpload.upload_date.desc())
+                   .all())
     sessions = []
-    for s in db_sessions:
+    for s, upload_date in db_sessions:
+        date_fmt = upload_date.strftime('%d/%m/%Y') if upload_date else ''
         sessions.append({
             'table': s.table_name,
             'game': s.game_type,
             'blinds': s.blinds or '',
+            'date': date_fmt,
             'pnl': round(s.pnl, 2),
         })
     total_pnl = round(sum(s['pnl'] for s in sessions), 2)
