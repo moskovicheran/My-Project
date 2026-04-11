@@ -167,13 +167,23 @@ function renderCal() {
 }
 
 function pdpChangeMonth(dir) { _calMonth += dir; if (_calMonth < 0) { _calMonth=11; _calYear--; } if (_calMonth > 11) { _calMonth=0; _calYear++; } renderCal(); }
-function togglePdp() { var p = document.getElementById('pdpPopup'); p.style.display = p.style.display==='none' ? 'block' : 'none'; }
+function togglePdp() {
+    var p = document.getElementById('pdpPopup');
+    var ov = document.getElementById('pdpOverlay');
+    var open = p.style.display === 'none';
+    p.style.display = open ? 'block' : 'none';
+    if (ov) ov.style.display = open ? 'block' : 'none';
+}
 function pdpClear() { _selectedDates.clear(); renderCal(); applyFilter(); }
 
 document.addEventListener('click', function(e) {
     var popup = document.getElementById('pdpPopup');
     var btn = document.getElementById('pdpBtn');
-    if (popup && !popup.contains(e.target) && btn && !btn.contains(e.target)) popup.style.display = 'none';
+    var ov = document.getElementById('pdpOverlay');
+    if (popup && !popup.contains(e.target) && btn && !btn.contains(e.target)) {
+        popup.style.display = 'none';
+        if (ov) ov.style.display = 'none';
+    }
 });
 
 window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter(); });
@@ -214,6 +224,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
             {% endfor %}
         </div>
         <div style="position:relative; display:inline-block;">
+            <div id="pdpOverlay" onclick="togglePdp()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:399;"></div>
             <button id="pdpBtn" onclick="togglePdp()" class="dp-trigger">
                 <span class="dp-icon">📅</span>
                 <span id="pdpLabel">כל התקופות</span>
@@ -305,7 +316,10 @@ body.dark .dp-nav:hover { background:#252535; color:#aaa; }
 body.dark .dp-day:not(.dp-disabled):hover { background:#333355; }
 body.dark .dp-footer { border-top-color:#333; }
 body.dark .dp-footer-btn { background:#252535; border-color:#444; color:#aaa; }
-@media (max-width:640px) { .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; width:auto; } }
+@media (max-width:640px) {
+    #pdpOverlay { display:none; }
+    .dp-popup { position:fixed !important; top:50% !important; left:50% !important; transform:translate(-50%,-50%) !important; width:220px; z-index:400; }
+}
 
 /* ── Game Stats ── */
 .game-tabs { display:flex; gap:0.3rem; margin-bottom:1rem; flex-wrap:wrap; }
