@@ -308,15 +308,22 @@ def player_detail(player_id):
         total_hands = sum(s['hands'] for s in sessions)
 
     # Load sessions from DB (cumulative, all uploads)
-    from app.models import PlayerSession
-    db_sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+    from app.models import PlayerSession, DailyUpload
+    db_sessions = (PlayerSession.query
+                   .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                   .add_columns(DailyUpload.upload_date)
+                   .filter(PlayerSession.player_id == player_id)
+                   .order_by(DailyUpload.upload_date.desc())
+                   .all())
     if db_sessions:
         sessions = []
-        for s in db_sessions:
+        for s, upload_date in db_sessions:
+            date_fmt = upload_date.strftime('%d/%m/%Y') if upload_date else ''
             sessions.append({
                 'table_name': s.table_name,
                 'game_type': s.game_type,
                 'blinds': s.blinds or '',
+                'date': date_fmt,
                 'club_name': '',
                 'buyin': 0, 'cashout': 0, 'hands': 0, 'rake': 0,
                 'pnl': round(s.pnl, 2),

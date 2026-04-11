@@ -48,6 +48,7 @@
             <span class="badge badge-game">{{ table.game_type }}</span>
             <strong>{{ table.table_name }}</strong>
             <span class="muted small">Blinds: {{ table.blinds }}</span>
+            {% if table.date %}<span class="muted small" style="font-size:0.8rem;">📅 {{ table.date }}</span>{% endif %}
         </div>
         <div style="display:flex; align-items:center; gap:0.5rem;">
             {% set t_rake = table.players | sum(attribute='rake') %}

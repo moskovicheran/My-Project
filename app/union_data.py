@@ -201,6 +201,12 @@ def get_ring_games():
             continue
         hands = _num(row.iloc[20])
         total_hands += hands
+        start_raw = str(row.iloc[16])[:10]  # "2026-04-08"
+        try:
+            parts = start_raw.split('-')
+            date_fmt = f'{parts[2]}/{parts[1]}/{parts[0]}'
+        except Exception:
+            date_fmt = start_raw
         games.append({
             'club_name': club_name,
             'table_name': str(row.iloc[2]),
@@ -212,6 +218,7 @@ def get_ring_games():
             'buy_in': _num(row.iloc[21]),
             'rake': _num(row.iloc[22]),
             'start': str(row.iloc[16])[:16],
+            'date': date_fmt,
             'duration': str(row.iloc[18]),
         })
 
@@ -423,11 +430,22 @@ def get_ring_game_detail():
 
     tables = []
     current = None
+    pending_date = ''  # date from Start/End Time row, applied to next table
 
     for i in range(len(df)):
         col0 = str(df.iloc[i, 0])
 
-        if col0.startswith('Table Name :'):
+        if col0.startswith('Start/End Time :'):
+            # "Start/End Time : 2026-04-08 01:49:18 ~ Not Ended (UTC -5:00)"
+            try:
+                raw = col0.split('Start/End Time :')[1].strip()
+                date_str = raw.split(' ')[0]  # "2026-04-08"
+                parts = date_str.split('-')
+                pending_date = f'{parts[2]}/{parts[1]}/{parts[0]}'  # "08/04/2026"
+            except Exception:
+                pending_date = ''
+
+        elif col0.startswith('Table Name :'):
             # "Table Name : PLO6 1/2 D.B , Creator : SHIFKA(1478-4435) , Club : SPC Un(970996)"
             try:
                 table_name = col0.split('Table Name : ')[1].split(' , Creator')[0].strip()
@@ -435,7 +453,7 @@ def get_ring_game_detail():
             except Exception:
                 table_name, club = col0, ''
             current = {'table_name': table_name, 'club': club,
-                       'game_type': '', 'blinds': '', 'players': []}
+                       'game_type': '', 'blinds': '', 'date': pending_date, 'players': []}
             tables.append(current)
 
         elif col0.startswith('Table Information :'):
@@ -592,6 +610,7 @@ def get_player_detail(player_id):
                     'game_type': table['game_type'],
                     'blinds': table['blinds'],
                     'club': table['club'],
+                    'date': table.get('date', ''),
                     'club_name': p['club_name'],
                     'buyin': p['buyin'],
                     'cashout': p['cashout'],

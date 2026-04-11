@@ -33,6 +33,7 @@
     <table class="table table-sm">
         <thead>
             <tr>
+                <th>תאריך</th>
                 <th>Club</th>
                 <th>Table</th>
                 <th>Game</th>
@@ -48,6 +49,7 @@
         <tbody>
             {% for g in games %}
             <tr>
+                <td class="muted" style="font-size:0.82rem; white-space:nowrap;">{{ g.date or '—' }}</td>
                 <td class="muted">{{ g.club_name }}</td>
                 <td><strong>{{ g.table_name }}</strong></td>
                 <td><span class="badge badge-game">{{ g.game_type }}</span></td>
@@ -63,7 +65,7 @@
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="6"><strong>TOTAL</strong></td>
+                <td colspan="7"><strong>TOTAL</strong></td>
                 <td><strong>{{ "{:,}".format(totals.hands|int) }}</strong></td>
                 <td><strong>{{ totals.buy_in|comma }}</strong></td>
                 <td class="amount income"><strong>{{ totals.rake|comma }}</strong></td>
