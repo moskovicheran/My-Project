@@ -219,7 +219,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
                 <span id="pdpLabel">כל התקופות</span>
                 <span class="dp-arrow">▾</span>
             </button>
-            <div id="pdpPopup" class="dp-popup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:500;">
+            <div id="pdpPopup" class="dp-popup" style="display:none;">
                 <div class="dp-header">
                     <button onclick="pdpChangeMonth(-1)" class="dp-nav">→</button>
                     <strong id="pdpMonthLabel"></strong>
@@ -277,35 +277,35 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 
 <style>
 /* ── Date Picker ── */
-.dp-trigger { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.9rem; border:1px solid #e0e4ef; border-radius:10px; background:#fff; cursor:pointer; font-family:inherit; font-size:0.9rem; color:#333; transition:all 0.15s; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
-.dp-trigger:hover { border-color:#4361ee; box-shadow:0 2px 8px rgba(67,97,238,0.12); }
-.dp-icon { font-size:1.1rem; }
-.dp-arrow { font-size:0.7rem; color:#888; }
-.dp-popup { position:absolute; top:calc(100% + 6px); right:0; z-index:200; background:#fff; border:1px solid #e0e4ef; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:0.8rem; min-width:280px; animation:dpFadeIn 0.15s ease; }
-@keyframes dpFadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-.dp-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
-.dp-header strong { font-size:0.95rem; }
-.dp-nav { border:none; background:#f0f2f5; border-radius:6px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem; color:#555; transition:background 0.15s; }
-.dp-nav:hover { background:#e0e4ef; }
-.dp-weekdays { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:0.2rem; }
-.dp-weekdays span { font-size:0.7rem; color:#888; font-weight:600; padding:0.2rem 0; }
-.dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
-.dp-day { padding:0.35rem 0; border-radius:8px; font-size:0.82rem; cursor:default; transition:all 0.12s; color:#ccc; user-select:none; }
-.dp-day.dp-disabled { color:#ddd; }
-.dp-day:not(.dp-disabled) { color:#333; font-weight:500; cursor:pointer; }
-.dp-day:not(.dp-disabled):hover { background:#e8ebff; }
-.dp-day.dp-selected { background:#4361ee !important; color:#fff !important; font-weight:700; }
-.dp-footer { display:flex; justify-content:flex-end; margin-top:0.6rem; padding-top:0.5rem; border-top:1px solid #f0f0f0; }
-.dp-footer-btn { border:1px solid #ddd; background:#fff; border-radius:6px; padding:0.3rem 0.7rem; cursor:pointer; font-family:inherit; font-size:0.8rem; color:#555; transition:all 0.15s; }
-.dp-footer-btn:hover { background:#f0f2f5; }
-body.dark .dp-trigger { background:#1e1e2e; border-color:#333; color:#e0e0e0; }
-body.dark .dp-popup { background:#1e1e2e; border-color:#333; }
-body.dark .dp-nav { background:#252535; color:#ccc; }
-body.dark .dp-day:not(.dp-disabled) { color:#ddd; }
+.dp-trigger { display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.75rem; border:1px solid #e0e4ef; border-radius:8px; background:#fff; cursor:pointer; font-family:inherit; font-size:0.82rem; color:#555; transition:all 0.15s; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+.dp-trigger:hover { border-color:#4361ee; color:#4361ee; box-shadow:0 1px 6px rgba(67,97,238,0.1); }
+.dp-icon { font-size:0.9rem; }
+.dp-arrow { font-size:0.6rem; color:#aaa; }
+.dp-popup { position:absolute; top:calc(100% + 4px); right:0; z-index:400; background:#fff; border:1px solid #e8eaf0; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.12); padding:0.55rem; width:210px; }
+.dp-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; padding:0 0.1rem; }
+.dp-header strong { font-size:0.8rem; color:#333; }
+.dp-nav { border:none; background:none; border-radius:5px; padding:0.15rem 0.4rem; cursor:pointer; font-size:0.75rem; color:#888; transition:all 0.12s; line-height:1; }
+.dp-nav:hover { background:#f0f2f5; color:#4361ee; }
+.dp-weekdays { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:0.15rem; }
+.dp-weekdays span { font-size:0.62rem; color:#bbb; font-weight:600; padding:0.1rem 0; }
+.dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; text-align:center; }
+.dp-day { padding:0.22rem 0; border-radius:5px; font-size:0.75rem; cursor:default; transition:background 0.1s; color:#ddd; user-select:none; }
+.dp-day:not(.dp-disabled):hover { background:#eef0ff; }
+.dp-day.dp-selected { background:#4361ee !important; color:#fff !important; font-weight:700; border-radius:5px; }
+.dp-footer { display:flex; justify-content:flex-end; gap:0.3rem; margin-top:0.4rem; padding-top:0.35rem; border-top:1px solid #f2f2f2; }
+.dp-footer-btn { border:1px solid #e0e4ef; background:#fff; border-radius:5px; padding:0.2rem 0.6rem; cursor:pointer; font-family:inherit; font-size:0.75rem; color:#666; transition:all 0.12s; }
+.dp-footer-btn:hover { background:#f5f6ff; border-color:#4361ee; color:#4361ee; }
+.dp-apply { background:#4361ee; color:#fff; border-color:#4361ee; }
+.dp-apply:hover { background:#3451d1; }
+body.dark .dp-trigger { background:#1e1e2e; border-color:#333; color:#aaa; }
+body.dark .dp-popup { background:#1e1e2e; border-color:#333; box-shadow:0 4px 20px rgba(0,0,0,0.4); }
+body.dark .dp-header strong { color:#ddd; }
+body.dark .dp-nav { color:#888; }
+body.dark .dp-nav:hover { background:#252535; color:#aaa; }
 body.dark .dp-day:not(.dp-disabled):hover { background:#333355; }
-body.dark .dp-day.dp-selected { background:#4361ee !important; color:#fff !important; }
 body.dark .dp-footer { border-top-color:#333; }
-@media (max-width:640px) { .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; min-width:auto; } }
+body.dark .dp-footer-btn { background:#252535; border-color:#444; color:#aaa; }
+@media (max-width:640px) { .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; width:auto; } }
 
 /* ── Game Stats ── */
 .game-tabs { display:flex; gap:0.3rem; margin-bottom:1rem; flex-wrap:wrap; }
