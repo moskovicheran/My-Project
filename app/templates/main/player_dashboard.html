@@ -13,15 +13,176 @@
     <a href="{{ url_for('main.export_player', player_id=current_user.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold;">📥 הורד דוח אקסל</a>
 </div>
 
+{# ── All sessions as JSON for client-side filtering ── #}
+<script>
+var _allSessions = {{ sessions | tojson }};
+var _selectedDates = new Set();
+
+var _availableDates = [...new Set(_allSessions.map(s => s.date).filter(d => d))].sort();
+
+function _filteredSessions() {
+    if (_selectedDates.size === 0) return _allSessions;
+    return _allSessions.filter(s => _selectedDates.has(s.date));
+}
+
+function _fmt(n) {
+    if (n === 0) return '0';
+    var sign = n > 0 ? '+' : '';
+    return sign + n.toLocaleString('he-IL', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function applyFilter() {
+    var sessions = _filteredSessions();
+
+    // Update top cards
+    var totalPnl = sessions.reduce(function(a,s){ return a + s.pnl; }, 0);
+    document.getElementById('stat-pnl').textContent = _fmt(Math.round(totalPnl * 100)/100);
+    document.getElementById('stat-pnl').className = 'stat-value ' + (totalPnl >= 0 ? 'income' : 'expense');
+    document.getElementById('stat-sessions').textContent = sessions.length;
+
+    // Rebuild game stats
+    var gs = {};
+    sessions.forEach(function(s) {
+        var gt = s.game_type || 'Other';
+        if (!gs[gt]) gs[gt] = {count:0, pnl:0, wins:0, losses:0};
+        gs[gt].count++;
+        gs[gt].pnl = Math.round((gs[gt].pnl + s.pnl) * 100) / 100;
+        if (s.pnl >= 0) gs[gt].wins++; else gs[gt].losses++;
+    });
+
+    var totalW = sessions.filter(s => s.pnl >= 0).length;
+    var totalL = sessions.filter(s => s.pnl < 0).length;
+    var wr = sessions.length ? Math.round(totalW / sessions.length * 1000)/10 : 0;
+
+    document.getElementById('stat-total-sessions').textContent = sessions.length;
+    document.getElementById('stat-wr').textContent = wr + '%';
+    document.getElementById('stat-wl').innerHTML = '<span class="income">' + totalW + '</span> / <span class="expense">' + totalL + '</span>';
+
+    // Rebuild blinds/game cards
+    var blindsHtml = '';
+    Object.keys(gs).sort().forEach(function(gt) {
+        var g = gs[gt];
+        var wr2 = g.count ? Math.round(g.wins/g.count*1000)/10 : 0;
+        var col = g.pnl >= 0 ? '#2ec4b6' : '#ef233c';
+        var sign = g.pnl > 0 ? '+' : '';
+        blindsHtml += '<div class="blinds-card">' +
+            '<div class="bc-header"><span class="bc-label">' + gt + '</span><span class="bc-count">' + g.count + ' סשנים</span></div>' +
+            '<div class="bc-pnl ' + (g.pnl >= 0 ? 'income' : 'expense') + '">' + sign + g.pnl.toLocaleString('he-IL', {minimumFractionDigits:2}) + '</div>' +
+            '<div class="winrate-bar"><div class="winrate-fill" style="width:' + wr2 + '%;background:' + col + ';"></div></div>' +
+            '<div class="bc-info">' + wr2 + '% Win Rate • ' + g.wins + 'W / ' + g.losses + 'L</div>' +
+            '</div>';
+    });
+    var blindsGrid = document.getElementById('dynamic-blinds-grid');
+    if (blindsGrid) blindsGrid.innerHTML = blindsHtml || '<p class="muted" style="padding:0.5rem;">אין נתונים לתקופה זו</p>';
+
+    // Rebuild sessions table
+    var tbody = document.getElementById('sessions-tbody');
+    if (!tbody) return;
+    if (!sessions.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:1rem;">אין משחקים לתקופה זו</td></tr>';
+        return;
+    }
+    var rows = '';
+    sessions.forEach(function(s) {
+        var cls = s.pnl >= 0 ? 'income' : 'expense';
+        var sign = s.pnl > 0 ? '+' : '';
+        var dateParts = s.date ? s.date.split('-') : null;
+        var dateFmt = dateParts ? dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0] : '—';
+        rows += '<tr>' +
+            '<td class="muted" style="font-size:0.82rem;white-space:nowrap;">' + dateFmt + '</td>' +
+            '<td><strong>' + s.table_name + '</strong></td>' +
+            '<td><span class="badge badge-game">' + s.game_type + '</span></td>' +
+            '<td class="muted">' + s.blinds + '</td>' +
+            '<td class="amount ' + cls + '">' + sign + s.pnl.toFixed(2) + '</td>' +
+            '</tr>';
+    });
+    tbody.innerHTML = rows;
+
+    // Update total row
+    var totalEl = document.getElementById('sessions-total');
+    if (totalEl) {
+        totalEl.className = 'amount ' + (totalPnl >= 0 ? 'income' : 'expense');
+        totalEl.innerHTML = '<strong>' + _fmt(Math.round(totalPnl*100)/100) + '</strong>';
+    }
+
+    // Date picker label
+    var label = _selectedDates.size === 0 ? 'כל התקופות' : _selectedDates.size + ' ימים נבחרו';
+    var el = document.getElementById('pdpLabel');
+    if (el) el.textContent = label;
+
+    // Show/hide החל button
+    var applyBtn = document.getElementById('pdpApplyBtn');
+    if (applyBtn) applyBtn.style.display = _selectedDates.size > 0 ? 'inline-block' : 'none';
+}
+
+// ── Calendar logic ──
+var _calYear, _calMonth;
+function _initCal() {
+    var now = new Date();
+    if (_availableDates.length) {
+        var last = _availableDates[_availableDates.length - 1].split('-');
+        _calYear = parseInt(last[0]); _calMonth = parseInt(last[1]) - 1;
+    } else {
+        _calYear = now.getFullYear(); _calMonth = now.getMonth();
+    }
+    renderCal();
+}
+
+var _HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+function renderCal() {
+    document.getElementById('pdpMonthLabel').textContent = _HE_MONTHS[_calMonth] + ' ' + _calYear;
+    var grid = document.getElementById('pdpGrid');
+    grid.innerHTML = '';
+    var first = new Date(_calYear, _calMonth, 1).getDay();
+    var days = new Date(_calYear, _calMonth + 1, 0).getDate();
+    // RTL: week starts Sunday on right
+    for (var i = 0; i < first; i++) {
+        var blank = document.createElement('div');
+        grid.appendChild(blank);
+    }
+    for (var d = 1; d <= days; d++) {
+        var dateStr = _calYear + '-' + String(_calMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        var cell = document.createElement('div');
+        cell.className = 'dp-day';
+        cell.textContent = d;
+        var hasData = _availableDates.includes(dateStr);
+        if (!hasData) { cell.classList.add('dp-disabled'); }
+        else {
+            cell.style.cursor = 'pointer';
+            if (_selectedDates.has(dateStr)) cell.classList.add('dp-selected');
+            cell.onclick = (function(ds, c) { return function() {
+                if (_selectedDates.has(ds)) { _selectedDates.delete(ds); c.classList.remove('dp-selected'); }
+                else { _selectedDates.add(ds); c.classList.add('dp-selected'); }
+                applyFilter();
+            }; })(dateStr, cell);
+        }
+        grid.appendChild(cell);
+    }
+}
+
+function pdpChangeMonth(dir) { _calMonth += dir; if (_calMonth < 0) { _calMonth=11; _calYear--; } if (_calMonth > 11) { _calMonth=0; _calYear++; } renderCal(); }
+function togglePdp() { var p = document.getElementById('pdpPopup'); p.style.display = p.style.display==='none' ? 'block' : 'none'; }
+function pdpClear() { _selectedDates.clear(); renderCal(); applyFilter(); }
+
+document.addEventListener('click', function(e) {
+    var popup = document.getElementById('pdpPopup');
+    var btn = document.getElementById('pdpBtn');
+    if (popup && !popup.contains(e.target) && btn && !btn.contains(e.target)) popup.style.display = 'none';
+});
+
+window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter(); });
+</script>
+
 {# ── Stats Cards ── #}
 <div class="stats-grid stats-{% if rake_refund %}4{% else %}3{% endif %}" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">יתרה (רווח/הפסד)</div>
-        <div class="stat-value">{% if player.pnl > 0 %}+{% endif %}{{ player.pnl|comma }}</div>
+        <div class="stat-value" id="stat-pnl">{% if player.pnl > 0 %}+{% endif %}{{ player.pnl|comma }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">משחקים</div>
-        <div class="stat-value">{{ sessions|length }}</div>
+        <div class="stat-value" id="stat-sessions">{{ sessions|length }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Hands</div>
@@ -40,20 +201,42 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">📊 סטטיסטיקה לפי סוג משחק</h2>
 
-    <div class="game-tabs">
-        <button class="game-tab active" onclick="switchGameView(this, 'all')">הכל <span class="tab-count">({{ total_sessions }})</span></button>
-        {% for gt in game_stats.keys()|sort %}
-        <button class="game-tab" onclick="switchGameView(this, '{{ gt|lower }}')">{{ gt }} <span class="tab-count">({{ game_stats[gt].count }})</span></button>
-        {% endfor %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.5rem;">
+        <div class="game-tabs" style="margin-bottom:0;">
+            <button class="game-tab active" onclick="switchGameView(this, 'all')">הכל <span class="tab-count">({{ total_sessions }})</span></button>
+            {% for gt in game_stats.keys()|sort %}
+            <button class="game-tab" onclick="switchGameView(this, '{{ gt|lower }}')">{{ gt }} <span class="tab-count">({{ game_stats[gt].count }})</span></button>
+            {% endfor %}
+        </div>
+        <div style="position:relative; display:inline-block;">
+            <button id="pdpBtn" onclick="togglePdp()" class="dp-trigger">
+                <span class="dp-icon">📅</span>
+                <span id="pdpLabel">כל התקופות</span>
+                <span class="dp-arrow">▾</span>
+            </button>
+            <div id="pdpPopup" class="dp-popup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:500;">
+                <div class="dp-header">
+                    <button onclick="pdpChangeMonth(-1)" class="dp-nav">→</button>
+                    <strong id="pdpMonthLabel"></strong>
+                    <button onclick="pdpChangeMonth(1)" class="dp-nav">←</button>
+                </div>
+                <div class="dp-weekdays"><span>א</span><span>ב</span><span>ג</span><span>ד</span><span>ה</span><span>ו</span><span>ש</span></div>
+                <div id="pdpGrid" class="dp-grid"></div>
+                <div class="dp-footer" style="justify-content:flex-end; gap:0.4rem;">
+                    <button onclick="pdpClear()" class="dp-footer-btn">נקה</button>
+                    <button id="pdpApplyBtn" onclick="togglePdp()" class="dp-footer-btn dp-apply" style="display:none;">החל</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="gv-all">
         <div class="game-stats-grid">
-            <div class="game-stat-card"><div class="gs-label">סשנים</div><div class="gs-value">{{ total_sessions }}</div></div>
-            <div class="game-stat-card"><div class="gs-label">Win Rate</div><div class="gs-value" style="color:#4361ee;">{{ ((total_wins / total_sessions * 100) if total_sessions else 0)|round(1) }}%</div></div>
-            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value"><span class="income">{{ total_wins }}</span> / <span class="expense">{{ total_losses }}</span></div></div>
+            <div class="game-stat-card"><div class="gs-label">סשנים</div><div class="gs-value" id="stat-total-sessions">{{ total_sessions }}</div></div>
+            <div class="game-stat-card"><div class="gs-label">Win Rate</div><div class="gs-value" id="stat-wr" style="color:#4361ee;">{{ ((total_wins / total_sessions * 100) if total_sessions else 0)|round(1) }}%</div></div>
+            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value" id="stat-wl"><span class="income">{{ total_wins }}</span> / <span class="expense">{{ total_losses }}</span></div></div>
         </div>
-        <div class="blinds-grid">
+        <div class="blinds-grid" id="dynamic-blinds-grid">
             {% for gt, gs in game_stats.items()|sort(attribute='1.count', reverse=true) %}
             <div class="blinds-card">
                 <div class="bc-header"><span class="bc-label">{{ gt }}</span><span class="bc-count">{{ gs.count }} סשנים</span></div>
@@ -88,6 +271,38 @@
 </div>
 
 <style>
+/* ── Date Picker ── */
+.dp-trigger { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.9rem; border:1px solid #e0e4ef; border-radius:10px; background:#fff; cursor:pointer; font-family:inherit; font-size:0.9rem; color:#333; transition:all 0.15s; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.dp-trigger:hover { border-color:#4361ee; box-shadow:0 2px 8px rgba(67,97,238,0.12); }
+.dp-icon { font-size:1.1rem; }
+.dp-arrow { font-size:0.7rem; color:#888; }
+.dp-popup { position:absolute; top:calc(100% + 6px); right:0; z-index:200; background:#fff; border:1px solid #e0e4ef; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:0.8rem; min-width:280px; animation:dpFadeIn 0.15s ease; }
+@keyframes dpFadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.dp-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+.dp-header strong { font-size:0.95rem; }
+.dp-nav { border:none; background:#f0f2f5; border-radius:6px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem; color:#555; transition:background 0.15s; }
+.dp-nav:hover { background:#e0e4ef; }
+.dp-weekdays { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:0.2rem; }
+.dp-weekdays span { font-size:0.7rem; color:#888; font-weight:600; padding:0.2rem 0; }
+.dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
+.dp-day { padding:0.35rem 0; border-radius:8px; font-size:0.82rem; cursor:default; transition:all 0.12s; color:#ccc; user-select:none; }
+.dp-day.dp-disabled { color:#ddd; }
+.dp-day:not(.dp-disabled) { color:#333; font-weight:500; cursor:pointer; }
+.dp-day:not(.dp-disabled):hover { background:#e8ebff; }
+.dp-day.dp-selected { background:#4361ee !important; color:#fff !important; font-weight:700; }
+.dp-footer { display:flex; justify-content:flex-end; margin-top:0.6rem; padding-top:0.5rem; border-top:1px solid #f0f0f0; }
+.dp-footer-btn { border:1px solid #ddd; background:#fff; border-radius:6px; padding:0.3rem 0.7rem; cursor:pointer; font-family:inherit; font-size:0.8rem; color:#555; transition:all 0.15s; }
+.dp-footer-btn:hover { background:#f0f2f5; }
+body.dark .dp-trigger { background:#1e1e2e; border-color:#333; color:#e0e0e0; }
+body.dark .dp-popup { background:#1e1e2e; border-color:#333; }
+body.dark .dp-nav { background:#252535; color:#ccc; }
+body.dark .dp-day:not(.dp-disabled) { color:#ddd; }
+body.dark .dp-day:not(.dp-disabled):hover { background:#333355; }
+body.dark .dp-day.dp-selected { background:#4361ee !important; color:#fff !important; }
+body.dark .dp-footer { border-top-color:#333; }
+@media (max-width:640px) { .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; min-width:auto; } }
+
+/* ── Game Stats ── */
 .game-tabs { display:flex; gap:0.3rem; margin-bottom:1rem; flex-wrap:wrap; }
 .game-tab { padding:0.4rem 1rem; border-radius:20px; font-size:0.85rem; font-weight:600; cursor:pointer; border:2px solid #e0e4ef; background:#fff; color:#666; font-family:inherit; transition:all 0.2s; }
 .game-tab:hover { border-color:#4361ee; color:#4361ee; }
@@ -131,15 +346,17 @@ function switchGameView(btn, view) {
     <table class="table table-sm">
         <thead>
             <tr>
+                <th>תאריך</th>
                 <th>משחק</th>
                 <th>סוג</th>
                 <th>בליינדס</th>
                 <th>רווח/הפסד</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="sessions-tbody">
             {% for s in sessions %}
             <tr>
+                <td class="muted" style="font-size:0.82rem; white-space:nowrap;">{% if s.date %}{{ s.date[8:10] }}/{{ s.date[5:7] }}/{{ s.date[0:4] }}{% else %}—{% endif %}</td>
                 <td><strong>{{ s.table_name }}</strong></td>
                 <td><span class="badge badge-game">{{ s.game_type }}</span></td>
                 <td class="muted">{{ s.blinds }}</td>
@@ -163,11 +380,11 @@ function switchGameView(btn, view) {
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="3"><strong>סה"כ</strong></td>
+                <td colspan="4"><strong>סה"כ</strong></td>
                 {% set games_pnl = sessions|sum(attribute='pnl') %}
                 {% set xfer_total = transfer_rows|sum(attribute='amount') if transfer_rows is defined and transfer_rows else 0 %}
                 {% set total_pnl = games_pnl + xfer_total %}
-                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}" id="sessions-total">
                     <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
                 </td>
             </tr>
