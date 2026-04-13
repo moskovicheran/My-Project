@@ -1443,10 +1443,12 @@ def export_agent_players():
     from app.union_data import get_transfer_adjustments
     xfer_adj = get_transfer_adjustments([p[0] for p in players])
 
-    # Group players by agent - each agent gets its own sheet
+    # Group players: by agent, by child SA, or direct
     agent_groups = {}  # agent_name -> [players]
+    child_sa_groups = {}  # child_sa_name -> [players]
     direct_players = []
     for p in players:
+        player_sa = p[3]  # sa_id of this player
         ag_id = p[4] if p[4] and p[4] != '-' else None
         ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
         raw_pnl = round(float(p[5] or 0), 2)
@@ -1456,7 +1458,13 @@ def export_agent_players():
             'Rake': round(float(p[6] or 0), 2),
             'Hands': int(p[7] or 0),
         }
-        if ag_name and ag_name != all_nicks.get(sa_id, sa_id):
+        # Check if player belongs to a child SA (not the parent SA)
+        if player_sa in child_sa_ids:
+            csa_name = all_nicks.get(player_sa, player_sa)
+            if csa_name not in child_sa_groups:
+                child_sa_groups[csa_name] = []
+            child_sa_groups[csa_name].append(row)
+        elif ag_name and ag_name != all_nicks.get(sa_id, sa_id):
             if ag_name not in agent_groups:
                 agent_groups[ag_name] = []
             agent_groups[ag_name].append(row)
@@ -1473,6 +1481,19 @@ def export_agent_players():
             'Hands': sum(r['Hands'] for r in ag_players),
         })
         sheets[ag_name[:31]] = ag_players
+
+    # Create sheet per child SA
+    import re
+    for csa_name, csa_players in sorted(child_sa_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+        csa_players.sort(key=lambda x: x['Rake'], reverse=True)
+        csa_players.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+            'P&L': round(sum(r['P&L'] for r in csa_players), 2),
+            'Rake': round(sum(r['Rake'] for r in csa_players), 2),
+            'Hands': sum(r['Hands'] for r in csa_players),
+        })
+        safe_name = re.sub(r'[\[\]\*\?:/\\]', '', csa_name)[:31] or 'SA'
+        sheets[safe_name] = csa_players
 
     # Direct players sheet
     if direct_players:
