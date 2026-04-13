@@ -95,6 +95,37 @@ def cash():
 def agents():
     from app.union_data import get_cumulative_stats
     sa_tables = get_super_agent_tables()
+
+    # Add SA's own game stats as a direct player (if they also play)
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+    for sa in sa_tables:
+        sa_id_val = sa.get('sa_id')
+        if sa_id_val:
+            existing_pids = set(m['player_id'] for m in sa.get('direct', []))
+            for ag in sa.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    existing_pids.add(m['player_id'])
+            if sa_id_val not in existing_pids:
+                sa_own = DailyPlayerStats.query.with_entities(
+                    sqlfunc.max(DailyPlayerStats.nickname),
+                    sqlfunc.sum(DailyPlayerStats.pnl),
+                    sqlfunc.sum(DailyPlayerStats.rake),
+                    sqlfunc.sum(DailyPlayerStats.hands),
+                ).filter(
+                    DailyPlayerStats.player_id == sa_id_val,
+                    DailyPlayerStats.role != 'Name Entry'
+                ).first()
+                if sa_own and (float(sa_own[1] or 0) != 0 or float(sa_own[2] or 0) != 0):
+                    sa['direct'].insert(0, {
+                        'player_id': sa_id_val,
+                        'nickname': sa_own[0] or sa_id_val,
+                        'role': 'Player',
+                        'pnl': round(float(sa_own[1] or 0), 2),
+                        'rake': round(float(sa_own[2] or 0), 2),
+                        'hands': int(sa_own[3] or 0),
+                    })
+
     # Override Excel data with cumulative DB data
     all_pids = set()
     for sa in sa_tables:
