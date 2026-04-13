@@ -1587,12 +1587,13 @@ def export_agent_players():
 @login_required
 def export_agent_club(club_id):
     """Export specific club details - SAs, Agents, Players."""
-    if current_user.role != 'agent' or not current_user.player_id:
+    if current_user.role not in ('agent', 'admin') or (current_user.role == 'agent' and not current_user.player_id):
         return redirect(url_for('main.dashboard'))
 
     from app.models import DailyPlayerStats
     from app.union_data import get_members_hierarchy
     from sqlalchemy import func as sqlfunc
+    import re
 
     clubs_data, _ = get_members_hierarchy()
     club_name = None
@@ -1620,14 +1621,72 @@ def export_agent_club(club_id):
     from app.union_data import get_transfer_adjustments
     xfer_adj = get_transfer_adjustments([p[0] for p in players])
 
-    rows = [{'שחקן': p[1], 'ID': p[0],
-             'Super Agent': all_nicks.get(p[2], p[2]) if p[2] and p[2] != '-' else '',
-             'Agent': all_nicks.get(p[3], p[3]) if p[3] and p[3] != '-' else '',
-             'תפקיד': p[4], 'P&L': round(float(p[5] or 0) + xfer_adj.get(p[0], 0), 2),
-             'Rake': round(float(p[6] or 0), 2), 'Hands': int(p[7] or 0)} for p in players]
-    rows.sort(key=lambda x: x['Rake'], reverse=True)
+    full_mode = request.args.get('mode') == 'full'
 
-    return _make_excel({club_name: rows}, f'{club_name}_report.xlsx')
+    all_rows = []
+    sa_groups = {}   # sa_name -> [rows]
+    no_sa_rows = []
+    for p in players:
+        sa_name = all_nicks.get(p[2], p[2]) if p[2] and p[2] != '-' else ''
+        ag_name = all_nicks.get(p[3], p[3]) if p[3] and p[3] != '-' else ''
+        row = {
+            'שחקן': p[1], 'ID': p[0],
+            'Super Agent': sa_name,
+            'סוכן': ag_name,
+            'רווח/הפסד': round(float(p[5] or 0) + xfer_adj.get(p[0], 0), 2),
+            'Rake': round(float(p[6] or 0), 2),
+            'Hands': int(p[7] or 0),
+        }
+        all_rows.append(row)
+        if sa_name:
+            if sa_name not in sa_groups:
+                sa_groups[sa_name] = []
+            sa_groups[sa_name].append(row)
+        else:
+            no_sa_rows.append(row)
+
+    sheets = {}
+
+    if full_mode:
+        all_rows.sort(key=lambda x: x['Rake'], reverse=True)
+        all_rows.append({
+            'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '', 'סוכן': '',
+            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in all_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in all_rows), 2),
+            'Hands': sum(r['Hands'] for r in all_rows),
+        })
+        sheets[club_name[:31]] = all_rows
+    else:
+        # Sheet per SA
+        for sa_name, sa_rows in sorted(sa_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
+            sa_rows_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'סוכן': r['סוכן'],
+                              'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in sa_rows]
+            sa_rows_clean.sort(key=lambda x: x['Rake'], reverse=True)
+            sa_rows_clean.append({
+                'שחקן': 'סה"כ', 'ID': '', 'סוכן': '',
+                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in sa_rows_clean), 2),
+                'Rake': round(sum(r['Rake'] for r in sa_rows_clean), 2),
+                'Hands': sum(r['Hands'] for r in sa_rows_clean),
+            })
+            safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sa_name)[:31] or 'SA'
+            sheets[safe_name] = sa_rows_clean
+
+        if no_sa_rows:
+            no_sa_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'סוכן': r['סוכן'],
+                            'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in no_sa_rows]
+            no_sa_clean.sort(key=lambda x: x['Rake'], reverse=True)
+            no_sa_clean.append({
+                'שחקן': 'סה"כ', 'ID': '', 'סוכן': '',
+                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in no_sa_clean), 2),
+                'Rake': round(sum(r['Rake'] for r in no_sa_clean), 2),
+                'Hands': sum(r['Hands'] for r in no_sa_clean),
+            })
+            sheets['ללא סוכן'] = no_sa_clean
+
+    if not sheets:
+        sheets[club_name[:31]] = []
+
+    return _make_excel(sheets, f'{club_name}_report.xlsx')
 
 
 @main_bp.route('/export/agent/period')

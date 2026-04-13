@@ -252,6 +252,7 @@ function toggleExpenseDetails() {
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
                 <strong style="color:#2e7d32; font-size:1.05rem;">{{ managed_club.name }}</strong>
+                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showClubExportChoice('{{ managed_club.club_id }}', '{{ managed_club.name }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
             </div>
             <div style="display:flex; gap:0.4rem;">
                 <span class="summary-chip chip-win">R {{ managed_club.total_rake|default(0)|comma }}</span>
@@ -929,6 +930,12 @@ body.dark .dp-reset { color:#ff6b6b; }
 </div>
 
 <script>
+function showClubExportChoice(clubId, clubName) {
+    document.getElementById('exportModalTitle').textContent = 'דוח ' + clubName;
+    document.getElementById('exportFullLink').href = '/export/agent/club/' + clubId + '?mode=full';
+    document.getElementById('exportAgentsLink').href = '/export/agent/club/' + clubId;
+    document.getElementById('exportModal').classList.add('active');
+}
 function showExportChoice(agentId, agentNick) {
     document.getElementById('exportModalTitle').textContent = 'דוח ' + agentNick;
     document.getElementById('exportFullLink').href = '/export/agent/single/' + agentId + '?mode=full';
