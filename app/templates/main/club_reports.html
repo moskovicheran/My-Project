@@ -30,6 +30,12 @@
         <div style="flex:1; min-width:250px;">
             <div style="display:flex; gap:0.5rem; margin-bottom:0.8rem; flex-wrap:wrap;">
                 <div>
+                    <label class="muted small" style="display:block; margin-bottom:0.2rem;">תקופה</label>
+                    <select id="periodSelect" onchange="onPeriodChange()" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; max-width:200px;">
+                        <option value="">תקופה נוכחית</option>
+                    </select>
+                </div>
+                <div>
                     <label class="muted small" style="display:block; margin-bottom:0.2rem;">מתאריך</label>
                     <input type="date" id="fromDate" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit;">
                 </div>
@@ -109,14 +115,39 @@ var dataDates = [];
 var calYear, calMonth;
 var selectedFrom = null, selectedTo = null;
 var myPlayerIds = {{ player_ids|tojson }};
+var currentPeriodId = '';
 
 fetch('/api/report-dates').then(r => r.json()).then(d => {
     dataDates = d.dates;
     var now = new Date();
     calYear = now.getFullYear();
     calMonth = now.getMonth();
+    var sel = document.getElementById('periodSelect');
+    (d.periods || []).forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.label;
+        sel.appendChild(opt);
+    });
     renderCalendar();
 });
+function onPeriodChange() {
+    currentPeriodId = document.getElementById('periodSelect').value;
+    selectedFrom = null; selectedTo = null;
+    document.getElementById('fromDate').value = '';
+    document.getElementById('toDate').value = '';
+    var url = '/api/report-dates';
+    if (currentPeriodId) url += '?period_id=' + currentPeriodId;
+    fetch(url).then(r => r.json()).then(d => {
+        dataDates = d.dates;
+        if (dataDates.length > 0) {
+            var first = new Date(dataDates[0]);
+            calYear = first.getFullYear();
+            calMonth = first.getMonth();
+        }
+        renderCalendar();
+    });
+}
 
 function renderCalendar() {
     var cal = document.getElementById('calendar');
@@ -164,6 +195,7 @@ function exportPeriod() {
     var pid = document.getElementById('playerFilter').value;
     var url = '/export/club/period?from=' + from + '&to=' + to;
     if (pid) url += '&player_id=' + pid;
+    if (currentPeriodId) url += '&period_id=' + currentPeriodId;
     window.location.href = url;
 }
 function exportResult() {
@@ -173,6 +205,7 @@ function exportResult() {
     var pid = document.getElementById('playerFilter').value;
     var url = '/export/club/period?from=' + from + '&to=' + to;
     if (pid) url += '&player_id=' + pid;
+    if (currentPeriodId) url += '&period_id=' + currentPeriodId;
     window.location.href = url;
 }
 function loadReport() {
@@ -183,6 +216,7 @@ function loadReport() {
     selectedFrom = from; selectedTo = to; renderCalendar();
     var url = '/api/report?from=' + from + '&to=' + to;
     if (pid) url += '&player_id=' + pid;
+    if (currentPeriodId) url += '&period_id=' + currentPeriodId;
     document.getElementById('reportInfo').textContent = 'טוען...';
     fetch(url).then(r => r.json()).then(data => {
         // Filter only club players

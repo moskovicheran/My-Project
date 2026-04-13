@@ -213,3 +213,81 @@ class PlayerSession(db.Model):
 
     def __repr__(self):
         return f'<DailyPlayerStats {self.nickname} pnl={self.pnl}>'
+
+
+# ── Archive Models ──
+
+class ArchivePeriod(db.Model):
+    __tablename__ = 'archive_periods'
+
+    id = db.Column(db.Integer, primary_key=True)
+    label = db.Column(db.String(100), nullable=False)  # e.g. "30/03/2026 — 12/04/2026"
+    first_date = db.Column(db.Date, nullable=False)
+    last_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<ArchivePeriod {self.label}>'
+
+
+class ArchivedUpload(db.Model):
+    __tablename__ = 'archived_uploads'
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False)
+    original_id = db.Column(db.Integer, nullable=False)
+    filename = db.Column(db.String(200), nullable=False)
+    upload_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime)
+
+    period = db.relationship('ArchivePeriod', backref='uploads')
+
+
+class ArchivedPlayerStats(db.Model):
+    __tablename__ = 'archived_player_stats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False)
+    upload_id = db.Column(db.Integer, nullable=False)
+    player_id = db.Column(db.String(20), nullable=False)
+    nickname = db.Column(db.String(100), nullable=False)
+    club = db.Column(db.String(100), nullable=False)
+    sa_id = db.Column(db.String(20), default='')
+    agent_id = db.Column(db.String(20), default='')
+    role = db.Column(db.String(30), default='')
+    pnl = db.Column(db.Float, default=0)
+    rake = db.Column(db.Float, default=0)
+    hands = db.Column(db.Float, default=0)
+
+    period = db.relationship('ArchivePeriod', backref='stats')
+
+
+class ArchivedPlayerSession(db.Model):
+    __tablename__ = 'archived_player_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False)
+    upload_id = db.Column(db.Integer, nullable=False)
+    player_id = db.Column(db.String(20), nullable=False)
+    game_type = db.Column(db.String(20), nullable=False)
+    table_name = db.Column(db.String(200), nullable=False)
+    blinds = db.Column(db.String(20), default='')
+    pnl = db.Column(db.Float, default=0)
+
+
+class ArchivedTournamentStats(db.Model):
+    __tablename__ = 'archived_tournament_stats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False)
+    upload_id = db.Column(db.Integer, nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    game_type = db.Column(db.String(30), default='')
+    buyin = db.Column(db.Float, default=0)
+    fee = db.Column(db.Float, default=0)
+    reentry = db.Column(db.String(20), default='')
+    gtd = db.Column(db.Float, default=0)
+    entries = db.Column(db.Float, default=0)
+    prize_pool = db.Column(db.Float, default=0)
+    start = db.Column(db.String(20), default='')
+    duration = db.Column(db.String(20), default='')

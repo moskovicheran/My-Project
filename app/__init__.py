@@ -63,19 +63,6 @@ def create_app():
         except Exception as e:
             print(f"DB create_all warning: {e}")
 
-        # Cleanup data older than 60 days
-        try:
-            from datetime import datetime, timedelta
-            from app.models import DailyUpload
-            cutoff = datetime.utcnow().date() - timedelta(days=60)
-            old_uploads = DailyUpload.query.filter(DailyUpload.upload_date < cutoff).all()
-            if old_uploads:
-                for u in old_uploads:
-                    db.session.delete(u)
-                db.session.commit()
-        except Exception:
-            pass
-
         # Load active excel file if exists (local only)
         try:
             active_file = os.path.join(os.path.dirname(__file__), '..', 'uploads', '_active.txt')

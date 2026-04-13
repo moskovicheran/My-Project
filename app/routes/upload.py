@@ -210,22 +210,6 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
 
     db.session.commit()
 
-    # Auto-cleanup: remove data older than 60 days
-    try:
-        from datetime import timedelta
-        cutoff = date.today() - timedelta(days=60)
-        old_uploads = DailyUpload.query.filter(DailyUpload.upload_date < cutoff).all()
-        if old_uploads:
-            old_ids = [u.id for u in old_uploads]
-            from app.models import PlayerSession, TournamentStats
-            PlayerSession.query.filter(PlayerSession.upload_id.in_(old_ids)).delete(synchronize_session=False)
-            TournamentStats.query.filter(TournamentStats.upload_id.in_(old_ids)).delete(synchronize_session=False)
-            DailyPlayerStats.query.filter(DailyPlayerStats.upload_id.in_(old_ids)).delete(synchronize_session=False)
-            DailyUpload.query.filter(DailyUpload.id.in_(old_ids)).delete(synchronize_session=False)
-            db.session.commit()
-    except Exception:
-        pass  # Don't fail the upload if cleanup fails
-
     return len(rows)
 
 
@@ -380,13 +364,58 @@ def reset():
 @upload_bp.route('/reset-all', methods=['POST'])
 @login_required
 def reset_all():
-    """Full data reset — clears ALL historical data."""
+    """Full data reset — archives data then clears ALL active data."""
     if not hasattr(current_user, 'role') or current_user.role != 'admin':
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
-    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession, TournamentStats
+    from app.models import (db, DailyUpload, DailyPlayerStats, ActiveExcelData,
+                            PlayerSession, TournamentStats, ArchivePeriod)
+    from sqlalchemy import func as sqlfunc, text
 
+    # Archive data before deleting
+    period_label = None
+    try:
+        date_range = db.session.query(
+            sqlfunc.min(DailyUpload.upload_date),
+            sqlfunc.max(DailyUpload.upload_date)
+        ).first()
+
+        if date_range and date_range[0] is not None:
+            first_date, last_date = date_range
+            period_label = f"{first_date.strftime('%d/%m/%Y')} — {last_date.strftime('%d/%m/%Y')}"
+
+            period = ArchivePeriod(label=period_label, first_date=first_date, last_date=last_date)
+            db.session.add(period)
+            db.session.flush()
+            pid = period.id
+
+            # Bulk copy to archive tables using INSERT...SELECT
+            db.session.execute(text(
+                "INSERT INTO archived_uploads (period_id, original_id, filename, upload_date, created_at) "
+                "SELECT :pid, id, filename, upload_date, created_at FROM daily_uploads"
+            ), {'pid': pid})
+
+            db.session.execute(text(
+                "INSERT INTO archived_player_stats (period_id, upload_id, player_id, nickname, club, sa_id, agent_id, role, pnl, rake, hands) "
+                "SELECT :pid, upload_id, player_id, nickname, club, sa_id, agent_id, role, pnl, rake, hands FROM daily_player_stats"
+            ), {'pid': pid})
+
+            db.session.execute(text(
+                "INSERT INTO archived_player_sessions (period_id, upload_id, player_id, game_type, table_name, blinds, pnl) "
+                "SELECT :pid, upload_id, player_id, game_type, table_name, blinds, pnl FROM player_sessions"
+            ), {'pid': pid})
+
+            db.session.execute(text(
+                "INSERT INTO archived_tournament_stats (period_id, upload_id, title, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration) "
+                "SELECT :pid, upload_id, title, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration FROM tournament_stats"
+            ), {'pid': pid})
+    except Exception as e:
+        db.session.rollback()
+        flash(f'שגיאה בארכוב הנתונים: {e}', 'danger')
+        return redirect(url_for('upload.index'))
+
+    # Delete active data
     TournamentStats.query.delete()
     PlayerSession.query.delete()
     ActiveExcelData.query.delete()
@@ -409,5 +438,8 @@ def reset_all():
     except Exception:
         pass
 
-    flash('כל הנתונים המצטברים אופסו לגמרי.', 'success')
+    if period_label:
+        flash(f'הנתונים אורכבו לתקופה: {period_label}. כל הנתונים הפעילים אופסו.', 'success')
+    else:
+        flash('כל הנתונים המצטברים אופסו לגמרי.', 'success')
     return redirect(url_for('upload.index'))

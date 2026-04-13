@@ -1697,6 +1697,7 @@ def export_agent_period():
         return redirect(url_for('main.dashboard'))
 
     from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats, DailyUpload, PlayerSession
+    from app.models import ArchivedUpload, ArchivedPlayerStats, ArchivedPlayerSession
     from app.union_data import get_members_hierarchy
     from sqlalchemy import func as sqlfunc
     from datetime import datetime
@@ -1704,6 +1705,7 @@ def export_agent_period():
     from_date = request.args.get('from', '')
     to_date = request.args.get('to', '')
     player_id_filter = request.args.get('player_id', '')
+    period_id = request.args.get('period_id', '')
     if not from_date or not to_date:
         flash('יש לבחור תאריכים.', 'danger')
         return redirect(url_for('main.agent_reports'))
@@ -1716,28 +1718,58 @@ def export_agent_period():
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     all_sa_ids.extend(child_sa_ids)
 
-    # Get uploads in range
-    uploads = DailyUpload.query.filter(DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
-    upload_ids = [u.id for u in uploads]
-    if not upload_ids:
-        flash('אין נתונים בטווח התאריכים.', 'warning')
-        return redirect(url_for('main.agent_reports'))
+    if period_id:
+        # Query from archive tables
+        uploads = ArchivedUpload.query.filter(
+            ArchivedUpload.period_id == int(period_id),
+            ArchivedUpload.upload_date >= fd, ArchivedUpload.upload_date <= td
+        ).all()
+        upload_ids = [u.original_id for u in uploads]
+        if not upload_ids:
+            flash('אין נתונים בטווח התאריכים.', 'warning')
+            return redirect(url_for('main.agent_reports'))
 
-    base_filters = [
-        DailyPlayerStats.upload_id.in_(upload_ids),
-        DailyPlayerStats.sa_id.in_(all_sa_ids),
-        DailyPlayerStats.role != 'Name Entry',
-    ]
-    if player_id_filter:
-        base_filters.append(DailyPlayerStats.player_id == player_id_filter)
+        base_filters = [
+            ArchivedPlayerStats.period_id == int(period_id),
+            ArchivedPlayerStats.upload_id.in_(upload_ids),
+            ArchivedPlayerStats.sa_id.in_(all_sa_ids),
+            ArchivedPlayerStats.role != 'Name Entry',
+        ]
+        if player_id_filter:
+            base_filters.append(ArchivedPlayerStats.player_id == player_id_filter)
 
-    players = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
-        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(
-        *base_filters
-    ).group_by(DailyPlayerStats.player_id).all()
+        players = ArchivedPlayerStats.query.with_entities(
+            ArchivedPlayerStats.player_id, sqlfunc.max(ArchivedPlayerStats.nickname),
+            sqlfunc.max(ArchivedPlayerStats.club), sqlfunc.sum(ArchivedPlayerStats.pnl),
+            sqlfunc.sum(ArchivedPlayerStats.rake), sqlfunc.sum(ArchivedPlayerStats.hands),
+        ).filter(*base_filters).group_by(ArchivedPlayerStats.player_id).all()
+
+        SessionModel = ArchivedPlayerSession
+        session_period_filter = [ArchivedPlayerSession.period_id == int(period_id)]
+    else:
+        # Query from active tables (existing behavior)
+        uploads = DailyUpload.query.filter(DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
+        upload_ids = [u.id for u in uploads]
+        if not upload_ids:
+            flash('אין נתונים בטווח התאריכים.', 'warning')
+            return redirect(url_for('main.agent_reports'))
+
+        base_filters = [
+            DailyPlayerStats.upload_id.in_(upload_ids),
+            DailyPlayerStats.sa_id.in_(all_sa_ids),
+            DailyPlayerStats.role != 'Name Entry',
+        ]
+        if player_id_filter:
+            base_filters.append(DailyPlayerStats.player_id == player_id_filter)
+
+        players = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
+
+        SessionModel = PlayerSession
+        session_period_filter = []
 
     # Transfer adjustments
     from app.union_data import get_transfer_adjustments
@@ -1756,9 +1788,10 @@ def export_agent_period():
 
     # If single player selected, add game sessions sheet
     if player_id_filter and rows:
-        sessions = PlayerSession.query.filter(
-            PlayerSession.upload_id.in_(upload_ids),
-            PlayerSession.player_id == player_id_filter
+        sessions = SessionModel.query.filter(
+            *session_period_filter,
+            SessionModel.upload_id.in_(upload_ids),
+            SessionModel.player_id == player_id_filter
         ).all()
         if sessions:
             sess_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
@@ -2287,13 +2320,14 @@ def export_admin_period():
 @main_bp.route('/api/report')
 @login_required
 def report_api():
-    from app.models import DailyPlayerStats, DailyUpload
+    from app.models import DailyPlayerStats, DailyUpload, ArchivedUpload, ArchivedPlayerStats
     from datetime import datetime
     from sqlalchemy import func
 
     from_date = request.args.get('from')
     to_date = request.args.get('to')
     player_id = request.args.get('player_id', '')
+    period_id = request.args.get('period_id', '')
 
     if not from_date or not to_date:
         return jsonify({'error': 'missing dates'}), 400
@@ -2304,29 +2338,55 @@ def report_api():
     except ValueError:
         return jsonify({'error': 'invalid date format'}), 400
 
-    # Get upload IDs in range
-    uploads = DailyUpload.query.filter(
-        DailyUpload.upload_date >= fd,
-        DailyUpload.upload_date <= td
-    ).all()
-    upload_ids = [u.id for u in uploads]
+    if period_id:
+        # Query from archive tables
+        uploads = ArchivedUpload.query.filter(
+            ArchivedUpload.period_id == int(period_id),
+            ArchivedUpload.upload_date >= fd,
+            ArchivedUpload.upload_date <= td
+        ).all()
+        upload_ids = [u.original_id for u in uploads]
 
-    if not upload_ids:
-        return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0})
+        if not upload_ids:
+            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0})
 
-    query = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id,
-        func.max(DailyPlayerStats.nickname),
-        func.max(DailyPlayerStats.club),
-        func.sum(DailyPlayerStats.pnl),
-        func.sum(DailyPlayerStats.rake),
-        func.sum(DailyPlayerStats.hands),
-    ).filter(DailyPlayerStats.upload_id.in_(upload_ids))
+        query = ArchivedPlayerStats.query.with_entities(
+            ArchivedPlayerStats.player_id,
+            func.max(ArchivedPlayerStats.nickname),
+            func.max(ArchivedPlayerStats.club),
+            func.sum(ArchivedPlayerStats.pnl),
+            func.sum(ArchivedPlayerStats.rake),
+            func.sum(ArchivedPlayerStats.hands),
+        ).filter(
+            ArchivedPlayerStats.period_id == int(period_id),
+            ArchivedPlayerStats.upload_id.in_(upload_ids)
+        )
+        if player_id:
+            query = query.filter(ArchivedPlayerStats.player_id == player_id)
+        query = query.group_by(ArchivedPlayerStats.player_id)
+    else:
+        # Query from active tables (existing behavior)
+        uploads = DailyUpload.query.filter(
+            DailyUpload.upload_date >= fd,
+            DailyUpload.upload_date <= td
+        ).all()
+        upload_ids = [u.id for u in uploads]
 
-    if player_id:
-        query = query.filter(DailyPlayerStats.player_id == player_id)
+        if not upload_ids:
+            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0})
 
-    query = query.group_by(DailyPlayerStats.player_id)
+        query = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id,
+            func.max(DailyPlayerStats.nickname),
+            func.max(DailyPlayerStats.club),
+            func.sum(DailyPlayerStats.pnl),
+            func.sum(DailyPlayerStats.rake),
+            func.sum(DailyPlayerStats.hands),
+        ).filter(DailyPlayerStats.upload_id.in_(upload_ids))
+        if player_id:
+            query = query.filter(DailyPlayerStats.player_id == player_id)
+        query = query.group_by(DailyPlayerStats.player_id)
+
     results = query.all()
 
     from app.union_data import get_transfer_adjustments
@@ -2358,11 +2418,27 @@ def report_api():
 @main_bp.route('/api/report-dates')
 @login_required
 def report_dates_api():
-    """Return list of dates that have upload data."""
-    from app.models import DailyUpload
-    uploads = DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all()
-    dates = [u[0].strftime('%Y-%m-%d') for u in uploads]
-    return jsonify({'dates': dates})
+    """Return list of dates that have upload data, plus archived periods."""
+    from app.models import DailyUpload, ArchivedUpload, ArchivePeriod
+
+    period_id = request.args.get('period_id', '')
+
+    if period_id:
+        # Return dates for specific archived period
+        archived = ArchivedUpload.query.with_entities(ArchivedUpload.upload_date).filter(
+            ArchivedUpload.period_id == int(period_id)
+        ).distinct().all()
+        dates = [u[0].strftime('%Y-%m-%d') for u in archived]
+    else:
+        # Return active dates
+        uploads = DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all()
+        dates = [u[0].strftime('%Y-%m-%d') for u in uploads]
+
+    # Always return periods list
+    periods = ArchivePeriod.query.order_by(ArchivePeriod.last_date.desc()).all()
+    periods_list = [{'id': p.id, 'label': p.label} for p in periods]
+
+    return jsonify({'dates': dates, 'periods': periods_list})
 
 
 @main_bp.route('/api/tournament-players')
