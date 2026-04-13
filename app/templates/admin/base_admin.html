@@ -45,6 +45,15 @@
         {% endif %}
     {% endwith %}
 
+    {% if archive_warnings %}
+    {% for aw in archive_warnings %}
+    <div class="alert alert-warning" style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:0.7rem 1rem; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem;">
+        <span style="font-size:1.2rem;">&#9888;</span>
+        <span>נתוני תקופה <strong>{{ aw.label }}</strong> יימחקו בעוד <strong>{{ aw.days_left }} ימים</strong> — זה הזמן לגבות!</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+
     {% block content %}{% endblock %}
 </main>
 

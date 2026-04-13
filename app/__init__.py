@@ -57,11 +57,46 @@ def create_app():
             pass
         return {'last_upload_time': None}
 
+    @app.context_processor
+    def inject_archive_warnings():
+        from datetime import datetime, timedelta
+        from app.models import ArchivePeriod
+        try:
+            cutoff_85 = datetime.utcnow().date() - timedelta(days=85)
+            expiring = ArchivePeriod.query.filter(ArchivePeriod.last_date < cutoff_85).all()
+            if expiring:
+                warnings = []
+                for p in expiring:
+                    days_left = 90 - (datetime.utcnow().date() - p.last_date).days
+                    if days_left > 0:
+                        warnings.append({'label': p.label, 'days_left': days_left})
+                return {'archive_warnings': warnings}
+        except Exception:
+            pass
+        return {'archive_warnings': []}
+
     with app.app_context():
         try:
             db.create_all()
         except Exception as e:
             print(f"DB create_all warning: {e}")
+
+        # Cleanup archived data older than 90 days
+        try:
+            from datetime import datetime, timedelta
+            from app.models import ArchivePeriod, ArchivedUpload, ArchivedPlayerStats, ArchivedPlayerSession, ArchivedTournamentStats
+            cutoff = datetime.utcnow().date() - timedelta(days=90)
+            old_periods = ArchivePeriod.query.filter(ArchivePeriod.last_date < cutoff).all()
+            if old_periods:
+                old_ids = [p.id for p in old_periods]
+                ArchivedTournamentStats.query.filter(ArchivedTournamentStats.period_id.in_(old_ids)).delete(synchronize_session=False)
+                ArchivedPlayerSession.query.filter(ArchivedPlayerSession.period_id.in_(old_ids)).delete(synchronize_session=False)
+                ArchivedPlayerStats.query.filter(ArchivedPlayerStats.period_id.in_(old_ids)).delete(synchronize_session=False)
+                ArchivedUpload.query.filter(ArchivedUpload.period_id.in_(old_ids)).delete(synchronize_session=False)
+                ArchivePeriod.query.filter(ArchivePeriod.id.in_(old_ids)).delete(synchronize_session=False)
+                db.session.commit()
+        except Exception:
+            pass
 
         # Load active excel file if exists (local only)
         try:
