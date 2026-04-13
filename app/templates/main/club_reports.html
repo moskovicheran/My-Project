@@ -32,7 +32,7 @@
                 <div>
                     <label class="muted small" style="display:block; margin-bottom:0.2rem;">תקופה</label>
                     <select id="periodSelect" onchange="onPeriodChange()" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; max-width:200px;">
-                        <option value="">תקופה נוכחית</option>
+                        <option value="" id="currentPeriodOption">תקופה נוכחית</option>
                     </select>
                 </div>
                 <div>
@@ -123,6 +123,9 @@ fetch('/api/report-dates').then(r => r.json()).then(d => {
     calYear = now.getFullYear();
     calMonth = now.getMonth();
     var sel = document.getElementById('periodSelect');
+    if (d.current_label) {
+        document.getElementById('currentPeriodOption').textContent = 'תקופה נוכחית (' + d.current_label + ')';
+    }
     (d.periods || []).forEach(function(p) {
         var opt = document.createElement('option');
         opt.value = p.id;

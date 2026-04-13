@@ -2438,7 +2438,18 @@ def report_dates_api():
     periods = ArchivePeriod.query.order_by(ArchivePeriod.last_date.desc()).all()
     periods_list = [{'id': p.id, 'label': p.label} for p in periods]
 
-    return jsonify({'dates': dates, 'periods': periods_list})
+    # Current period label from active uploads
+    from sqlalchemy import func as sqlfunc
+    current_range = db.session.query(
+        sqlfunc.min(DailyUpload.upload_date),
+        sqlfunc.max(DailyUpload.upload_date)
+    ).first()
+    current_label = ''
+    if current_range and current_range[0] is not None:
+        f, l = current_range
+        current_label = f"{f.strftime('%d/%m/%Y')} — {l.strftime('%d/%m/%Y')}"
+
+    return jsonify({'dates': dates, 'periods': periods_list, 'current_label': current_label})
 
 
 @main_bp.route('/api/tournament-players')
