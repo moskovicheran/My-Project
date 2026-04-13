@@ -1193,6 +1193,10 @@ def _make_excel(sheets_data, filename):
                 # Bold totals row
                 if row_data.get(headers[0]) == 'סה"כ':
                     cell.font = Font(bold=True, color=cell.font.color if cell.font.color else '000000')
+                # Green "נטו סוכן" row
+                first_val = str(row_data.get(headers[0], ''))
+                if first_val.startswith('נטו סוכן'):
+                    cell.font = Font(bold=True, color='217346')
         # Auto-width
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
@@ -1471,27 +1475,51 @@ def export_agent_players():
         else:
             direct_players.append(row)
 
+    # Helper: find rake % for an agent/SA by player_id
+    def _get_rake_pct(entity_id):
+        rc = RakeConfig.query.filter_by(entity_id=entity_id).first()
+        return rc.rake_percent if rc else 0
+
+    # Reverse lookup: agent name -> agent player_id
+    nicks_to_id = {v: k for k, v in all_nicks.items()}
+
     # Create sheet per agent
     for ag_name, ag_players in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
         ag_players.sort(key=lambda x: x['Rake'], reverse=True)
+        total_rake = round(sum(r['Rake'] for r in ag_players), 2)
         ag_players.append({
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in ag_players), 2),
-            'Rake': round(sum(r['Rake'] for r in ag_players), 2),
+            'Rake': total_rake,
             'Hands': sum(r['Hands'] for r in ag_players),
         })
+        ag_pid = nicks_to_id.get(ag_name, '')
+        pct = _get_rake_pct(ag_pid) if ag_pid else 0
+        if pct:
+            ag_players.append({
+                'שחקן': f'נטו סוכן ({pct}%)', 'ID': '', 'קלאב': '',
+                'P&L': '', 'Rake': round(total_rake * pct / 100, 2), 'Hands': '',
+            })
         sheets[ag_name[:31]] = ag_players
 
     # Create sheet per child SA
     import re
     for csa_name, csa_players in sorted(child_sa_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
         csa_players.sort(key=lambda x: x['Rake'], reverse=True)
+        total_rake = round(sum(r['Rake'] for r in csa_players), 2)
         csa_players.append({
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in csa_players), 2),
-            'Rake': round(sum(r['Rake'] for r in csa_players), 2),
+            'Rake': total_rake,
             'Hands': sum(r['Hands'] for r in csa_players),
         })
+        csa_pid = nicks_to_id.get(csa_name, '')
+        pct = _get_rake_pct(csa_pid) if csa_pid else 0
+        if pct:
+            csa_players.append({
+                'שחקן': f'נטו סוכן ({pct}%)', 'ID': '', 'קלאב': '',
+                'P&L': '', 'Rake': round(total_rake * pct / 100, 2), 'Hands': '',
+            })
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', csa_name)[:31] or 'SA'
         sheets[safe_name] = csa_players
 
