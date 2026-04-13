@@ -62,12 +62,14 @@ def create_app():
         from datetime import datetime, timedelta
         from app.models import ArchivePeriod
         try:
-            cutoff_85 = datetime.utcnow().date() - timedelta(days=85)
-            expiring = ArchivePeriod.query.filter(ArchivePeriod.last_date < cutoff_85).all()
+            # Warn when archive is 85+ days old (created_at based), deleted at 90
+            cutoff_85 = datetime.utcnow() - timedelta(days=85)
+            expiring = ArchivePeriod.query.filter(ArchivePeriod.created_at < cutoff_85).all()
             if expiring:
                 warnings = []
                 for p in expiring:
-                    days_left = 90 - (datetime.utcnow().date() - p.last_date).days
+                    age_days = (datetime.utcnow() - p.created_at).days
+                    days_left = 90 - age_days
                     if days_left > 0:
                         warnings.append({'label': p.label, 'days_left': days_left})
                 return {'archive_warnings': warnings}
@@ -81,12 +83,12 @@ def create_app():
         except Exception as e:
             print(f"DB create_all warning: {e}")
 
-        # Cleanup archived data older than 90 days
+        # Cleanup archived data older than 90 days (from archive creation date)
         try:
             from datetime import datetime, timedelta
             from app.models import ArchivePeriod, ArchivedUpload, ArchivedPlayerStats, ArchivedPlayerSession, ArchivedTournamentStats
-            cutoff = datetime.utcnow().date() - timedelta(days=90)
-            old_periods = ArchivePeriod.query.filter(ArchivePeriod.last_date < cutoff).all()
+            cutoff = datetime.utcnow() - timedelta(days=90)
+            old_periods = ArchivePeriod.query.filter(ArchivePeriod.created_at < cutoff).all()
             if old_periods:
                 old_ids = [p.id for p in old_periods]
                 ArchivedTournamentStats.query.filter(ArchivedTournamentStats.period_id.in_(old_ids)).delete(synchronize_session=False)
