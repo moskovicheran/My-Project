@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}דוח תקופתי{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📋 דוח תקופתי</h1>
+    <p class="subtitle">בחר תקופה והורד דוח Excel מרוכז</p>
+</div>
+
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">בחר תקופה</h2>
+
+    {# Quick period buttons #}
+    <div style="display:flex; gap:0.4rem; margin-bottom:1rem; flex-wrap:wrap;">
+        <button class="period-btn active" onclick="setPeriod('week', this)">השבוע</button>
+        <button class="period-btn" onclick="setPeriod('month', this)">החודש</button>
+        <button class="period-btn" onclick="setPeriod('lastmonth', this)">חודש שעבר</button>
+        <button class="period-btn" onclick="setPeriod('custom', this)">מותאם אישית</button>
+    </div>
+
+    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+            <label class="muted small" style="display:block; margin-bottom:0.2rem;">מתאריך</label>
+            <input type="date" id="fromDate" style="padding:0.45rem 0.7rem; border:1px solid #ddd; border-radius:8px; font-family:inherit; font-size:0.9rem;">
+        </div>
+        <div>
+            <label class="muted small" style="display:block; margin-bottom:0.2rem;">עד תאריך</label>
+            <input type="date" id="toDate" style="padding:0.45rem 0.7rem; border:1px solid #ddd; border-radius:8px; font-family:inherit; font-size:0.9rem;">
+        </div>
+        <div>
+            <label class="muted small" style="display:block; margin-bottom:0.2rem;">סוג משחק (אופציונלי)</label>
+            <select id="gameType" style="padding:0.45rem 0.7rem; border:1px solid #ddd; border-radius:8px; font-family:inherit; font-size:0.9rem;">
+                <option value="">הכל</option>
+                {% for gt in game_types %}
+                <option value="{{ gt }}">{{ gt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button onclick="downloadReport()" class="btn btn-primary" id="downloadBtn">📥 הורד דוח</button>
+        </div>
+    </div>
+
+    <div id="dateInfo" class="muted small" style="margin-top:0.6rem;"></div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">ℹ️ מה כולל הדוח?</h2>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem;">
+        <div style="background:#f8f9ff; border-radius:10px; padding:1rem; border:1px solid #e8ebff;">
+            <div style="font-weight:700; margin-bottom:0.3rem;">📊 סיכום שחקנים</div>
+            <div class="muted small">שם, קלאב, P&L, Rake, Hands — לכל שחקן בתקופה</div>
+        </div>
+        <div style="background:#f8f9ff; border-radius:10px; padding:1rem; border:1px solid #e8ebff;">
+            <div style="font-weight:700; margin-bottom:0.3rem;">🎰 רקורד משחקים</div>
+            <div class="muted small">כל הסשנים בתקופה — שם שולחן, בליינדס, P&L</div>
+        </div>
+        <div style="background:#f8f9ff; border-radius:10px; padding:1rem; border:1px solid #e8ebff;">
+            <div style="font-weight:700; margin-bottom:0.3rem;">💸 העברות כספים</div>
+            <div class="muted small">כל ההעברות בין שחקנים בתקופה</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function setPeriod(type, btn) {
+    document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+
+    var now = new Date();
+    var from, to;
+
+    if (type === 'week') {
+        var day = now.getDay() || 7;
+        from = new Date(now);
+        from.setDate(now.getDate() - day + 1);
+        to = now;
+    } else if (type === 'month') {
+        from = new Date(now.getFullYear(), now.getMonth(), 1);
+        to = now;
+    } else if (type === 'lastmonth') {
+        from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        to = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else {
+        document.getElementById('fromDate').value = '';
+        document.getElementById('toDate').value = '';
+        document.getElementById('dateInfo').textContent = 'בחר תאריכים ידנית';
+        return;
+    }
+
+    document.getElementById('fromDate').value = fmt(from);
+    document.getElementById('toDate').value = fmt(to);
+    updateInfo();
+}
+
+function fmt(d) {
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function updateInfo() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    if (from && to) {
+        var fd = new Date(from), td = new Date(to);
+        var days = Math.round((td - fd) / 86400000) + 1;
+        document.getElementById('dateInfo').textContent = days + ' ימים נבחרו (' + from.split('-').reverse().join('/') + ' — ' + to.split('-').reverse().join('/') + ')';
+    }
+}
+
+function downloadReport() {
+    var from = document.getElementById('fromDate').value;
+    var to = document.getElementById('toDate').value;
+    if (!from || !to) {
+        alert('יש לבחור מתאריך ועד תאריך');
+        return;
+    }
+    var url = '/export/periodic?from=' + from + '&to=' + to;
+    var gt = document.getElementById('gameType').value;
+    if (gt) url += '&game_type=' + encodeURIComponent(gt);
+    window.location.href = url;
+}
+
+// Init with this week
+document.addEventListener('DOMContentLoaded', function() {
+    setPeriod('week', document.querySelector('.period-btn'));
+});
+
+document.getElementById('fromDate').addEventListener('change', updateInfo);
+document.getElementById('toDate').addEventListener('change', updateInfo);
+</script>
+
+<style>
+.period-btn {
+    padding:0.45rem 1.1rem; border-radius:20px; font-size:0.85rem; font-weight:600;
+    cursor:pointer; border:2px solid #e0e4ef; background:#fff; color:#666;
+    font-family:inherit; transition:all 0.2s;
+}
+.period-btn:hover { border-color:#4361ee; color:#4361ee; }
+.period-btn.active { background:#4361ee; color:#fff; border-color:#4361ee; }
+body.dark .period-btn { background:#1e1e2e; border-color:#333; color:#888; }
+body.dark .period-btn.active { background:#4361ee; color:#fff; border-color:#4361ee; }
+</style>
+{% endblock %}

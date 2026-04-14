@@ -286,7 +286,28 @@ def players():
 
     grand = {'pnl': round(grand_pnl, 2), 'rake': round(grand_rake, 2)}
 
-    return render_template('union/players.html', clubs=clubs, grand=grand)
+    # Get available game types and per-player game types for filters
+    from app.models import PlayerSession
+    from sqlalchemy import func as sqlfunc
+    game_types_q = PlayerSession.query.with_entities(
+        sqlfunc.distinct(PlayerSession.game_type)
+    ).filter(PlayerSession.game_type.isnot(None)).all()
+    game_types = sorted([r[0] for r in game_types_q if r[0]])
+
+    # Build player->game_types mapping
+    player_games = {}
+    pg_rows = PlayerSession.query.with_entities(
+        PlayerSession.player_id, PlayerSession.game_type
+    ).filter(PlayerSession.game_type.isnot(None)).group_by(
+        PlayerSession.player_id, PlayerSession.game_type
+    ).all()
+    for pid, gt in pg_rows:
+        if pid not in player_games:
+            player_games[pid] = []
+        player_games[pid].append(gt)
+
+    return render_template('union/players.html', clubs=clubs, grand=grand,
+                           game_types=game_types, player_games=player_games)
 
 
 @union_bp.route('/player/<player_id>')

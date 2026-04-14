@@ -2395,6 +2395,152 @@ def export_admin_period():
     return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
 
 
+@main_bp.route('/reports/periodic')
+@login_required
+def periodic_report():
+    """Periodic report page — pick date range, download Excel."""
+    if current_user.role not in ('admin', 'agent'):
+        return redirect(url_for('main.dashboard'))
+    from app.models import PlayerSession
+    from sqlalchemy import func as sqlfunc
+    game_types = [r[0] for r in PlayerSession.query.with_entities(
+        sqlfunc.distinct(PlayerSession.game_type)
+    ).filter(PlayerSession.game_type.isnot(None)).all() if r[0]]
+    return render_template('main/periodic_report.html', game_types=sorted(game_types))
+
+
+@main_bp.route('/export/periodic')
+@login_required
+def export_periodic():
+    """Generate periodic Excel report for date range."""
+    if current_user.role not in ('admin', 'agent'):
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats, DailyUpload, PlayerSession, MoneyTransfer, SAHierarchy
+    from app.union_data import get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_
+    from datetime import datetime, timedelta
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    game_type_filter = request.args.get('game_type', '')
+    if not from_date or not to_date:
+        flash('יש לבחור תאריכים.', 'danger')
+        return redirect(url_for('main.periodic_report'))
+
+    fd = datetime.strptime(from_date, '%Y-%m-%d').date()
+    td = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+    # Get uploads in range
+    uploads = DailyUpload.query.filter(DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
+    upload_ids = [u.id for u in uploads]
+    if not upload_ids:
+        flash('אין נתונים בטווח התאריכים.', 'warning')
+        return redirect(url_for('main.periodic_report'))
+
+    # Filter by role: agent sees only their players
+    base_filters = [
+        DailyPlayerStats.upload_id.in_(upload_ids),
+        DailyPlayerStats.role != 'Name Entry',
+    ]
+    if current_user.role == 'agent' and current_user.player_id:
+        sa_id = current_user.player_id
+        all_sa_ids = [sa_id]
+        child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+        all_sa_ids.extend(child_sa_ids)
+        base_filters.append(or_(
+            DailyPlayerStats.sa_id.in_(all_sa_ids),
+            DailyPlayerStats.agent_id.in_(all_sa_ids),
+        ))
+
+    # Sheet 1: Player summary
+    players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club), sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
+    ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
+
+    player_ids = [p[0] for p in players]
+    xfer_adj = get_transfer_adjustments(player_ids)
+
+    summary_rows = []
+    for p in players:
+        summary_rows.append({
+            'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+            'P&L': round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2),
+            'Rake': round(float(p[4] or 0), 2),
+            'Hands': int(p[5] or 0),
+        })
+    summary_rows.sort(key=lambda x: x['Rake'], reverse=True)
+    if summary_rows:
+        summary_rows.append({
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
+            'P&L': round(sum(r['P&L'] for r in summary_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in summary_rows), 2),
+            'Hands': sum(r['Hands'] for r in summary_rows),
+        })
+
+    # Sheet 2: Sessions
+    sess_filters = [PlayerSession.upload_id.in_(upload_ids), PlayerSession.player_id.in_(player_ids)]
+    if game_type_filter:
+        sess_filters.append(PlayerSession.game_type == game_type_filter)
+    sessions = (PlayerSession.query
+                .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                .add_columns(DailyUpload.upload_date)
+                .filter(*sess_filters)
+                .order_by(DailyUpload.upload_date.asc())
+                .all())
+
+    sess_rows = []
+    for s, upload_date in sessions:
+        sess_rows.append({
+            'תאריך': upload_date.strftime('%d/%m/%Y') if upload_date else '',
+            'שחקן': s.player_id,
+            'משחק': s.table_name, 'סוג': s.game_type,
+            'בליינדס': s.blinds or '',
+            'P&L': round(s.pnl, 2),
+        })
+    if sess_rows:
+        sess_rows.append({
+            'תאריך': '', 'שחקן': '', 'משחק': 'סה"כ', 'סוג': '', 'בליינדס': '',
+            'P&L': round(sum(r['P&L'] for r in sess_rows), 2),
+        })
+
+    # Sheet 3: Transfers in period
+    transfer_filters = [MoneyTransfer.created_at >= datetime.combine(fd, datetime.min.time()),
+                        MoneyTransfer.created_at <= datetime.combine(td, datetime.max.time())]
+    if current_user.role == 'agent' and player_ids:
+        transfer_filters.append(or_(
+            MoneyTransfer.from_player_id.in_(player_ids),
+            MoneyTransfer.to_player_id.in_(player_ids),
+        ))
+    transfers = MoneyTransfer.query.filter(*transfer_filters).order_by(MoneyTransfer.created_at.asc()).all()
+
+    xfer_rows = []
+    for t in transfers:
+        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
+        xfer_rows.append({
+            'תאריך': il_time.strftime('%d/%m/%Y %H:%M') if il_time else '',
+            'משלם': t.from_name, 'מקבל': t.to_name,
+            'סכום': round(t.amount, 2),
+            'תיאור': t.description or '',
+        })
+    if xfer_rows:
+        xfer_rows.append({
+            'תאריך': '', 'משלם': '', 'מקבל': 'סה"כ',
+            'סכום': round(sum(r['סכום'] for r in xfer_rows), 2),
+            'תיאור': '',
+        })
+
+    sheets = {'סיכום שחקנים': summary_rows or []}
+    if sess_rows:
+        sheets['רקורד משחקים'] = sess_rows
+    if xfer_rows:
+        sheets['העברות'] = xfer_rows
+
+    return _make_excel(sheets, f'periodic_{from_date}_{to_date}.xlsx')
+
+
 @main_bp.route('/api/report')
 @login_required
 def report_api():

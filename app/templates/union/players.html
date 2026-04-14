@@ -29,7 +29,7 @@
         {% if agent.members %}
         <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem; padding-top:0.4rem;">
             {% for m in agent.members %}
-            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}" data-games="{{ player_games.get(m.player_id, [])|join(',') }}" data-pnl="{{ m.pnl_total }}">
                 <span class="chip-name">{{ m.nickname }}</span>
                 <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}</span>
             </a>
@@ -46,7 +46,7 @@
         <div class="muted small" style="margin-bottom:0.4rem;">שחקנים ישירים תחת Super Agent</div>
         <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
             {% for m in sa.direct_members %}
-            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}" data-games="{{ player_games.get(m.player_id, [])|join(',') }}" data-pnl="{{ m.pnl_total }}">
                 <span class="chip-name">{{ m.nickname }}</span>
                 <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}</span>
             </a>
@@ -56,9 +56,9 @@
     {% endif %}
 {% endmacro %}
 
-{# ── Search Bar ── #}
+{# ── Search Bar + Filters ── #}
 <div class="section" style="padding:0.6rem 1rem; margin-bottom:1rem;">
-    <div style="display:flex; align-items:center; gap:0.5rem;">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem;">
         <span style="font-size:1.1rem; color:#888;">&#128269;</span>
         <input type="text" id="playerSearch" placeholder="חפש שחקן לפי שם..." oninput="filterPlayers(this.value)"
                style="flex:1; border:1px solid #e0e4ef; border-radius:8px; padding:0.5rem 0.8rem; font-size:0.95rem; outline:none; direction:rtl;"
@@ -67,6 +67,30 @@
         <button onclick="document.getElementById('playerSearch').value=''; filterPlayers('');"
                 style="border:none; background:#f0f2f5; border-radius:8px; padding:0.5rem 0.8rem; cursor:pointer; font-size:0.85rem; color:#666;">נקה</button>
     </div>
+
+    {# Filters #}
+    <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; padding:0.5rem 0; border-top:1px solid #f0f0f0;">
+        <div>
+            <label class="muted" style="font-size:0.75rem; display:block; margin-bottom:0.15rem;">סוג משחק</label>
+            <select id="filterGameType" onchange="applyFilters()" style="padding:0.35rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; font-size:0.85rem;">
+                <option value="">הכל</option>
+                {% for gt in game_types %}
+                <option value="{{ gt }}">{{ gt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="muted" style="font-size:0.75rem; display:block; margin-bottom:0.15rem;">P&L מינימום</label>
+            <input type="number" id="filterPnlMin" placeholder="מ-" onchange="applyFilters()" style="width:90px; padding:0.35rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; font-size:0.85rem;">
+        </div>
+        <div>
+            <label class="muted" style="font-size:0.75rem; display:block; margin-bottom:0.15rem;">P&L מקסימום</label>
+            <input type="number" id="filterPnlMax" placeholder="עד-" onchange="applyFilters()" style="width:90px; padding:0.35rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; font-size:0.85rem;">
+        </div>
+        <button onclick="clearFilters()" class="btn btn-outline btn-sm" style="font-size:0.8rem;">נקה סינון</button>
+        <span id="filterCount" class="muted small"></span>
+    </div>
+
     <div id="searchResults" style="display:none; margin-top:0.5rem; max-height:350px; overflow-y:auto;"></div>
 </div>
 
@@ -126,7 +150,7 @@
         <div class="muted small" style="margin-bottom:0.4rem;">ללא Super Agent</div>
         <div class="members-list" style="flex-wrap:wrap; display:flex; gap:0.4rem;">
             {% for m in club.no_sa_members %}
-            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}">
+            <a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="member-chip {% if m.pnl_total > 0 %}win{% elif m.pnl_total < 0 %}lose{% endif %}" data-games="{{ player_games.get(m.player_id, [])|join(',') }}" data-pnl="{{ m.pnl_total }}">
                 <span class="chip-name">{{ m.nickname }}</span>
                 <span class="chip-pnl">{% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}</span>
             </a>
@@ -150,7 +174,7 @@ function toggleNode(row) {
     arrow.style.transform = open ? '' : 'rotate(90deg)';
 }
 
-/* ── Player Search ── */
+/* ── Player Search + Filters ── */
 var _allPlayers = [];
 (function buildIndex() {
     document.querySelectorAll('.member-chip').forEach(function(chip) {
@@ -159,9 +183,43 @@ var _allPlayers = [];
         var href = chip.getAttribute('href');
         var club = chip.closest('.club-block');
         var clubName = club ? club.querySelector('.club-title strong').textContent.trim() : '';
-        _allPlayers.push({ name: name, pnl: pnl, href: href, club: clubName, el: chip });
+        var games = (chip.getAttribute('data-games') || '').split(',').filter(Boolean);
+        var pnlNum = parseFloat(chip.getAttribute('data-pnl') || '0');
+        _allPlayers.push({ name: name, pnl: pnl, pnlNum: pnlNum, href: href, club: clubName, games: games, el: chip });
     });
 })();
+
+function applyFilters() {
+    var gt = document.getElementById('filterGameType').value;
+    var pnlMin = document.getElementById('filterPnlMin').value;
+    var pnlMax = document.getElementById('filterPnlMax').value;
+    var visibleCount = 0;
+    var totalCount = _allPlayers.length;
+
+    _allPlayers.forEach(function(p) {
+        var show = true;
+        if (gt && p.games.indexOf(gt) === -1) show = false;
+        if (pnlMin !== '' && p.pnlNum < parseFloat(pnlMin)) show = false;
+        if (pnlMax !== '' && p.pnlNum > parseFloat(pnlMax)) show = false;
+        p.el.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+    });
+
+    var info = document.getElementById('filterCount');
+    if (gt || pnlMin !== '' || pnlMax !== '') {
+        info.textContent = visibleCount + ' / ' + totalCount + ' שחקנים';
+    } else {
+        info.textContent = '';
+    }
+}
+
+function clearFilters() {
+    document.getElementById('filterGameType').value = '';
+    document.getElementById('filterPnlMin').value = '';
+    document.getElementById('filterPnlMax').value = '';
+    _allPlayers.forEach(function(p) { p.el.style.display = ''; });
+    document.getElementById('filterCount').textContent = '';
+}
 
 function filterPlayers(query) {
     var box = document.getElementById('searchResults');
