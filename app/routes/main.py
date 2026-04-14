@@ -2596,6 +2596,91 @@ def export_periodic():
     return _make_excel(sheets, f'periodic_{from_date}_{to_date}.xlsx')
 
 
+@main_bp.route('/api/periodic-report')
+@login_required
+def periodic_report_api():
+    """Return periodic report data as JSON for preview."""
+    if current_user.role not in ('admin', 'agent'):
+        return jsonify({'error': 'unauthorized'}), 403
+
+    from app.models import DailyPlayerStats, DailyUpload, MoneyTransfer, SAHierarchy
+    from app.union_data import get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_
+    from datetime import datetime, timedelta
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    if not from_date or not to_date:
+        return jsonify({'error': 'missing dates'}), 400
+
+    fd = datetime.strptime(from_date, '%Y-%m-%d').date()
+    td = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+    # Check active + archive
+    active_ids, arc_pid, arc_ids, _ = _resolve_date_uploads(
+        [(fd + timedelta(days=i)).strftime('%Y-%m-%d') for i in range((td - fd).days + 1)]
+    )
+    all_upload_ids = active_ids + arc_ids
+
+    if arc_ids and arc_pid:
+        from app.models import ArchivedPlayerStats
+        SM = ArchivedPlayerStats
+        base_filters = [SM.period_id == arc_pid, SM.upload_id.in_(arc_ids), SM.role != 'Name Entry']
+    else:
+        SM = DailyPlayerStats
+        base_filters = [SM.role != 'Name Entry']
+        if active_ids:
+            base_filters.append(SM.upload_id.in_(active_ids))
+
+    if current_user.role == 'agent' and current_user.player_id:
+        sa_id = current_user.player_id
+        all_sa_ids = [sa_id] + [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+        base_filters.append(or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)))
+
+    players = SM.query.with_entities(
+        SM.player_id, sqlfunc.max(SM.nickname),
+        sqlfunc.max(SM.club), sqlfunc.sum(SM.pnl),
+        sqlfunc.sum(SM.rake), sqlfunc.sum(SM.hands),
+    ).filter(*base_filters).group_by(SM.player_id).all()
+
+    player_ids = [p[0] for p in players]
+    xfer_adj = get_transfer_adjustments(player_ids)
+
+    summary = []
+    tot_pnl = tot_rake = tot_hands = 0
+    for p in players:
+        pnl = round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2)
+        rake = round(float(p[4] or 0), 2)
+        hands = int(p[5] or 0)
+        summary.append({'name': p[1], 'id': p[0], 'club': p[2], 'pnl': pnl, 'rake': rake, 'hands': hands})
+        tot_pnl += pnl
+        tot_rake += rake
+        tot_hands += hands
+    summary.sort(key=lambda x: x['rake'], reverse=True)
+
+    # Transfers
+    transfer_filters = [MoneyTransfer.created_at >= datetime.combine(fd, datetime.min.time()),
+                        MoneyTransfer.created_at <= datetime.combine(td, datetime.max.time())]
+    if current_user.role == 'agent' and player_ids:
+        transfer_filters.append(or_(MoneyTransfer.from_player_id.in_(player_ids), MoneyTransfer.to_player_id.in_(player_ids)))
+    transfers = MoneyTransfer.query.filter(*transfer_filters).order_by(MoneyTransfer.created_at.asc()).all()
+
+    xfer_list = []
+    for t in transfers:
+        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
+        xfer_list.append({
+            'date': il_time.strftime('%d/%m/%Y %H:%M') if il_time else '',
+            'from': t.from_name, 'to': t.to_name,
+            'amount': round(t.amount, 2), 'desc': t.description or '',
+        })
+
+    return jsonify({
+        'summary': summary,
+        'totals': {'pnl': round(tot_pnl, 2), 'rake': round(tot_rake, 2), 'hands': tot_hands},
+        'transfers': xfer_list,
+    })
+
+
 @main_bp.route('/api/report')
 @login_required
 def report_api():

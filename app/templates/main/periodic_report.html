@@ -36,15 +36,43 @@
                 {% endfor %}
             </select>
         </div>
-        <div>
-            <button onclick="downloadReport()" class="btn btn-primary" id="downloadBtn">📥 הורד דוח</button>
+        <div style="display:flex; gap:0.4rem;">
+            <button onclick="previewReport()" class="btn btn-primary" id="previewBtn">החל</button>
+            <button onclick="downloadReport()" class="btn btn-outline" id="downloadBtn">📥 הורד דוח</button>
         </div>
     </div>
 
     <div id="dateInfo" class="muted small" style="margin-top:0.6rem;"></div>
 </div>
 
-<div class="section">
+{# ── Preview Results ── #}
+<div id="previewSection" style="display:none;">
+    <div class="section" style="margin-bottom:1rem;">
+        <h2 class="section-title">📊 סיכום שחקנים</h2>
+        <div id="previewLoading" style="text-align:center; padding:2rem; display:none;">
+            <span class="muted">טוען...</span>
+        </div>
+        <table class="table table-sm" id="summaryTable" style="display:none;">
+            <thead>
+                <tr><th>שחקן</th><th>ID</th><th>קלאב</th><th>P&L</th><th>Rake</th><th>Hands</th></tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+        </table>
+    </div>
+
+    <div class="section" style="margin-bottom:1rem;">
+        <h2 class="section-title">💸 העברות כספים</h2>
+        <table class="table table-sm" id="transfersTable" style="display:none;">
+            <thead>
+                <tr><th>תאריך</th><th>משלם</th><th>מקבל</th><th>סכום</th><th>תיאור</th></tr>
+            </thead>
+            <tbody id="transfersBody"></tbody>
+        </table>
+        <div id="noTransfers" class="muted" style="text-align:center; padding:1rem; display:none;">אין העברות בתקופה</div>
+    </div>
+</div>
+
+<div class="section" id="infoSection">
     <h2 class="section-title">ℹ️ מה כולל הדוח?</h2>
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem;">
         <div style="background:#f8f9ff; border-radius:10px; padding:1rem; border:1px solid #e8ebff;">
@@ -107,17 +135,73 @@ function updateInfo() {
     }
 }
 
-function downloadReport() {
+function _buildUrl(base) {
     var from = document.getElementById('fromDate').value;
     var to = document.getElementById('toDate').value;
-    if (!from || !to) {
-        alert('יש לבחור מתאריך ועד תאריך');
-        return;
-    }
-    var url = '/export/periodic?from=' + from + '&to=' + to;
+    if (!from || !to) { alert('יש לבחור מתאריך ועד תאריך'); return null; }
+    var url = base + '?from=' + from + '&to=' + to;
     var gt = document.getElementById('gameType').value;
     if (gt) url += '&game_type=' + encodeURIComponent(gt);
-    window.location.href = url;
+    return url;
+}
+
+function downloadReport() {
+    var url = _buildUrl('/export/periodic');
+    if (url) window.location.href = url;
+}
+
+function previewReport() {
+    var url = _buildUrl('/api/periodic-report');
+    if (!url) return;
+    document.getElementById('previewSection').style.display = 'block';
+    document.getElementById('previewLoading').style.display = 'block';
+    document.getElementById('summaryTable').style.display = 'none';
+    document.getElementById('infoSection').style.display = 'none';
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('previewLoading').style.display = 'none';
+            // Summary table
+            var html = '';
+            data.summary.forEach(function(p) {
+                var cls = p.pnl >= 0 ? 'income' : 'expense';
+                var sign = p.pnl > 0 ? '+' : '';
+                html += '<tr><td><strong>' + escapeHtml(p.name) + '</strong></td>';
+                html += '<td class="muted">' + escapeHtml(p.id) + '</td>';
+                html += '<td class="muted">' + escapeHtml(p.club) + '</td>';
+                html += '<td class="amount ' + cls + '">' + sign + p.pnl.toFixed(2) + '</td>';
+                html += '<td class="amount income">' + p.rake.toFixed(2) + '</td>';
+                html += '<td>' + p.hands.toLocaleString() + '</td></tr>';
+            });
+            if (data.totals) {
+                var tCls = data.totals.pnl >= 0 ? 'income' : 'expense';
+                var tSign = data.totals.pnl > 0 ? '+' : '';
+                html += '<tr class="total-row"><td colspan="3"><strong>סה"כ</strong></td>';
+                html += '<td class="amount ' + tCls + '"><strong>' + tSign + data.totals.pnl.toFixed(2) + '</strong></td>';
+                html += '<td class="amount income"><strong>' + data.totals.rake.toFixed(2) + '</strong></td>';
+                html += '<td><strong>' + data.totals.hands.toLocaleString() + '</strong></td></tr>';
+            }
+            document.getElementById('summaryBody').innerHTML = html;
+            document.getElementById('summaryTable').style.display = '';
+
+            // Transfers table
+            if (data.transfers && data.transfers.length > 0) {
+                var xhtml = '';
+                data.transfers.forEach(function(t) {
+                    xhtml += '<tr><td class="muted">' + escapeHtml(t.date) + '</td>';
+                    xhtml += '<td><strong>' + escapeHtml(t.from) + '</strong></td>';
+                    xhtml += '<td><strong>' + escapeHtml(t.to) + '</strong></td>';
+                    xhtml += '<td class="amount income">' + t.amount.toFixed(2) + '</td>';
+                    xhtml += '<td class="muted">' + escapeHtml(t.desc || '') + '</td></tr>';
+                });
+                document.getElementById('transfersBody').innerHTML = xhtml;
+                document.getElementById('transfersTable').style.display = '';
+                document.getElementById('noTransfers').style.display = 'none';
+            } else {
+                document.getElementById('transfersTable').style.display = 'none';
+                document.getElementById('noTransfers').style.display = '';
+            }
+        });
 }
 
 // Init with this week
