@@ -105,7 +105,7 @@
             <div class="game-stat-card"><div class="gs-label">סשנים</div><div class="gs-value">{{ total_sessions }}</div></div>
             <div class="game-stat-card"><div class="gs-label">רווח/הפסד</div><div class="gs-value {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</div></div>
             <div class="game-stat-card"><div class="gs-label">Win Rate</div><div class="gs-value" style="color:#4361ee;">{{ ((total_wins / total_sessions * 100) if total_sessions else 0)|round(1) }}%</div></div>
-            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value"><span class="income">{{ total_wins }}</span> / <span class="expense">{{ total_losses }}</span></div></div>
+            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value" dir="ltr"><span class="income">{{ total_wins }}</span> / <span class="expense">{{ total_losses }}</span></div></div>
         </div>
         <div class="blinds-grid">
             {% for gt, gs in game_stats.items()|sort(attribute='1.count', reverse=true) %}
@@ -113,7 +113,7 @@
                 <div class="bc-header"><span class="bc-label">{{ gt }}</span><span class="bc-count">{{ gs.count }} סשנים</span></div>
                 <div class="bc-pnl {% if gs.pnl >= 0 %}income{% else %}expense{% endif %}">{% if gs.pnl > 0 %}+{% endif %}{{ gs.pnl|comma }}</div>
                 <div class="winrate-bar"><div class="winrate-fill" style="width:{{ (gs.wins / gs.count * 100) if gs.count else 0 }}%; background:{% if gs.pnl >= 0 %}#2ec4b6{% else %}#ef233c{% endif %};"></div></div>
-                <div class="bc-info">{{ ((gs.wins / gs.count * 100) if gs.count else 0)|round(1) }}% Win Rate • {{ gs.wins }}W / {{ gs.losses }}L</div>
+                <div class="bc-info"><span dir="ltr">{{ ((gs.wins / gs.count * 100) if gs.count else 0)|round(1) }}% Win Rate • {{ gs.wins }}W / {{ gs.losses }}L</span></div>
             </div>
             {% endfor %}
         </div>
@@ -127,7 +127,7 @@
             <div class="game-stat-card"><div class="gs-label">סשנים</div><div class="gs-value">{{ gs.count }}</div></div>
             <div class="game-stat-card"><div class="gs-label">רווח/הפסד</div><div class="gs-value {% if gs.pnl >= 0 %}income{% else %}expense{% endif %}">{% if gs.pnl > 0 %}+{% endif %}{{ gs.pnl|comma }}</div></div>
             <div class="game-stat-card"><div class="gs-label">Win Rate</div><div class="gs-value" style="color:#4361ee;">{{ wr }}%</div></div>
-            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value"><span class="income">{{ gs.wins }}</span> / <span class="expense">{{ gs.losses }}</span></div></div>
+            <div class="game-stat-card"><div class="gs-label">W / L</div><div class="gs-value" dir="ltr"><span class="income">{{ gs.wins }}</span> / <span class="expense">{{ gs.losses }}</span></div></div>
         </div>
         <div class="blinds-grid">
             {% for b, bd in gs.blinds.items()|sort(attribute='1.pnl', reverse=true) %}
