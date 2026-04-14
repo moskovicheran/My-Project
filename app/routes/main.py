@@ -1251,6 +1251,13 @@ def export_player(player_id):
             'P&L': round(t.amount, 2),
         })
 
+    # Add total row at the end
+    total_pnl = sum(r['P&L'] for r in session_rows)
+    session_rows.append({
+        'משחק': 'סה"כ', 'סוג': '', 'בליינדס': '',
+        'P&L': round(total_pnl, 2),
+    })
+
     summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
                 'P&L': cs['pnl'], 'Hands': cs['hands']}]
 
