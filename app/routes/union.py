@@ -366,9 +366,50 @@ def player_detail(player_id):
                 'pnl': round(s.pnl, 2),
             })
 
-    # Build game type stats from sessions
+    # Add money transfers as special session entries
+    from app.models import MoneyTransfer
+    from datetime import timedelta
+    transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
+    transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
+    for t in transfers_out:
+        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
+        sessions.append({
+            'table_name': f'העברה ל-{t.to_name}',
+            'game_type': 'העברה',
+            'blinds': t.description or '',
+            'date': il_time.strftime('%d/%m/%Y') if il_time else '',
+            'date_sort': il_time if il_time else t.created_at,
+            'pnl': round(-t.amount, 2),
+            'is_transfer': True,
+        })
+    for t in transfers_in:
+        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
+        sessions.append({
+            'table_name': f'קיבלת מ-{t.from_name}',
+            'game_type': 'העברה',
+            'blinds': t.description or '',
+            'date': il_time.strftime('%d/%m/%Y') if il_time else '',
+            'date_sort': il_time if il_time else t.created_at,
+            'pnl': round(t.amount, 2),
+            'is_transfer': True,
+        })
+
+    # Sort sessions by date (newest first)
+    from datetime import datetime
+    def _sort_key(s):
+        if s.get('date_sort'):
+            return s['date_sort']
+        try:
+            return datetime.strptime(s.get('date', ''), '%d/%m/%Y')
+        except (ValueError, TypeError):
+            return datetime.min
+    sessions.sort(key=_sort_key, reverse=True)
+
+    # Build game type stats from sessions (exclude transfers)
     game_stats = {}
     for s in sessions:
+        if s.get('is_transfer'):
+            continue
         gt = s.get('game_type', 'Other') or 'Other'
         if gt not in game_stats:
             game_stats[gt] = {'count': 0, 'pnl': 0, 'wins': 0, 'losses': 0, 'blinds': {}}

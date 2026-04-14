@@ -143,6 +143,11 @@
 </div>
 
 <style>
+.transfer-row { background:#f0f0ff; }
+.transfer-row td { border-bottom:1px solid #e0e0ff; }
+.badge-transfer { background:#7c3aed; color:#fff; padding:0.15rem 0.5rem; border-radius:10px; font-size:0.75rem; font-weight:600; }
+body.dark .transfer-row { background:#1e1e3a; }
+body.dark .transfer-row td { border-bottom-color:#333; }
 .game-tabs { display:flex; gap:0.3rem; margin-bottom:1rem; flex-wrap:wrap; }
 .game-tab { padding:0.4rem 1rem; border-radius:20px; font-size:0.85rem; font-weight:600; cursor:pointer; border:2px solid #e0e4ef; background:#fff; color:#666; font-family:inherit; transition:all 0.2s; }
 .game-tab:hover { border-color:#4361ee; color:#4361ee; }
@@ -195,10 +200,10 @@ function switchGameView(btn, view) {
         </thead>
         <tbody>
             {% for s in sessions %}
-            <tr>
+            <tr{% if s.is_transfer %} class="transfer-row"{% endif %}>
                 <td class="muted" style="font-size:0.82rem; white-space:nowrap;">{{ s.date or '—' }}</td>
                 <td><strong>{{ s.table_name }}</strong></td>
-                <td><span class="badge badge-game">{{ s.game_type }}</span></td>
+                <td>{% if s.is_transfer %}<span class="badge badge-transfer">💸 העברה</span>{% else %}<span class="badge badge-game">{{ s.game_type }}</span>{% endif %}</td>
                 <td>{{ s.blinds }}</td>
                 <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
                     {% if s.pnl > 0 %}+{% endif %}{{ s.pnl|comma }}
