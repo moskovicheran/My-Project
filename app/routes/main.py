@@ -610,7 +610,7 @@ def dashboard():
             # Query cumulative filtered by sa_id
             cumul_cs = {}
             if cs_player_ids and cs_sa:
-                _cumul_filters = [SM.sa_id == cs_sa, SM.player_id.in_(list(cs_player_ids)), SM.role != 'Name Entry']
+                _cumul_filters = [or_(SM.sa_id == cs_sa, SM.player_id == cs_sa), SM.player_id.in_(list(cs_player_ids)), SM.role != 'Name Entry']
                 if use_archive and archive_period_id:
                     _cumul_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
