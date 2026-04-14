@@ -54,10 +54,13 @@ def dashboard():
                 club_obj = c
                 break
 
-        # Available upload dates
-        available_dates = [u[0].strftime('%Y-%m-%d') for u in
-                           DailyUpload.query.with_entities(DailyUpload.upload_date)
-                           .distinct().order_by(DailyUpload.upload_date.desc()).all()]
+        # Available upload dates (active + archived)
+        from app.models import ArchivedUpload
+        active_dates = {u[0].strftime('%Y-%m-%d') for u in
+                        DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all()}
+        archive_dates = {u[0].strftime('%Y-%m-%d') for u in
+                         ArchivedUpload.query.with_entities(ArchivedUpload.upload_date).distinct().all()}
+        available_dates = sorted(active_dates | archive_dates, reverse=True)
 
         # Date filter — supports multiple dates: ?dates=2026-03-30,2026-03-31
         selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
@@ -189,10 +192,13 @@ def dashboard():
             sa_id = current_user.player_id
             view_as_username = None
 
-        # Available upload dates
-        available_dates = [u[0].strftime('%Y-%m-%d') for u in
-                           DailyUpload.query.with_entities(DailyUpload.upload_date)
-                           .distinct().order_by(DailyUpload.upload_date.desc()).all()]
+        # Available upload dates (active + archived)
+        from app.models import ArchivedUpload
+        active_dates = {u[0].strftime('%Y-%m-%d') for u in
+                        DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all()}
+        archive_dates = {u[0].strftime('%Y-%m-%d') for u in
+                         ArchivedUpload.query.with_entities(ArchivedUpload.upload_date).distinct().all()}
+        available_dates = sorted(active_dates | archive_dates, reverse=True)
 
         # Date filter
         selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
