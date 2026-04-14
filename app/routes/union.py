@@ -292,22 +292,9 @@ def players():
 @union_bp.route('/player/<player_id>')
 @login_required
 def player_detail(player_id):
-    # Authorization: players see only themselves, agents/clubs see only their players
+    # Authorization: players see only themselves; admin sees all
     if current_user.role == 'player':
         if current_user.player_id != player_id:
-            flash('אין לך הרשאה לצפות בשחקן זה.', 'danger')
-            return redirect(url_for('main.dashboard'))
-    elif current_user.role in ('agent', 'club') and current_user.player_id:
-        from app.union_data import get_members_hierarchy
-        hierarchy = get_members_hierarchy()
-        sa_id = current_user.player_id
-        allowed_ids = set()
-        for m in hierarchy:
-            if current_user.role == 'agent' and m.get('sa_id') == sa_id:
-                allowed_ids.add(m.get('player_id'))
-            elif current_user.role == 'club' and m.get('club_id') == sa_id:
-                allowed_ids.add(m.get('player_id'))
-        if player_id not in allowed_ids and player_id != sa_id:
             flash('אין לך הרשאה לצפות בשחקן זה.', 'danger')
             return redirect(url_for('main.dashboard'))
 
