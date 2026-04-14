@@ -216,6 +216,9 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
 @upload_bp.route('/', methods=['GET', 'POST'])
 @login_required
 def index():
+    if current_user.role != 'admin':
+        flash('אין לך הרשאה לדף זה.', 'danger')
+        return redirect(url_for('main.dashboard'))
     from app.models import DailyUpload
 
     if request.method == 'POST':
