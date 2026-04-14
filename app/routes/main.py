@@ -2637,31 +2637,71 @@ def periodic_report_api():
         if active_ids:
             base_filters.append(SM.upload_id.in_(active_ids))
 
+    game_type_filter = request.args.get('game_type', '')
+
     if current_user.role == 'agent' and current_user.player_id:
         sa_id = current_user.player_id
         all_sa_ids = [sa_id] + [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
         base_filters.append(or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)))
 
-    players = SM.query.with_entities(
-        SM.player_id, sqlfunc.max(SM.nickname),
-        sqlfunc.max(SM.club), sqlfunc.sum(SM.pnl),
-        sqlfunc.sum(SM.rake), sqlfunc.sum(SM.hands),
-    ).filter(*base_filters).group_by(SM.player_id).all()
+    if game_type_filter:
+        # Filter by game type — use PlayerSession for P&L per game type
+        from app.models import PlayerSession
+        all_upload_ids = active_ids + arc_ids
+        sess_filters = [PlayerSession.game_type == game_type_filter]
+        if all_upload_ids:
+            sess_filters.append(PlayerSession.upload_id.in_(all_upload_ids))
 
-    player_ids = [p[0] for p in players]
-    xfer_adj = get_transfer_adjustments(player_ids)
+        # Get player_ids from the base SM query first (for permission filtering)
+        allowed_pids = [r[0] for r in SM.query.with_entities(SM.player_id).filter(*base_filters).distinct().all()]
+        if allowed_pids:
+            sess_filters.append(PlayerSession.player_id.in_(allowed_pids))
 
-    summary = []
-    tot_pnl = tot_rake = tot_hands = 0
-    for p in players:
-        pnl = round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2)
-        rake = round(float(p[4] or 0), 2)
-        hands = int(p[5] or 0)
-        summary.append({'name': p[1], 'id': p[0], 'club': p[2], 'pnl': pnl, 'rake': rake, 'hands': hands})
-        tot_pnl += pnl
-        tot_rake += rake
-        tot_hands += hands
-    summary.sort(key=lambda x: x['rake'], reverse=True)
+        players = db.session.query(
+            PlayerSession.player_id,
+            sqlfunc.sum(PlayerSession.pnl),
+        ).filter(*sess_filters).group_by(PlayerSession.player_id).all()
+
+        # Get nicknames/clubs from SM
+        nick_map = dict(SM.query.with_entities(SM.player_id, sqlfunc.max(SM.nickname)).filter(
+            SM.player_id.in_([p[0] for p in players])
+        ).group_by(SM.player_id).all())
+        club_map = dict(SM.query.with_entities(SM.player_id, sqlfunc.max(SM.club)).filter(
+            SM.player_id.in_([p[0] for p in players])
+        ).group_by(SM.player_id).all())
+
+        player_ids = [p[0] for p in players]
+        xfer_adj = get_transfer_adjustments(player_ids)
+
+        summary = []
+        tot_pnl = tot_rake = tot_hands = 0
+        for p in players:
+            pnl = round(float(p[1] or 0) + xfer_adj.get(p[0], 0), 2)
+            summary.append({'name': nick_map.get(p[0], p[0]), 'id': p[0],
+                            'club': club_map.get(p[0], ''), 'pnl': pnl, 'rake': 0, 'hands': 0})
+            tot_pnl += pnl
+        summary.sort(key=lambda x: x['pnl'])
+    else:
+        players = SM.query.with_entities(
+            SM.player_id, sqlfunc.max(SM.nickname),
+            sqlfunc.max(SM.club), sqlfunc.sum(SM.pnl),
+            sqlfunc.sum(SM.rake), sqlfunc.sum(SM.hands),
+        ).filter(*base_filters).group_by(SM.player_id).all()
+
+        player_ids = [p[0] for p in players]
+        xfer_adj = get_transfer_adjustments(player_ids)
+
+        summary = []
+        tot_pnl = tot_rake = tot_hands = 0
+        for p in players:
+            pnl = round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2)
+            rake = round(float(p[4] or 0), 2)
+            hands = int(p[5] or 0)
+            summary.append({'name': p[1], 'id': p[0], 'club': p[2], 'pnl': pnl, 'rake': rake, 'hands': hands})
+            tot_pnl += pnl
+            tot_rake += rake
+            tot_hands += hands
+        summary.sort(key=lambda x: x['rake'], reverse=True)
 
     # Transfers
     transfer_filters = [MoneyTransfer.created_at >= datetime.combine(fd, datetime.min.time()),
