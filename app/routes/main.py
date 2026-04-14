@@ -126,9 +126,9 @@ def dashboard():
             ).filter(*base_filters).group_by(StatsModel.player_id).all()
 
             # Nickname map
-            all_nicks = dict(DailyPlayerStats.query.with_entities(
-                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-            ).group_by(DailyPlayerStats.player_id).all())
+            all_nicks = dict(StatsModel.query.with_entities(
+                StatsModel.player_id, sqlfunc.max(StatsModel.nickname)
+            ).group_by(StatsModel.player_id).all())
 
             # Transfer adjustments
             from app.union_data import get_transfer_adjustments
@@ -308,15 +308,14 @@ def dashboard():
         child_sas = deduped
         all_sa_ids = list(known_ids) + child_sa_ids
 
-        # Get ALL players that ever belonged to this SA/Agent from CUMULATIVE DB
-        # Step 1: Find all player_ids that belong to this SA (from ANY upload)
-        my_player_ids_query = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.player_id
-        ).filter(
-            or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
-                DailyPlayerStats.agent_id.in_(all_sa_ids)),
-            DailyPlayerStats.role != 'Name Entry'
-        ).distinct()
+        # Get ALL players that ever belonged to this SA/Agent
+        # Step 1: Find all player_ids that belong to this SA
+        _pid_filters = [or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)), SM.role != 'Name Entry']
+        if use_archive and archive_period_id:
+            _pid_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+        elif upload_ids_filter:
+            _pid_filters.append(SM.upload_id.in_(upload_ids_filter))
+        my_player_ids_query = SM.query.with_entities(SM.player_id).filter(*_pid_filters).distinct()
         my_player_id_list = [r[0] for r in my_player_ids_query.all()]
 
         # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
@@ -658,9 +657,9 @@ def dashboard():
             cs['total_hands'] = cs_hands
 
         # Find agent nicknames from Excel + DB
-        all_nicks_db = dict(DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-        ).group_by(DailyPlayerStats.player_id).all())
+        all_nicks_db = dict(SM.query.with_entities(
+            SM.player_id, sqlfunc.max(SM.nickname)
+        ).group_by(SM.player_id).all())
         for ag_id in agents_map:
             if agents_map[ag_id]['nick'] == ag_id:
                 agents_map[ag_id]['nick'] = all_nicks_db.get(ag_id, ag_id)
@@ -745,25 +744,26 @@ def dashboard():
                 if not club_name:
                     continue
 
-                # Build ID → nickname map from cumulative DB (includes SA/Agent name entries)
-                all_nicknames = dict(DailyPlayerStats.query.with_entities(
-                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-                ).group_by(DailyPlayerStats.player_id).all())
+                # Build ID → nickname map from DB
+                all_nicknames = dict(SM.query.with_entities(
+                    SM.player_id, sqlfunc.max(SM.nickname)
+                ).group_by(SM.player_id).all())
 
-                # Get ALL players in this club from cumulative DB
-                club_filters = [DailyPlayerStats.club == club_name,
-                                DailyPlayerStats.role != 'Name Entry']
-                if upload_ids_filter:
-                    club_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
-                club_players_db = DailyPlayerStats.query.with_entities(
-                    DailyPlayerStats.player_id,
-                    sqlfunc.max(DailyPlayerStats.nickname),
-                    sqlfunc.max(DailyPlayerStats.sa_id),
-                    sqlfunc.max(DailyPlayerStats.agent_id),
-                    sqlfunc.sum(DailyPlayerStats.pnl),
-                    sqlfunc.sum(DailyPlayerStats.rake),
+                # Get ALL players in this club from DB
+                club_filters = [SM.club == club_name, SM.role != 'Name Entry']
+                if use_archive and archive_period_id:
+                    club_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                elif upload_ids_filter:
+                    club_filters.append(SM.upload_id.in_(upload_ids_filter))
+                club_players_db = SM.query.with_entities(
+                    SM.player_id,
+                    sqlfunc.max(SM.nickname),
+                    sqlfunc.max(SM.sa_id),
+                    sqlfunc.max(SM.agent_id),
+                    sqlfunc.sum(SM.pnl),
+                    sqlfunc.sum(SM.rake),
                 ).filter(*club_filters
-                ).group_by(DailyPlayerStats.player_id).all()
+                ).group_by(SM.player_id).all()
 
                 # Build SA structure from DB data
                 club_sas = {}
