@@ -347,7 +347,7 @@ function toggleRecord(btn, playerId) {
             data.sessions.forEach(function(s) {
                 var cls = s.pnl >= 0 ? 'rec-plus' : 'rec-minus';
                 var sign = s.pnl > 0 ? '+' : '';
-                html += '<tr><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + (s.date || '—') + '</td><td class="muted">' + s.game + '</td><td>' + s.table + '</td><td>' + s.blinds + '</td><td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
+                html += '<tr><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + escapeHtml(s.date || '—') + '</td><td class="muted">' + escapeHtml(s.game) + '</td><td>' + escapeHtml(s.table) + '</td><td>' + escapeHtml(s.blinds) + '</td><td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
             });
             var tc = data.total_pnl >= 0 ? 'rec-plus' : 'rec-minus';
             var ts = data.total_pnl > 0 ? '+' : '';
@@ -389,9 +389,9 @@ function filterDashboard(query) {
             shown.add(name);
             html += '<div onclick="jumpToCard(' + idx + ')" style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; cursor:pointer; border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background=\'#f0f3ff\'" onmouseout="this.style.background=\'\'">';
             html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
-            if (badgeText) html += '<span class="role-badge role-agent" style="font-size:0.65rem;">' + badgeText + '</span>';
-            html += '<strong>' + name + '</strong></div>';
-            if (rakeText) html += '<span class="muted" style="font-size:0.8rem;">' + rakeText + '</span>';
+            if (badgeText) html += '<span class="role-badge role-agent" style="font-size:0.65rem;">' + escapeHtml(badgeText) + '</span>';
+            html += '<strong>' + escapeHtml(name) + '</strong></div>';
+            if (rakeText) html += '<span class="muted" style="font-size:0.8rem;">' + escapeHtml(rakeText) + '</span>';
             html += '</div>';
         }
     });
@@ -406,10 +406,10 @@ function filterDashboard(query) {
                 playerHtml += '<div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; border-bottom:1px solid #f0f0f0;" onmouseover="this.style.background=\'#f8f9ff\'" onmouseout="this.style.background=\'\'">';
                 playerHtml += '<div style="display:flex; align-items:center; gap:0.5rem;">';
                 playerHtml += '<span class="role-badge role-player" style="font-size:0.6rem;">שחקן</span>';
-                playerHtml += '<span>' + p.n + '</span></div>';
+                playerHtml += '<span>' + escapeHtml(p.n) + '</span></div>';
                 playerHtml += '<div style="display:flex; gap:0.3rem;">';
-                playerHtml += '<a href="/union/player/' + p.id + '" style="font-size:0.7rem; color:#4361ee; text-decoration:none; font-weight:600;">רקורד</a>';
-                playerHtml += '<a href="/export/player/' + p.id + '" style="font-size:0.7rem; color:#217346; text-decoration:none; font-weight:700;">📥 XLS</a>';
+                playerHtml += '<a href="/union/player/' + encodeURIComponent(p.id) + '" style="font-size:0.7rem; color:#4361ee; text-decoration:none; font-weight:600;">רקורד</a>';
+                playerHtml += '<a href="/export/player/' + encodeURIComponent(p.id) + '" style="font-size:0.7rem; color:#217346; text-decoration:none; font-weight:700;">📥 XLS</a>';
                 playerHtml += '</div></div>';
             }
         });

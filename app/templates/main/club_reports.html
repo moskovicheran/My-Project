@@ -240,7 +240,7 @@ function loadReport() {
         filtered.forEach(function(p, i) {
             var cls = p.pnl >= 0 ? 'income' : 'expense';
             var sign = p.pnl > 0 ? '+' : '';
-            html += '<tr><td>' + (i+1) + '</td><td><strong>' + p.nickname + '</strong></td><td class="muted">' + p.club + '</td>';
+            html += '<tr><td>' + (i+1) + '</td><td><strong>' + escapeHtml(p.nickname) + '</strong></td><td class="muted">' + escapeHtml(p.club) + '</td>';
             html += '<td>' + p.hands.toLocaleString() + '</td><td class="amount income">' + p.rake.toFixed(2) + '</td>';
             html += '<td class="amount ' + cls + '">' + sign + p.pnl.toFixed(2) + '</td></tr>';
         });

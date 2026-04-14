@@ -303,7 +303,7 @@ function filterMembers() {
 
     var html = '';
     filtered.forEach(function(m) {
-        html += '<div class="autocomplete-item" onclick="selectMember(\'' + m.key.replace(/'/g, "\\'") + '\', \'' + m.label.replace(/'/g, "\\'") + '\')">' + m.label + '</div>';
+        html += '<div class="autocomplete-item" onclick="selectMember(\'' + escapeHtml(m.key).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(m.label).replace(/'/g, "&#39;") + '\')">' + escapeHtml(m.label) + '</div>';
     });
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
@@ -336,8 +336,8 @@ function acSearch(input, dropdownId, mode) {
 
     var html = '';
     filtered.forEach(function(m) {
-        html += '<div class="autocomplete-item" onclick="acSelect(\'' + dropdownId + '\', \'' + m.pid.replace(/'/g, "\\'") + '\', \'' + m.name.replace(/'/g, "\\'") + '\')">';
-        html += '<strong>' + m.name + '</strong> <span class="muted" style="font-size:0.8rem;">(' + m.pid + ') - ' + m.club + '</span>';
+        html += '<div class="autocomplete-item" onclick="acSelect(\'' + dropdownId + '\', \'' + escapeHtml(m.pid).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(m.name).replace(/'/g, "&#39;") + '\')">';
+        html += '<strong>' + escapeHtml(m.name) + '</strong> <span class="muted" style="font-size:0.8rem;">(' + escapeHtml(m.pid) + ') - ' + escapeHtml(m.club) + '</span>';
         html += '</div>';
     });
     dropdown.innerHTML = html;

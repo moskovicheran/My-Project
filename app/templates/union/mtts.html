@@ -115,7 +115,7 @@ function toggleMttPlayers(row, title) {
                 var cls = p.pnl > 0 ? 'winner' : (p.pnl < 0 ? 'loser' : '');
                 var sign = p.pnl > 0 ? '+' : '';
                 html += '<tr><td>' + (i+1) + '</td>';
-                html += '<td><a href="/union/player/' + p.player_id + '" class="player-link"><strong>' + p.nickname + '</strong></a></td>';
+                html += '<td><a href="/union/player/' + encodeURIComponent(p.player_id) + '" class="player-link"><strong>' + escapeHtml(p.nickname) + '</strong></a></td>';
                 html += '<td class="' + cls + '">' + sign + p.pnl.toFixed(2) + '</td></tr>';
             });
             html += '</table>';

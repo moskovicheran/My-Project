@@ -280,8 +280,8 @@ function filterPlayerOptions(query) {
     }
     var html = '';
     matches.slice(0, 20).forEach(function(m) {
-        html += '<div onclick="selectPlayer(\'' + m.pid + '\', \'' + m.nick + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
-        html += '<strong>' + m.nick + '</strong> <span style="color:#888; font-size:0.8rem;">(' + m.pid + ') - ' + m.club + '</span></div>';
+        html += '<div onclick="selectPlayer(\'' + escapeHtml(m.pid).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(m.nick).replace(/'/g, "&#39;") + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
+        html += '<strong>' + escapeHtml(m.nick) + '</strong> <span style="color:#888; font-size:0.8rem;">(' + escapeHtml(m.pid) + ') - ' + escapeHtml(m.club) + '</span></div>';
     });
     if (matches.length > 20) {
         html += '<div style="padding:0.4rem; color:#888; font-size:0.8rem; text-align:center;">+ עוד ' + (matches.length - 20) + '</div>';
@@ -310,8 +310,8 @@ function filterAgentOptions(query) {
     }
     var html = '';
     matches.slice(0, 20).forEach(function(a) {
-        html += '<div onclick="selectAgent(\'' + a.id + '\', \'' + a.nick + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
-        html += '<strong>' + a.nick + '</strong> <span style="color:#888; font-size:0.8rem;">(' + a.id + ') - ' + a.club + '</span></div>';
+        html += '<div onclick="selectAgent(\'' + escapeHtml(a.id).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(a.nick).replace(/'/g, "&#39;") + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
+        html += '<strong>' + escapeHtml(a.nick) + '</strong> <span style="color:#888; font-size:0.8rem;">(' + escapeHtml(a.id) + ') - ' + escapeHtml(a.club) + '</span></div>';
     });
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
@@ -337,8 +337,8 @@ function filterSubAgentOptions(query) {
     }
     var html = '';
     matches.slice(0, 20).forEach(function(a) {
-        html += '<div onclick="selectSubAgent(\'' + a.id + '\', \'' + a.nick + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
-        html += '<strong>' + a.nick + '</strong> <span style="color:#888; font-size:0.8rem;">(' + a.id + ') - ' + a.club + '</span></div>';
+        html += '<div onclick="selectSubAgent(\'' + escapeHtml(a.id).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(a.nick).replace(/'/g, "&#39;") + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
+        html += '<strong>' + escapeHtml(a.nick) + '</strong> <span style="color:#888; font-size:0.8rem;">(' + escapeHtml(a.id) + ') - ' + escapeHtml(a.club) + '</span></div>';
     });
     if (matches.length > 20) {
         html += '<div style="padding:0.4rem; color:#888; font-size:0.8rem; text-align:center;">+ עוד ' + (matches.length - 20) + '</div>';
@@ -375,8 +375,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var entityId = parts[2];
             var targetId = parts[3];
             var message = parts.slice(4).join(':');
-            alert.innerHTML = '<strong>' + message + '</strong> ' +
-                '<button class="btn btn-primary btn-sm" style="margin-right:0.5rem;" onclick="doTransfer(\'' + type + '\',\'' + entityId + '\',\'' + targetId + '\')">כן, העבר</button>' +
+            alert.innerHTML = '<strong>' + escapeHtml(message) + '</strong> ' +
+                '<button class="btn btn-primary btn-sm" style="margin-right:0.5rem;" onclick="doTransfer(\'' + escapeHtml(type) + '\',\'' + escapeHtml(entityId) + '\',\'' + escapeHtml(targetId) + '\')">כן, העבר</button>' +
                 '<button class="btn btn-outline btn-sm" onclick="this.parentElement.remove()">ביטול</button>';
         }
     });
@@ -389,9 +389,9 @@ function doTransfer(type, entityId, targetId) {
     var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var csrfInput = '<input name="csrf_token" value="' + csrfToken + '">';
     if (type === 'SA') {
-        form.innerHTML = csrfInput + '<input name="action" value="add_hierarchy"><input name="child_sa_id" value="' + entityId + '"><input name="parent_sa_id" value="' + targetId + '"><input name="force" value="1">';
+        form.innerHTML = csrfInput + '<input name="action" value="add_hierarchy"><input name="child_sa_id" value="' + escapeHtml(entityId) + '"><input name="parent_sa_id" value="' + escapeHtml(targetId) + '"><input name="force" value="1">';
     } else {
-        form.innerHTML = csrfInput + '<input name="action" value="set_club"><input name="club_id" value="' + entityId + '"><input name="sa_id" value="' + targetId + '"><input name="force" value="1">';
+        form.innerHTML = csrfInput + '<input name="action" value="set_club"><input name="club_id" value="' + escapeHtml(entityId) + '"><input name="sa_id" value="' + escapeHtml(targetId) + '"><input name="force" value="1">';
     }
     document.body.appendChild(form);
     form.submit();
@@ -478,7 +478,7 @@ function filterSA(type) {
     if (!filtered.length) { dropdown.style.display = 'none'; return; }
     var html = '';
     filtered.forEach(function(s) {
-        html += '<div class="sa-item" onclick="selectSA(\'' + type + '\',\'' + s.id + '\',\'' + s.label.replace(/'/g, "\\'") + '\')">' + s.label + '</div>';
+        html += '<div class="sa-item" onclick="selectSA(\'' + type + '\',\'' + escapeHtml(s.id) + '\',\'' + escapeHtml(s.label).replace(/'/g, "&#39;") + '\')">' + escapeHtml(s.label) + '</div>';
     });
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
@@ -501,7 +501,7 @@ function filterClubSA() {
     if (!filtered.length) { dropdown.style.display = 'none'; return; }
     var html = '';
     filtered.forEach(function(s) {
-        html += '<div class="sa-item" onclick="selectClubSA(\'' + s.id + '\',\'' + s.label.replace(/'/g, "\\'") + '\')">' + s.label + '</div>';
+        html += '<div class="sa-item" onclick="selectClubSA(\'' + escapeHtml(s.id) + '\',\'' + escapeHtml(s.label).replace(/'/g, "&#39;") + '\')">' + escapeHtml(s.label) + '</div>';
     });
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
