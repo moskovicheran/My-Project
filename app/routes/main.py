@@ -8,6 +8,35 @@ from app.models import db, Transaction
 main_bp = Blueprint('main', __name__)
 
 INCOME_CATEGORIES = ['משכורת', 'פרילנס', 'השקעות', 'מתנה', 'אחר']
+
+
+def _resolve_date_uploads(selected_dates):
+    """Resolve selected date strings to upload IDs, checking both active and archived data.
+    Returns (active_upload_ids, archive_period_id, archive_upload_ids, valid_dates)"""
+    from app.models import DailyUpload, ArchivedUpload
+    from datetime import datetime as dt
+    active_upload_ids = []
+    archive_period_id = None
+    archive_upload_ids = []
+    valid_dates = []
+    for ds in selected_dates:
+        try:
+            sel = dt.strptime(ds, '%Y-%m-%d').date()
+            # Check active first
+            upload = DailyUpload.query.filter_by(upload_date=sel).first()
+            if upload:
+                active_upload_ids.append(upload.id)
+                valid_dates.append(ds)
+            else:
+                # Check archive
+                archived = ArchivedUpload.query.filter(ArchivedUpload.upload_date == sel).first()
+                if archived:
+                    archive_period_id = archived.period_id
+                    archive_upload_ids.append(archived.upload_id)
+                    valid_dates.append(ds)
+        except ValueError:
+            pass
+    return active_upload_ids, archive_period_id, archive_upload_ids, valid_dates
 EXPENSE_CATEGORIES = ['מזון', 'דיור', 'תחבורה', 'בריאות', 'בידור', 'קניות', 'חינוך', 'חשבונות', 'אחר']
 
 
@@ -65,32 +94,36 @@ def dashboard():
         # Date filter — supports multiple dates: ?dates=2026-03-30,2026-03-31
         selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
         upload_ids_filter = []
+        use_archive = False
+        archive_period_id = None
+        archive_upload_ids = []
         if selected_dates:
-            valid_dates = []
-            for ds in selected_dates:
-                try:
-                    sel = dt.strptime(ds, '%Y-%m-%d').date()
-                    upload = DailyUpload.query.filter_by(upload_date=sel).first()
-                    if upload:
-                        upload_ids_filter.append(upload.id)
-                        valid_dates.append(ds)
-                except ValueError:
-                    pass
-            selected_dates = valid_dates
+            upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+            use_archive = bool(archive_upload_ids)
 
         if club_name:
-            # Base query
-            base_filters = [DailyPlayerStats.club == club_name,
-                            DailyPlayerStats.role != 'Name Entry']
-            if upload_ids_filter:
-                base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+            if use_archive and archive_period_id:
+                # Query from archived data
+                from app.models import ArchivedPlayerStats
+                base_filters = [ArchivedPlayerStats.club == club_name,
+                                ArchivedPlayerStats.role != 'Name Entry',
+                                ArchivedPlayerStats.period_id == archive_period_id,
+                                ArchivedPlayerStats.upload_id.in_(archive_upload_ids)]
+                StatsModel = ArchivedPlayerStats
+            else:
+                # Base query (active data)
+                base_filters = [DailyPlayerStats.club == club_name,
+                                DailyPlayerStats.role != 'Name Entry']
+                if upload_ids_filter:
+                    base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+                StatsModel = DailyPlayerStats
 
-            club_players_db = DailyPlayerStats.query.with_entities(
-                DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-                sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
-                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-                sqlfunc.sum(DailyPlayerStats.hands),
-            ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
+            club_players_db = StatsModel.query.with_entities(
+                StatsModel.player_id, sqlfunc.max(StatsModel.nickname),
+                sqlfunc.max(StatsModel.sa_id), sqlfunc.max(StatsModel.agent_id),
+                sqlfunc.sum(StatsModel.pnl), sqlfunc.sum(StatsModel.rake),
+                sqlfunc.sum(StatsModel.hands),
+            ).filter(*base_filters).group_by(StatsModel.player_id).all()
 
             # Nickname map
             all_nicks = dict(DailyPlayerStats.query.with_entities(
@@ -203,18 +236,12 @@ def dashboard():
         # Date filter
         selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
         upload_ids_filter = []
+        use_archive = False
+        archive_period_id = None
+        archive_upload_ids = []
         if selected_dates:
-            valid_dates = []
-            for ds in selected_dates:
-                try:
-                    sel = dt.strptime(ds, '%Y-%m-%d').date()
-                    upload = DailyUpload.query.filter_by(upload_date=sel).first()
-                    if upload:
-                        upload_ids_filter.append(upload.id)
-                        valid_dates.append(ds)
-                except ValueError:
-                    pass
-            selected_dates = valid_dates
+            upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+            use_archive = bool(archive_upload_ids)
 
         # Resolve the actual SA/Agent ID for this user
         from sqlalchemy import or_
@@ -293,24 +320,35 @@ def dashboard():
         my_player_id_list = [r[0] for r in my_player_ids_query.all()]
 
         # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
-        base_agent_filters = [
-            DailyPlayerStats.player_id.in_(my_player_id_list),
-            DailyPlayerStats.role != 'Name Entry'
-        ]
-        if upload_ids_filter:
-            base_agent_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+        if use_archive and archive_period_id:
+            from app.models import ArchivedPlayerStats
+            SM = ArchivedPlayerStats
+            base_agent_filters = [
+                SM.player_id.in_(my_player_id_list),
+                SM.role != 'Name Entry',
+                SM.period_id == archive_period_id,
+                SM.upload_id.in_(archive_upload_ids),
+            ]
+        else:
+            SM = DailyPlayerStats
+            base_agent_filters = [
+                SM.player_id.in_(my_player_id_list),
+                SM.role != 'Name Entry'
+            ]
+            if upload_ids_filter:
+                base_agent_filters.append(SM.upload_id.in_(upload_ids_filter))
 
-        my_players_db = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.player_id,
-            sqlfunc.max(DailyPlayerStats.nickname),
-            sqlfunc.max(DailyPlayerStats.club),
-            sqlfunc.max(DailyPlayerStats.agent_id),
-            sqlfunc.max(DailyPlayerStats.role),
-            sqlfunc.sum(DailyPlayerStats.pnl),
-            sqlfunc.sum(DailyPlayerStats.rake),
-            sqlfunc.sum(DailyPlayerStats.hands),
+        my_players_db = SM.query.with_entities(
+            SM.player_id,
+            sqlfunc.max(SM.nickname),
+            sqlfunc.max(SM.club),
+            sqlfunc.max(SM.agent_id),
+            sqlfunc.max(SM.role),
+            sqlfunc.sum(SM.pnl),
+            sqlfunc.sum(SM.rake),
+            sqlfunc.sum(SM.hands),
         ).filter(*base_agent_filters
-        ).group_by(DailyPlayerStats.player_id).all()
+        ).group_by(SM.player_id).all()
 
         # Build agent structure from DB data
         # First, get actual sa_id per player (for correct direct player filtering)
