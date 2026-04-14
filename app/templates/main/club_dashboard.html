@@ -191,7 +191,7 @@ function renderDpCalendar() {
         if (isSel) cls += ' selected';
         else if (inRange) cls += ' in-range';
         if (!hasData) cls += ' empty';
-        var onclick = hasData ? ' onclick="dpToggle(\'' + ds + '\')"' : '';
+        var onclick = hasData ? ' onclick="event.stopPropagation(); dpToggle(\'' + ds + '\')"' : '';
         html += '<div class="' + cls + '"' + onclick + '>' + d + '</div>';
     }
     grid.innerHTML = html;
