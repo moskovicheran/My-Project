@@ -746,7 +746,6 @@ function toggleRecord(btn, playerId) {
                 html += '<tr><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + escapeHtml(s.date || '—') + '</td>';
                 html += '<td class="muted">' + escapeHtml(s.game) + '</td>';
                 html += '<td>' + escapeHtml(s.table) + '</td>';
-                html += '<td>' + escapeHtml(s.blinds) + '</td>';
                 html += '<td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
             });
             var totalCls = data.total_pnl >= 0 ? 'rec-plus' : 'rec-minus';

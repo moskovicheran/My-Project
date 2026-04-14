@@ -194,7 +194,6 @@ function switchGameView(btn, view) {
                 <th>תאריך</th>
                 <th>Table</th>
                 <th>Game</th>
-                <th>Blinds</th>
                 <th>רווח/הפסד</th>
             </tr>
         </thead>
@@ -204,7 +203,6 @@ function switchGameView(btn, view) {
                 <td class="muted" style="font-size:0.82rem; white-space:nowrap;">{{ s.date or '—' }}</td>
                 <td><strong>{{ s.table_name }}</strong></td>
                 <td>{% if s.is_transfer %}<span class="badge badge-transfer">💸 העברה</span>{% else %}<span class="badge badge-game">{{ s.game_type }}</span>{% endif %}</td>
-                <td>{{ s.blinds }}</td>
                 <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
                     {% if s.pnl > 0 %}+{% endif %}{{ s.pnl|comma }}
                 </td>
@@ -213,7 +211,7 @@ function switchGameView(btn, view) {
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="4"><strong>סה"כ</strong></td>
+                <td colspan="3"><strong>סה"כ</strong></td>
                 <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
                     <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
                 </td>

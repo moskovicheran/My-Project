@@ -347,11 +347,11 @@ function toggleRecord(btn, playerId) {
             data.sessions.forEach(function(s) {
                 var cls = s.pnl >= 0 ? 'rec-plus' : 'rec-minus';
                 var sign = s.pnl > 0 ? '+' : '';
-                html += '<tr><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + escapeHtml(s.date || '—') + '</td><td class="muted">' + escapeHtml(s.game) + '</td><td>' + escapeHtml(s.table) + '</td><td>' + escapeHtml(s.blinds) + '</td><td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
+                html += '<tr><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + escapeHtml(s.date || '—') + '</td><td class="muted">' + escapeHtml(s.game) + '</td><td>' + escapeHtml(s.table) + '</td><td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
             });
             var tc = data.total_pnl >= 0 ? 'rec-plus' : 'rec-minus';
             var ts = data.total_pnl > 0 ? '+' : '';
-            html += '<tr><td colspan="4" class="record-total">סה"כ</td><td class="record-total ' + tc + '">' + ts + data.total_pnl.toFixed(2) + '</td></tr></table>';
+            html += '<tr><td colspan="3" class="record-total">סה"כ</td><td class="record-total ' + tc + '">' + ts + data.total_pnl.toFixed(2) + '</td></tr></table>';
             container.innerHTML = html;
         });
 }
