@@ -822,19 +822,33 @@ function dpChangeMonth(dir) {
 }
 function dpToggle(ds) {
     var idx = _selectedDates.indexOf(ds);
-    if (idx >= 0) { _selectedDates.splice(idx, 1); } else { _selectedDates.push(ds); }
+    if (idx >= 0) { _selectedDates.splice(idx, 1); }
+    else {
+        if (_selectedDates.length >= 2) { _selectedDates = []; }
+        _selectedDates.push(ds);
+    }
     _selectedDates.sort();
     renderDpCalendar();
 }
 function dpClear() { _selectedDates = []; renderDpCalendar(); }
+function _getDateRange() {
+    if (_selectedDates.length <= 1) return _selectedDates;
+    // Return all available dates between the two selected endpoints
+    var from = _selectedDates[0], to = _selectedDates[_selectedDates.length - 1];
+    return _availDates.filter(function(d) { return d >= from && d <= to; }).sort();
+}
 function dpApply() {
-    if (_selectedDates.length === 0) { window.location.href = '{{ url_for("main.dashboard") }}'; }
-    else { window.location.href = '{{ url_for("main.dashboard") }}?dates=' + _selectedDates.join(','); }
+    var dates = _getDateRange();
+    if (dates.length === 0) { window.location.href = '{{ url_for("main.dashboard") }}'; }
+    else { window.location.href = '{{ url_for("main.dashboard") }}?dates=' + dates.join(','); }
 }
 function updateDpInfo() {
     var el = document.getElementById('dpSelCount');
     if (_selectedDates.length === 0) { el.textContent = 'כל התקופות'; }
-    else { el.textContent = _selectedDates.length + ' ימים נבחרו'; }
+    else {
+        var range = _getDateRange();
+        el.textContent = range.length + ' ימים נבחרו';
+    }
 }
 </script>
 
