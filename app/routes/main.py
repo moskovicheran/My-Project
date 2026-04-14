@@ -1229,6 +1229,28 @@ def export_player(player_id):
     session_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
                      'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
 
+    # Add transfer rows to the record
+    from app.models import MoneyTransfer
+    from datetime import timedelta
+    transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
+    transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
+    for t in transfers_out:
+        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
+        session_rows.append({
+            'משחק': f'העברה ל-{t.to_name}',
+            'סוג': 'העברה',
+            'בליינדס': t.description or '',
+            'P&L': round(-t.amount, 2),
+        })
+    for t in transfers_in:
+        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
+        session_rows.append({
+            'משחק': f'קיבלת מ-{t.from_name}',
+            'סוג': 'העברה',
+            'בליינדס': t.description or '',
+            'P&L': round(t.amount, 2),
+        })
+
     summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
                 'P&L': cs['pnl'], 'Hands': cs['hands']}]
 
