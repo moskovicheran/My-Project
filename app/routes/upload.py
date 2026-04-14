@@ -248,7 +248,9 @@ def index():
             player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
         except Exception as e:
             _db.session.rollback()
-            flash(f'שגיאה בפרסינג: {str(e)[:150]}', 'danger')
+            import logging
+            logging.getLogger(__name__).error(f'Parse error: {e}')
+            flash('שגיאה בפרסינג הקובץ. נא לוודא שהקובץ תקין.', 'danger')
             return redirect(url_for('upload.index'))
 
         # Step 2: Save Excel as active file in DB (for structure reading)
@@ -320,7 +322,9 @@ def preview():
                 'preview': preview_rows,
             })
     except Exception as e:
-        flash(f'שגיאה בקריאת הקובץ: {e}', 'danger')
+        import logging
+        logging.getLogger(__name__).error(f'File read error: {e}')
+        flash('שגיאה בקריאת הקובץ.', 'danger')
         return redirect(url_for('upload.index'))
 
     return render_template('upload/preview.html',
@@ -412,7 +416,9 @@ def reset_all():
             ), {'pid': pid})
     except Exception as e:
         db.session.rollback()
-        flash(f'שגיאה בארכוב הנתונים: {e}', 'danger')
+        import logging
+        logging.getLogger(__name__).error(f'Archive error: {e}')
+        flash('שגיאה בארכוב הנתונים.', 'danger')
         return redirect(url_for('upload.index'))
 
     # Delete active data

@@ -7,6 +7,7 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">שיוך Super Agent → Super Agent</h2>
     <form method="POST" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add_hierarchy">
         <div style="flex:1; min-width:200px; position:relative;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">SA ראשי (אב)</label>
@@ -39,6 +40,7 @@
                 <td><strong>{{ link.child_nick }}</strong> <span class="muted small">{{ link.child_id }}</span></td>
                 <td>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete_hierarchy">
                         <input type="hidden" name="link_id" value="{{ link.id }}">
                         <button type="submit" class="btn btn-danger btn-sm">מחק</button>
@@ -57,6 +59,7 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">שיוך Super Agent → מועדון</h2>
     <form method="POST" style="display:flex; align-items:flex-end; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="set_club">
         <div style="flex:1; min-width:200px; position:relative;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Super Agent</label>
@@ -89,6 +92,7 @@
                 <td><strong>{{ cfg.managed_club_name }}</strong></td>
                 <td>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete_config">
                         <input type="hidden" name="config_id" value="{{ cfg.id }}">
                         <button type="submit" class="btn btn-danger btn-sm">מחק</button>
@@ -107,6 +111,7 @@
     <h2 class="section-title">הגדרת רייק — מועדונים / סוכנים / שחקנים</h2>
 
     <form method="POST" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add_rake_config">
 
         <div style="min-width:120px;">
@@ -185,6 +190,7 @@
                 <td>
                     <span id="rake-val-{{ rc.id }}"><strong>{{ rc.rake_percent }}%</strong></span>
                     <form method="POST" id="rake-edit-{{ rc.id }}" style="display:none; gap:0.3rem; align-items:center;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="update_rake_config">
                         <input type="hidden" name="rc_id" value="{{ rc.id }}">
                         <input type="number" name="new_percent" value="{{ rc.rake_percent }}" step="0.1" min="0" max="100" style="width:70px; padding:0.25rem 0.4rem; border:1px solid #4361ee; border-radius:6px; font-size:0.85rem; font-family:inherit;">
@@ -195,6 +201,7 @@
                 <td style="white-space:nowrap;">
                     <button type="button" class="btn btn-outline btn-sm" onclick="toggleRakeEdit({{ rc.id }})" style="font-size:0.75rem;">✏️ ערוך</button>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק הגדרת רייק?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete_rake_config">
                         <input type="hidden" name="rc_id" value="{{ rc.id }}">
                         <button type="submit" class="btn btn-danger btn-sm">מחק</button>
@@ -379,10 +386,12 @@ function doTransfer(type, entityId, targetId) {
     var form = document.createElement('form');
     form.method = 'POST';
     form.style.display = 'none';
+    var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    var csrfInput = '<input name="csrf_token" value="' + csrfToken + '">';
     if (type === 'SA') {
-        form.innerHTML = '<input name="action" value="add_hierarchy"><input name="child_sa_id" value="' + entityId + '"><input name="parent_sa_id" value="' + targetId + '"><input name="force" value="1">';
+        form.innerHTML = csrfInput + '<input name="action" value="add_hierarchy"><input name="child_sa_id" value="' + entityId + '"><input name="parent_sa_id" value="' + targetId + '"><input name="force" value="1">';
     } else {
-        form.innerHTML = '<input name="action" value="set_club"><input name="club_id" value="' + entityId + '"><input name="sa_id" value="' + targetId + '"><input name="force" value="1">';
+        form.innerHTML = csrfInput + '<input name="action" value="set_club"><input name="club_id" value="' + entityId + '"><input name="sa_id" value="' + targetId + '"><input name="force" value="1">';
     }
     document.body.appendChild(form);
     form.submit();

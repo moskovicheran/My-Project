@@ -9,6 +9,7 @@
 
 <div class="form-card">
     <form method="POST" action="{{ url_for('main.add_transaction') }}" id="txForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="form-group">
             <label>סוג עסקה</label>
             <div class="type-toggle">

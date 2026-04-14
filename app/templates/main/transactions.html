@@ -52,6 +52,7 @@
             <td>
                 <form method="POST" action="{{ url_for('main.delete_transaction', tx_id=tx.id) }}"
                       onsubmit="return confirm('למחוק עסקה זו?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-danger btn-sm">מחק</button>
                 </form>
             </td>

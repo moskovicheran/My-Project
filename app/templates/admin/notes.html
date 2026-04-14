@@ -5,6 +5,7 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">הוסף הערה</h2>
     <form method="POST" style="display:flex; gap:0.8rem; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add">
         <div style="flex:1;">
             <textarea name="content" required rows="2" placeholder="כתוב הערה..."
@@ -26,6 +27,7 @@
             <div class="muted small" style="margin-top:0.3rem;">{{ note.user.username }} — {{ note.created_at.strftime('%d/%m/%Y %H:%M') }}</div>
         </div>
         <form method="POST" style="flex-shrink:0; margin-right:1rem;" onsubmit="return confirm('למחוק הערה?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="note_id" value="{{ note.id }}">
             <button type="submit" class="btn btn-danger btn-sm">מחק</button>

@@ -852,7 +852,9 @@ def expenses():
                     flash('הוצאה וכל החיובים שלה נמחקו.', 'success')
         except Exception as e:
             db.session.rollback()
-            flash(f'שגיאה: {str(e)[:100]}', 'danger')
+            import logging
+            logging.getLogger(__name__).error(f'Expense error: {e}')
+            flash('שגיאה בביצוע הפעולה.', 'danger')
 
         return redirect(url_for('admin.expenses'))
 

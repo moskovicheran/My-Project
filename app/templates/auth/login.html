@@ -8,6 +8,7 @@
         <h2 class="auth-subtitle">התחברות</h2>
 
         <form method="POST" action="{{ url_for('auth.login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="form-group">
                 <label for="email">שם משתמש או אימייל</label>
                 <input type="text" id="email" name="email" required placeholder="שם משתמש">

@@ -7,6 +7,7 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">הוסף הוצאה</h2>
     <form method="POST" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add">
 
         <div style="flex:2; min-width:200px;">
@@ -62,11 +63,13 @@
                 <td>
                     {% if not exp.charged %}
                     <form method="POST" style="display:inline;" onsubmit="return confirm('לחייב את כל הסוכנים?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="charge">
                         <input type="hidden" name="expense_id" value="{{ exp.id }}">
                         <button type="submit" class="btn btn-primary btn-sm">חייב</button>
                     </form>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="expense_id" value="{{ exp.id }}">
                         <button type="submit" class="btn btn-danger btn-sm">מחק</button>
@@ -74,6 +77,7 @@
                     {% else %}
                     <span class="muted small">{{ exp.charges|length }} חויבו</span>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק הוצאה שכבר חויבה? החיובים יימחקו גם.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="force_delete">
                         <input type="hidden" name="expense_id" value="{{ exp.id }}">
                         <button type="submit" class="btn btn-outline btn-sm" style="color:#ef233c; font-size:0.7rem;">🗑</button>

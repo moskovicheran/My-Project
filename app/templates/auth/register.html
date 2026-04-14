@@ -8,6 +8,7 @@
         <h2 class="auth-subtitle">הרשמה</h2>
 
         <form method="POST" action="{{ url_for('auth.register') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="form-group">
                 <label for="username">שם משתמש</label>
                 <input type="text" id="username" name="username" required placeholder="שם משתמש" minlength="3">

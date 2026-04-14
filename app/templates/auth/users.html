@@ -21,6 +21,7 @@
 
     {# ── Member form ── #}
     <form method="POST" id="form-member" style="display:block;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add">
         <input type="hidden" name="user_type" value="member">
         <input type="hidden" name="lookup_mode" id="memberLookupMode" value="list">
@@ -89,6 +90,7 @@
 
     {# ── Club form ── #}
     <form method="POST" id="form-club" style="display:none;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add">
         <input type="hidden" name="user_type" value="club">
         <input type="hidden" name="lookup_mode" id="clubLookupMode" value="list">
@@ -178,6 +180,7 @@
                         <span class="muted small">(אתה)</span>
                     {% else %}
                     <form method="POST" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="update_role">
                         <input type="hidden" name="user_id" value="{{ user.id }}">
                         <select name="role" onchange="this.form.submit()"
@@ -196,6 +199,7 @@
                     {% if user.id != current_user.id %}
                     <button type="button" class="btn btn-outline btn-sm" onclick="togglePasswordForm({{ user.id }})" style="font-size:0.75rem;">🔑 סיסמה</button>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק את {{ user.username }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="user_id" value="{{ user.id }}">
                         <button type="submit" class="btn btn-danger btn-sm">מחק</button>
@@ -207,6 +211,7 @@
             <tr id="pw-row-{{ user.id }}" style="display:none;">
                 <td colspan="5" style="background:#f8f9ff; padding:0.5rem 1rem;">
                     <form method="POST" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="change_password">
                         <input type="hidden" name="user_id" value="{{ user.id }}">
                         <span class="muted" style="font-size:0.85rem;">סיסמה חדשה ל-<strong>{{ user.username }}</strong>:</span>

@@ -90,7 +90,9 @@ def login():
             except Exception:
                 db.session.rollback()
             next_page = request.args.get('next')
-            return redirect(next_page or url_for('main.dashboard'))
+            if not next_page or not next_page.startswith('/') or next_page.startswith('//'):
+                next_page = url_for('main.dashboard')
+            return redirect(next_page)
 
     return render_template('auth/login.html')
 
@@ -178,7 +180,9 @@ def users():
                     flash(f'משתמש {username} ({role_name}) נוצר בהצלחה.', 'success')
                 except Exception as e:
                     db.session.rollback()
-                    flash(f'שגיאה ביצירת משתמש: {str(e)[:100]}', 'danger')
+                    import logging
+                    logging.getLogger(__name__).error(f'User creation error: {e}')
+                    flash('שגיאה ביצירת משתמש.', 'danger')
 
         elif action == 'delete':
             user_id = request.form.get('user_id')

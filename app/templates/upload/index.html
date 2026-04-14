@@ -8,6 +8,7 @@
 
 <div class="upload-container">
     <form method="POST" action="{{ url_for('upload.index') }}" enctype="multipart/form-data" id="uploadForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="drop-zone" id="dropZone">
             <div class="drop-icon">📂</div>
             <p class="drop-text">גרור קובץ לכאן או לחץ לבחירה</p>
@@ -65,9 +66,11 @@
 <div class="section" style="margin-top:1.5rem; text-align:center; padding:1.5rem;">
     <p style="color:#666; margin-bottom:0.8rem;">איפוס הקובץ הפעיל — הנתונים ההיסטוריים נשמרים (עד 90 יום אחורה)</p>
     <form method="POST" action="{{ url_for('upload.reset') }}" onsubmit="return confirm('האם לאפס את הקובץ הפעיל? נתוני שחקנים היסטוריים יישמרו.');" style="display:inline-block;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <button type="submit" class="btn btn-danger">איפוס קובץ פעיל</button>
     </form>
     <form method="POST" action="{{ url_for('upload.reset_all') }}" onsubmit="return confirm('שים לב: פעולה זו תאפס את כל נתוני המשחקים (העלאות, סטטיסטיקות, סשנים וטורנירים).\\nהנתונים יישמרו בארכיב לפני המחיקה.\\nהגדרות המערכת (משתמשים, רייק, סוכנים, מועדונים) לא יימחקו.\\nהאם להמשיך?');" style="display:inline-block; margin-right:0.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <button type="submit" class="btn btn-outline btn-sm" style="color:#ef233c; border-color:#ef233c;">איפוס מלא</button>
     </form>
 </div>

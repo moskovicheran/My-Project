@@ -21,6 +21,7 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">הוסף שיוך חדש</h2>
     <form method="POST" style="display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="action" value="add">
 
         <div style="flex:1; min-width:200px;">
@@ -81,6 +82,7 @@
                 </td>
                 <td>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך זה?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="link_id" value="{{ link.id }}">
                         <button type="submit" class="btn btn-danger btn-sm">מחק</button>
