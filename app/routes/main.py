@@ -308,6 +308,13 @@ def dashboard():
         child_sas = deduped
         all_sa_ids = list(known_ids) + child_sa_ids
 
+        # Determine which stats model to use (active or archived)
+        if use_archive and archive_period_id:
+            from app.models import ArchivedPlayerStats
+            SM = ArchivedPlayerStats
+        else:
+            SM = DailyPlayerStats
+
         # Get ALL players that ever belonged to this SA/Agent
         # Step 1: Find all player_ids that belong to this SA
         _pid_filters = [or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)), SM.role != 'Name Entry']
@@ -319,21 +326,9 @@ def dashboard():
         my_player_id_list = [r[0] for r in my_player_ids_query.all()]
 
         # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
+        base_agent_filters = [SM.player_id.in_(my_player_id_list), SM.role != 'Name Entry']
         if use_archive and archive_period_id:
-            from app.models import ArchivedPlayerStats
-            SM = ArchivedPlayerStats
-            base_agent_filters = [
-                SM.player_id.in_(my_player_id_list),
-                SM.role != 'Name Entry',
-                SM.period_id == archive_period_id,
-                SM.upload_id.in_(archive_upload_ids),
-            ]
-        else:
-            SM = DailyPlayerStats
-            base_agent_filters = [
-                SM.player_id.in_(my_player_id_list),
-                SM.role != 'Name Entry'
-            ]
+            base_agent_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
             if upload_ids_filter:
                 base_agent_filters.append(SM.upload_id.in_(upload_ids_filter))
 
