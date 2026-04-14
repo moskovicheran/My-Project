@@ -32,7 +32,7 @@ def _resolve_date_uploads(selected_dates):
                 archived = ArchivedUpload.query.filter(ArchivedUpload.upload_date == sel).first()
                 if archived:
                     archive_period_id = archived.period_id
-                    archive_upload_ids.append(archived.upload_id)
+                    archive_upload_ids.append(archived.original_id)
                     valid_dates.append(ds)
         except ValueError:
             pass
