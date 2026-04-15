@@ -884,32 +884,75 @@ def dashboard():
             from app.union_data import get_transfer_adjustments
             xfer_adj = get_transfer_adjustments([player_id])
             cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
-        from app.models import DailyUpload, DailyPlayerStats
-        # Active sessions only (resets per upload cycle — fresh count after admin reset)
-        sessions = (PlayerSession.query
-                    .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
-                    .add_columns(DailyUpload.upload_date)
-                    .filter(PlayerSession.player_id == player_id)
-                    .order_by(DailyUpload.upload_date.asc())
+        from app.models import (DailyUpload, DailyPlayerStats,
+                                ArchivedPlayerSession, ArchivedUpload,
+                                ArchivedPlayerStats)
+        from datetime import date, timedelta
+        archive_cutoff = date.today() - timedelta(days=90)
+
+        # Active sessions (since last reset — fresh count drives default stats)
+        active_rows = (PlayerSession.query
+                       .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                       .add_columns(DailyUpload.upload_date)
+                       .filter(PlayerSession.player_id == player_id)
+                       .order_by(DailyUpload.upload_date.asc())
+                       .all())
+        active_sessions = [{'table_name': s.table_name, 'game_type': s.game_type,
+                            'blinds': s.blinds or '', 'pnl': round(s.pnl, 2),
+                            'date': d.strftime('%Y-%m-%d') if d else '',
+                            'source': 'active'}
+                           for s, d in active_rows]
+        active_dates = sorted({s['date'] for s in active_sessions if s['date']})
+
+        # Archived sessions (last 90 days) — available for calendar filtering, not in default stats
+        arc_rows = (ArchivedPlayerSession.query
+                    .join(ArchivedUpload,
+                          db.and_(ArchivedPlayerSession.upload_id == ArchivedUpload.original_id,
+                                  ArchivedPlayerSession.period_id == ArchivedUpload.period_id))
+                    .add_columns(ArchivedUpload.upload_date)
+                    .filter(ArchivedPlayerSession.player_id == player_id,
+                            ArchivedUpload.upload_date >= archive_cutoff)
+                    .order_by(ArchivedUpload.upload_date.asc())
                     .all())
-        session_list = [{'table_name': s.table_name, 'game_type': s.game_type,
-                         'blinds': s.blinds or '', 'pnl': round(s.pnl, 2),
-                         'date': d.strftime('%Y-%m-%d') if d else ''}
-                        for s, d in sessions]
+        archived_sessions = [{'table_name': s.table_name, 'game_type': s.game_type,
+                              'blinds': s.blinds or '', 'pnl': round(s.pnl, 2),
+                              'date': d.strftime('%Y-%m-%d') if d else '',
+                              'source': 'archived'}
+                             for s, d in arc_rows
+                             # skip archived dates that also exist in active (avoid double-count after re-upload)
+                             if not d or d.strftime('%Y-%m-%d') not in set(active_dates)]
+
+        session_list = active_sessions + archived_sessions
         session_list.sort(key=lambda x: x.get('date', ''), reverse=True)
 
         # Per-date stats (hands, rake) — needed for calendar filtering of top cards
-        daily_rows = (DailyPlayerStats.query
-                      .join(DailyUpload, DailyPlayerStats.upload_id == DailyUpload.id)
-                      .add_columns(DailyUpload.upload_date)
-                      .filter(DailyPlayerStats.player_id == player_id)
-                      .all())
+        active_daily = (DailyPlayerStats.query
+                        .join(DailyUpload, DailyPlayerStats.upload_id == DailyUpload.id)
+                        .add_columns(DailyUpload.upload_date)
+                        .filter(DailyPlayerStats.player_id == player_id)
+                        .all())
         daily_stats_map = {}
-        for ds, d in daily_rows:
+        for ds, d in active_daily:
             key = d.strftime('%Y-%m-%d') if d else ''
             if not key:
                 continue
-            cur = daily_stats_map.setdefault(key, {'hands': 0, 'rake': 0})
+            cur = daily_stats_map.setdefault(key, {'hands': 0, 'rake': 0, 'source': 'active'})
+            cur['hands'] += ds.hands or 0
+            cur['rake'] += ds.rake or 0
+
+        arc_daily = (ArchivedPlayerStats.query
+                     .join(ArchivedUpload,
+                           db.and_(ArchivedPlayerStats.upload_id == ArchivedUpload.original_id,
+                                   ArchivedPlayerStats.period_id == ArchivedUpload.period_id))
+                     .add_columns(ArchivedUpload.upload_date)
+                     .filter(ArchivedPlayerStats.player_id == player_id,
+                             ArchivedUpload.upload_date >= archive_cutoff)
+                     .all())
+        for ds, d in arc_daily:
+            key = d.strftime('%Y-%m-%d') if d else ''
+            if not key or key in daily_stats_map:
+                continue
+            cur = daily_stats_map.setdefault(key, {'hands': 0, 'rake': 0, 'source': 'archived'})
             cur['hands'] += ds.hands or 0
             cur['rake'] += ds.rake or 0
 
@@ -934,9 +977,9 @@ def dashboard():
         if player_rc and cs:
             rake_refund = round(cs['rake'] * player_rc.rake_percent / 100, 2)
 
-        # Build game type stats
+        # Build game type stats (default view = active only; calendar filter rebuilds in JS)
         game_stats = {}
-        for s in session_list:
+        for s in active_sessions:
             gt = s.get('game_type', 'Other') or 'Other'
             if gt not in game_stats:
                 game_stats[gt] = {'count': 0, 'pnl': 0, 'wins': 0, 'losses': 0, 'blinds': {}}
@@ -967,6 +1010,7 @@ def dashboard():
                                rake_refund=rake_refund,
                                rake_refund_pct=(player_rc.rake_percent if player_rc else 0),
                                daily_stats_map=daily_stats_map,
+                               active_dates=active_dates,
                                game_stats=game_stats,
                                total_sessions=total_sessions,
                                total_wins=total_wins,

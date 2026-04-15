@@ -15,7 +15,8 @@
 
 {# ── All sessions as JSON for client-side filtering ── #}
 <script>
-var _allSessions = {{ sessions | tojson }};
+var _allSessions = {{ sessions | tojson }};  // active + archived (last 90 days)
+var _activeDates = new Set({{ active_dates | tojson }});
 var _dailyStatsMap = {{ daily_stats_map | tojson }};
 var _rakeRefundPct = {{ rake_refund_pct | default(0) | tojson }};
 var _selectedDates = []; // array of 0-2 endpoint dates (range-select like agent dashboard)
@@ -30,7 +31,8 @@ function _getDateRange() {
 }
 
 function _filteredSessions() {
-    if (_selectedDates.length === 0) return _allSessions;
+    // No filter → fresh count: active sessions only (per admin-reset cycle)
+    if (_selectedDates.length === 0) return _allSessions.filter(s => s.source === 'active');
     var range = _getDateRange();
     var set = new Set(range);
     return _allSessions.filter(s => set.has(s.date));
@@ -45,15 +47,30 @@ function _fmt(n) {
 function applyFilter() {
     var sessions = _filteredSessions();
 
+    // Date picker label & apply-button visibility (always run, even for empty sessions)
+    var _range = _getDateRange();
+    var _label = _range.length === 0 ? 'כל התקופות' : _range.length + ' ימים נבחרו';
+    var _lblEl = document.getElementById('pdpLabel');
+    if (_lblEl) _lblEl.textContent = _label;
+    var _applyBtn = document.getElementById('pdpApplyBtn');
+    if (_applyBtn) _applyBtn.style.display = _selectedDates.length > 0 ? 'inline-block' : 'none';
+
     // Update top cards
     var totalPnl = sessions.reduce(function(a,s){ return a + s.pnl; }, 0);
-    document.getElementById('stat-pnl').textContent = _fmt(Math.round(totalPnl * 100)/100);
-    document.getElementById('stat-pnl').className = 'stat-value ' + (totalPnl >= 0 ? 'income' : 'expense');
-    document.getElementById('stat-sessions').textContent = sessions.length;
+    var _pnlEl = document.getElementById('stat-pnl');
+    if (_pnlEl) {
+        _pnlEl.textContent = _fmt(Math.round(totalPnl * 100)/100);
+        _pnlEl.className = 'stat-value ' + (totalPnl >= 0 ? 'income' : 'expense');
+    }
+    var _sesEl = document.getElementById('stat-sessions');
+    if (_sesEl) _sesEl.textContent = sessions.length;
 
-    // Aggregate per-day stats (hands, rake) from _dailyStatsMap for the selected date range
+    // Aggregate per-day stats (hands, rake) from _dailyStatsMap
+    // Default (no filter): active dates only — matches fresh-count behavior of sessions above
     var range = _getDateRange();
-    var datesForHands = range.length ? range : Object.keys(_dailyStatsMap);
+    var datesForHands = range.length
+        ? range
+        : Object.keys(_dailyStatsMap).filter(function(d) { return (_dailyStatsMap[d] || {}).source === 'active'; });
     var totalHands = 0, totalRake = 0;
     datesForHands.forEach(function(d) {
         var ds = _dailyStatsMap[d];
@@ -81,9 +98,12 @@ function applyFilter() {
     var totalL = sessions.filter(s => s.pnl < 0).length;
     var wr = sessions.length ? Math.round(totalW / sessions.length * 1000)/10 : 0;
 
-    document.getElementById('stat-total-sessions').textContent = sessions.length;
-    document.getElementById('stat-wr').textContent = wr + '%';
-    document.getElementById('stat-wl').innerHTML = '<span class="income">' + totalW + '</span> / <span class="expense">' + totalL + '</span>';
+    var _tsEl = document.getElementById('stat-total-sessions');
+    if (_tsEl) _tsEl.textContent = sessions.length;
+    var _wrEl = document.getElementById('stat-wr');
+    if (_wrEl) _wrEl.textContent = wr + '%';
+    var _wlEl = document.getElementById('stat-wl');
+    if (_wlEl) _wlEl.innerHTML = '<span class="income">' + totalW + '</span> / <span class="expense">' + totalL + '</span>';
 
     // Rebuild blinds/game cards
     var blindsHtml = '';
@@ -132,15 +152,6 @@ function applyFilter() {
         totalEl.innerHTML = '<strong>' + _fmt(Math.round(totalPnl*100)/100) + '</strong>';
     }
 
-    // Date picker label
-    var range = _getDateRange();
-    var label = range.length === 0 ? 'כל התקופות' : range.length + ' ימים נבחרו';
-    var el = document.getElementById('pdpLabel');
-    if (el) el.textContent = label;
-
-    // Show/hide החל button
-    var applyBtn = document.getElementById('pdpApplyBtn');
-    if (applyBtn) applyBtn.style.display = _selectedDates.length > 0 ? 'inline-block' : 'none';
 }
 
 // ── Calendar logic ──
@@ -186,9 +197,11 @@ function renderCal() {
             cell.classList.add('dp-disabled');
             cell.style.color = '#ccc';
         } else {
-            cell.style.color = '#222';
-            cell.style.fontWeight = '600';
+            var isArchived = !_activeDates.has(dateStr);
+            cell.style.color = isArchived ? '#888' : '#222';
+            cell.style.fontWeight = isArchived ? '500' : '600';
             cell.style.cursor = 'pointer';
+            if (isArchived) cell.classList.add('dp-archived');
             if (isSel) cell.classList.add('dp-selected');
             else if (inRange) cell.classList.add('dp-in-range');
             cell.onclick = (function(ds) { return function() {
@@ -258,7 +271,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 </div>
 
 {# ── Game Type Stats ── #}
-{% if game_stats %}
+{% if sessions %}
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">📊 סטטיסטיקה לפי סוג משחק</h2>
 
