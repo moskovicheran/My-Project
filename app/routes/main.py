@@ -884,7 +884,8 @@ def dashboard():
             from app.union_data import get_transfer_adjustments
             xfer_adj = get_transfer_adjustments([player_id])
             cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
-        from app.models import DailyUpload
+        from app.models import DailyUpload, ArchivedPlayerSession, ArchivedUpload
+        # Active sessions
         sessions = (PlayerSession.query
                     .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
                     .add_columns(DailyUpload.upload_date)
@@ -895,6 +896,23 @@ def dashboard():
                          'blinds': s.blinds or '', 'pnl': round(s.pnl, 2),
                          'date': d.strftime('%Y-%m-%d') if d else ''}
                         for s, d in sessions]
+
+        # Archived sessions (up to 90 days)
+        arc_sessions = (ArchivedPlayerSession.query
+                        .join(ArchivedUpload,
+                              db.and_(ArchivedPlayerSession.upload_id == ArchivedUpload.original_id,
+                                      ArchivedPlayerSession.period_id == ArchivedUpload.period_id))
+                        .add_columns(ArchivedUpload.upload_date)
+                        .filter(ArchivedPlayerSession.player_id == player_id)
+                        .order_by(ArchivedUpload.upload_date.asc())
+                        .all())
+        for s, d in arc_sessions:
+            session_list.append({
+                'table_name': s.table_name, 'game_type': s.game_type,
+                'blinds': s.blinds or '', 'pnl': round(s.pnl, 2),
+                'date': d.strftime('%Y-%m-%d') if d else '',
+            })
+        session_list.sort(key=lambda x: x.get('date', ''), reverse=True)
 
         # Get transfers for this player
         player_transfers = MoneyTransfer.query.filter(
