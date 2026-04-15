@@ -16,13 +16,24 @@
 {# ── All sessions as JSON for client-side filtering ── #}
 <script>
 var _allSessions = {{ sessions | tojson }};
-var _selectedDates = new Set();
+var _dailyStatsMap = {{ daily_stats_map | tojson }};
+var _rakeRefundPct = {{ rake_refund_pct | default(0) | tojson }};
+var _selectedDates = []; // array of 0-2 endpoint dates (range-select like agent dashboard)
 
 var _availableDates = [...new Set(_allSessions.map(s => s.date).filter(d => d))].sort();
 
+function _getDateRange() {
+    if (_selectedDates.length === 0) return [];
+    if (_selectedDates.length === 1) return _selectedDates.slice();
+    var sorted = _selectedDates.slice().sort();
+    return _availableDates.filter(function(d) { return d >= sorted[0] && d <= sorted[1]; });
+}
+
 function _filteredSessions() {
-    if (_selectedDates.size === 0) return _allSessions;
-    return _allSessions.filter(s => _selectedDates.has(s.date));
+    if (_selectedDates.length === 0) return _allSessions;
+    var range = _getDateRange();
+    var set = new Set(range);
+    return _allSessions.filter(s => set.has(s.date));
 }
 
 function _fmt(n) {
@@ -39,6 +50,22 @@ function applyFilter() {
     document.getElementById('stat-pnl').textContent = _fmt(Math.round(totalPnl * 100)/100);
     document.getElementById('stat-pnl').className = 'stat-value ' + (totalPnl >= 0 ? 'income' : 'expense');
     document.getElementById('stat-sessions').textContent = sessions.length;
+
+    // Aggregate per-day stats (hands, rake) from _dailyStatsMap for the selected date range
+    var range = _getDateRange();
+    var datesForHands = range.length ? range : Object.keys(_dailyStatsMap);
+    var totalHands = 0, totalRake = 0;
+    datesForHands.forEach(function(d) {
+        var ds = _dailyStatsMap[d];
+        if (ds) { totalHands += ds.hands || 0; totalRake += ds.rake || 0; }
+    });
+    var handsEl = document.getElementById('stat-hands');
+    if (handsEl) handsEl.textContent = Math.round(totalHands).toLocaleString('en-US');
+    var rrEl = document.getElementById('stat-rake-refund');
+    if (rrEl && _rakeRefundPct) {
+        var rr = Math.round(totalRake * _rakeRefundPct) / 100;
+        rrEl.textContent = rr.toLocaleString('he-IL', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
 
     // Rebuild game stats
     var gs = {};
@@ -106,13 +133,14 @@ function applyFilter() {
     }
 
     // Date picker label
-    var label = _selectedDates.size === 0 ? 'כל התקופות' : _selectedDates.size + ' ימים נבחרו';
+    var range = _getDateRange();
+    var label = range.length === 0 ? 'כל התקופות' : range.length + ' ימים נבחרו';
     var el = document.getElementById('pdpLabel');
     if (el) el.textContent = label;
 
     // Show/hide החל button
     var applyBtn = document.getElementById('pdpApplyBtn');
-    if (applyBtn) applyBtn.style.display = _selectedDates.size > 0 ? 'inline-block' : 'none';
+    if (applyBtn) applyBtn.style.display = _selectedDates.length > 0 ? 'inline-block' : 'none';
 }
 
 // ── Calendar logic ──
@@ -142,12 +170,18 @@ function renderCal() {
         var blank = document.createElement('div');
         grid.appendChild(blank);
     }
+    var sortedSel = _selectedDates.slice().sort();
     for (var d = 1; d <= days; d++) {
         var dateStr = _calYear + '-' + String(_calMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
         var cell = document.createElement('div');
         cell.className = 'dp-day';
         cell.textContent = d;
         var hasData = _availableDates.includes(dateStr);
+        var isSel = _selectedDates.indexOf(dateStr) >= 0;
+        var inRange = false;
+        if (sortedSel.length === 2) {
+            inRange = dateStr > sortedSel[0] && dateStr < sortedSel[1] && hasData;
+        }
         if (!hasData) {
             cell.classList.add('dp-disabled');
             cell.style.color = '#ccc';
@@ -155,15 +189,27 @@ function renderCal() {
             cell.style.color = '#222';
             cell.style.fontWeight = '600';
             cell.style.cursor = 'pointer';
-            if (_selectedDates.has(dateStr)) cell.classList.add('dp-selected');
-            cell.onclick = (function(ds, c) { return function() {
-                if (_selectedDates.has(ds)) { _selectedDates.delete(ds); c.classList.remove('dp-selected'); }
-                else { _selectedDates.add(ds); c.classList.add('dp-selected'); }
-                applyFilter();
-            }; })(dateStr, cell);
+            if (isSel) cell.classList.add('dp-selected');
+            else if (inRange) cell.classList.add('dp-in-range');
+            cell.onclick = (function(ds) { return function() {
+                pdpToggle(ds);
+            }; })(dateStr);
         }
         grid.appendChild(cell);
     }
+}
+
+function pdpToggle(ds) {
+    var idx = _selectedDates.indexOf(ds);
+    if (idx >= 0) {
+        _selectedDates.splice(idx, 1);
+    } else {
+        if (_selectedDates.length >= 2) { _selectedDates = []; }
+        _selectedDates.push(ds);
+    }
+    _selectedDates.sort();
+    renderCal();
+    applyFilter();
 }
 
 function pdpChangeMonth(dir) { _calMonth += dir; if (_calMonth < 0) { _calMonth=11; _calYear--; } if (_calMonth > 11) { _calMonth=0; _calYear++; } renderCal(); }
@@ -174,7 +220,7 @@ function togglePdp() {
     p.style.display = open ? 'block' : 'none';
     if (ov) ov.style.display = open ? 'block' : 'none';
 }
-function pdpClear() { _selectedDates.clear(); renderCal(); applyFilter(); }
+function pdpClear() { _selectedDates = []; renderCal(); applyFilter(); }
 
 document.addEventListener('click', function(e) {
     var popup = document.getElementById('pdpPopup');
@@ -201,12 +247,12 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
     </div>
     <div class="stat-card">
         <div class="stat-label">Hands</div>
-        <div class="stat-value">{{ "{:,}".format(player.hands|int) }}</div>
+        <div class="stat-value" id="stat-hands">{{ "{:,}".format(player.hands|int) }}</div>
     </div>
     {% if rake_refund %}
     <div class="stat-card" style="border:2px solid #667eea;">
         <div class="stat-label" style="color:#667eea; font-weight:700;">החזר רייק</div>
-        <div class="stat-value" style="color:#667eea;">{{ rake_refund|comma }}</div>
+        <div class="stat-value" id="stat-rake-refund" style="color:#667eea;">{{ rake_refund|comma }}</div>
     </div>
     {% endif %}
 </div>
@@ -303,6 +349,8 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 .dp-day { padding:0.22rem 0; border-radius:5px; font-size:0.75rem; cursor:default; transition:background 0.1s; color:#ddd; user-select:none; }
 .dp-day:not(.dp-disabled):hover { background:#eef0ff; }
 .dp-day.dp-selected { background:#4361ee !important; color:#fff !important; font-weight:700; border-radius:5px; }
+.dp-day.dp-in-range { background:#dde3ff !important; color:#333 !important; }
+body.dark .dp-day.dp-in-range { background:#2a2a55 !important; color:#ccc !important; }
 .dp-footer { display:flex; justify-content:flex-end; gap:0.3rem; margin-top:0.4rem; padding-top:0.35rem; border-top:1px solid #f2f2f2; }
 .dp-footer-btn { border:1px solid #e0e4ef; background:#fff; border-radius:5px; padding:0.2rem 0.6rem; cursor:pointer; font-family:inherit; font-size:0.75rem; color:#666; transition:all 0.12s; }
 .dp-footer-btn:hover { background:#f5f6ff; border-color:#4361ee; color:#4361ee; }

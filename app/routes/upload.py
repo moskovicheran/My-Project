@@ -338,34 +338,16 @@ def preview():
 @upload_bp.route('/reset', methods=['POST'])
 @login_required
 def reset():
+    """Reset = archive current active data, then clear it so the next upload cycle starts fresh.
+
+    Historical data remains accessible via the archive; dashboards start a new count from
+    the next file upload onward.
+    """
     if not hasattr(current_user, 'role') or current_user.role != 'admin':
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
-    from app.models import db, DailyUpload, DailyPlayerStats, ActiveExcelData, PlayerSession, TournamentStats
-
-    # Reset only active Excel file — keep historical data for player reports
-    ActiveExcelData.query.delete()
-    db.session.commit()
-
-    session.pop('uploaded_file', None)
-
-    # Try to clean local files (works locally, fails silently on Vercel)
-    try:
-        with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
-            f.write('')
-        from app.union_data import set_excel_path
-        set_excel_path('')
-        if os.path.exists(UPLOAD_FOLDER):
-            for fname in os.listdir(UPLOAD_FOLDER):
-                fpath = os.path.join(UPLOAD_FOLDER, fname)
-                if os.path.isfile(fpath) and fname != '_active.txt':
-                    os.remove(fpath)
-    except Exception:
-        pass
-
-    flash('הקובץ הפעיל אופס. נתוני שחקנים היסטוריים נשמרים.', 'success')
-    return redirect(url_for('upload.index'))
+    return _archive_and_clear_active()
 
 
 @upload_bp.route('/reset-all', methods=['POST'])
@@ -376,6 +358,10 @@ def reset_all():
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
+    return _archive_and_clear_active()
+
+
+def _archive_and_clear_active():
     from app.models import (db, DailyUpload, DailyPlayerStats, ActiveExcelData,
                             PlayerSession, TournamentStats, ArchivePeriod)
     from sqlalchemy import func as sqlfunc, text
