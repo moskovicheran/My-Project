@@ -52,8 +52,7 @@ function applyFilter() {
     var _label = _range.length === 0 ? 'כל התקופות' : _range.length + ' ימים נבחרו';
     var _lblEl = document.getElementById('pdpLabel');
     if (_lblEl) _lblEl.textContent = _label;
-    var _applyBtn = document.getElementById('pdpApplyBtn');
-    if (_applyBtn) _applyBtn.style.display = _selectedDates.length > 0 ? 'inline-block' : 'none';
+    // Apply button is always visible — popup only closes via Apply/trigger click
 
     // Update top cards
     var totalPnl = sessions.reduce(function(a,s){ return a + s.pnl; }, 0);
@@ -234,16 +233,7 @@ function togglePdp() {
     if (ov) ov.style.display = open ? 'block' : 'none';
 }
 function pdpClear() { _selectedDates = []; renderCal(); applyFilter(); }
-
-document.addEventListener('click', function(e) {
-    var popup = document.getElementById('pdpPopup');
-    var btn = document.getElementById('pdpBtn');
-    var ov = document.getElementById('pdpOverlay');
-    if (popup && !popup.contains(e.target) && btn && !btn.contains(e.target)) {
-        popup.style.display = 'none';
-        if (ov) ov.style.display = 'none';
-    }
-});
+function pdpApply() { applyFilter(); togglePdp(); } // commit + close
 
 window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter(); });
 </script>
@@ -283,7 +273,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
             {% endfor %}
         </div>
         <div style="position:relative; display:inline-block;">
-            <div id="pdpOverlay" onclick="togglePdp()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:399;"></div>
+            <div id="pdpOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:399;"></div>
             <button id="pdpBtn" onclick="togglePdp()" class="dp-trigger">
                 <span class="dp-icon">📅</span>
                 <span id="pdpLabel">כל התקופות</span>
@@ -299,7 +289,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
                 <div id="pdpGrid" class="dp-grid"></div>
                 <div class="dp-footer" style="justify-content:flex-end; gap:0.4rem;">
                     <button onclick="pdpClear()" class="dp-footer-btn">נקה</button>
-                    <button id="pdpApplyBtn" onclick="togglePdp()" class="dp-footer-btn dp-apply" style="display:none;">החל</button>
+                    <button id="pdpApplyBtn" onclick="pdpApply()" class="dp-footer-btn dp-apply">החל</button>
                 </div>
             </div>
         </div>
