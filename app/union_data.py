@@ -651,36 +651,70 @@ def get_cumulative_stats(player_ids=None):
     return result
 
 
-def get_cumulative_totals():
-    """Returns cumulative totals across all uploads for dashboard."""
-    from app.models import DailyPlayerStats, DailyUpload
+def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_upload_ids=None):
+    """Returns cumulative totals across uploads for dashboard.
+
+    Optional filters:
+      upload_ids: list of DailyUpload ids → limit to these active uploads
+      archive_period_id + archive_upload_ids: switch to ArchivedPlayerStats for the given archive period
+    """
+    from app.models import DailyPlayerStats, DailyUpload, ArchivedPlayerStats, ArchivedUpload
     from sqlalchemy import func
 
-    stats = DailyPlayerStats.query.with_entities(
-        func.sum(DailyPlayerStats.pnl),
-        func.sum(DailyPlayerStats.rake),
-        func.sum(DailyPlayerStats.hands),
-        func.count(func.distinct(DailyPlayerStats.player_id)),
-    ).first()
+    use_archive = bool(archive_period_id and archive_upload_ids)
+    if use_archive:
+        StatsModel = ArchivedPlayerStats
+        base_filters = [ArchivedPlayerStats.period_id == archive_period_id,
+                        ArchivedPlayerStats.upload_id.in_(archive_upload_ids)]
+    else:
+        StatsModel = DailyPlayerStats
+        base_filters = []
+        if upload_ids:
+            base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
 
-    uploads_count = DailyUpload.query.count()
+    stats = StatsModel.query.with_entities(
+        func.sum(StatsModel.pnl),
+        func.sum(StatsModel.rake),
+        func.sum(StatsModel.hands),
+        func.count(func.distinct(StatsModel.player_id)),
+    ).filter(*base_filters).first()
 
-    # Date range from uploads
-    date_range = DailyUpload.query.with_entities(
-        func.min(DailyUpload.upload_date),
-        func.max(DailyUpload.upload_date),
-    ).first()
-    first_date = date_range[0].strftime('%d/%m/%Y') if date_range[0] else '-'
-    last_date = date_range[1].strftime('%d/%m/%Y') if date_range[1] else '-'
+    # Uploads count reflects the filtered view
+    if use_archive:
+        uploads_count = len(archive_upload_ids or [])
+    elif upload_ids:
+        uploads_count = len(upload_ids)
+    else:
+        uploads_count = DailyUpload.query.count()
+
+    # Date range
+    if use_archive:
+        dr = ArchivedUpload.query.with_entities(
+            func.min(ArchivedUpload.upload_date),
+            func.max(ArchivedUpload.upload_date),
+        ).filter(ArchivedUpload.period_id == archive_period_id,
+                 ArchivedUpload.original_id.in_(archive_upload_ids)).first()
+    elif upload_ids:
+        dr = DailyUpload.query.with_entities(
+            func.min(DailyUpload.upload_date),
+            func.max(DailyUpload.upload_date),
+        ).filter(DailyUpload.id.in_(upload_ids)).first()
+    else:
+        dr = DailyUpload.query.with_entities(
+            func.min(DailyUpload.upload_date),
+            func.max(DailyUpload.upload_date),
+        ).first()
+    first_date = dr[0].strftime('%d/%m/%Y') if dr and dr[0] else '-'
+    last_date = dr[1].strftime('%d/%m/%Y') if dr and dr[1] else '-'
 
     # Per-club totals
-    club_stats = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.club,
-        func.sum(DailyPlayerStats.pnl),
-        func.sum(DailyPlayerStats.rake),
-        func.sum(DailyPlayerStats.hands),
-        func.count(func.distinct(DailyPlayerStats.player_id)),
-    ).group_by(DailyPlayerStats.club).all()
+    club_stats = StatsModel.query.with_entities(
+        StatsModel.club,
+        func.sum(StatsModel.pnl),
+        func.sum(StatsModel.rake),
+        func.sum(StatsModel.hands),
+        func.count(func.distinct(StatsModel.player_id)),
+    ).filter(*base_filters).group_by(StatsModel.club).all()
 
     clubs = []
     for club_name, pnl, rake, hands, players in club_stats:
@@ -729,20 +763,35 @@ def get_cumulative_totals():
     }
 
 
-def get_agent_totals(player_id):
+def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
     """Calculate total rake/pnl/hands/players for an agent - same logic as agent dashboard.
-    Returns dict with total_rake, total_pnl, total_hands, player_count."""
-    from app.models import DailyPlayerStats, SAHierarchy, SARakeConfig, RakeConfig, db
+    Returns dict with total_rake, total_pnl, total_hands, player_count.
+
+    Optional filters:
+      upload_ids: limit to these active DailyUpload ids
+      archive_period_id + archive_upload_ids: use ArchivedPlayerStats instead
+    """
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, RakeConfig, db
     from sqlalchemy import func as sqlfunc, or_
+
+    use_archive = bool(archive_period_id and archive_upload_ids)
+    StatsModel = ArchivedPlayerStats if use_archive else DailyPlayerStats
+    if use_archive:
+        scope_filters = [StatsModel.period_id == archive_period_id,
+                         StatsModel.upload_id.in_(archive_upload_ids)]
+    else:
+        scope_filters = []
+        if upload_ids:
+            scope_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
 
     uid = player_id
     known_ids = {uid}
 
-    # Resolve actual SA/Agent ID
-    is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == uid).first() is not None
-    is_ag = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == uid).first() is not None
+    # Resolve actual SA/Agent ID (use filtered scope so agents who didn't play in period still resolve)
+    is_sa = StatsModel.query.filter(StatsModel.sa_id == uid, *scope_filters).first() is not None
+    is_ag = StatsModel.query.filter(StatsModel.agent_id == uid, *scope_filters).first() is not None
     if not is_sa and not is_ag:
-        own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == uid).first()
+        own_row = StatsModel.query.filter(StatsModel.player_id == uid, *scope_filters).first()
         if own_row:
             role_lower = (own_row.role or '').lower()
             if 'super' in role_lower or role_lower in ('sa',):
@@ -761,43 +810,44 @@ def get_agent_totals(player_id):
     all_ids = list(set(list(known_ids) + child_sa_ids))
 
     # Personal players
-    stats = DailyPlayerStats.query.with_entities(
-        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
-        sqlfunc.sum(DailyPlayerStats.rake),
-        sqlfunc.sum(DailyPlayerStats.pnl),
-        sqlfunc.sum(DailyPlayerStats.hands),
+    stats = StatsModel.query.with_entities(
+        sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
+        sqlfunc.sum(StatsModel.rake),
+        sqlfunc.sum(StatsModel.pnl),
+        sqlfunc.sum(StatsModel.hands),
     ).filter(or_(
-        DailyPlayerStats.sa_id.in_(all_ids),
-        DailyPlayerStats.agent_id.in_(all_ids)
-    )).first()
+        StatsModel.sa_id.in_(all_ids),
+        StatsModel.agent_id.in_(all_ids)
+    ), *scope_filters).first()
     player_count = stats[0] or 0
     total_rake = round(float(stats[1] or 0), 2)
     total_pnl = round(float(stats[2] or 0), 2)
     total_hands = int(stats[3] or 0)
 
     # Fetch missing players for agents found in the initial query
-    initial_pids = set(r[0] for r in DailyPlayerStats.query.with_entities(
-        sqlfunc.distinct(DailyPlayerStats.player_id)
+    initial_pids = set(r[0] for r in StatsModel.query.with_entities(
+        sqlfunc.distinct(StatsModel.player_id)
     ).filter(or_(
-        DailyPlayerStats.sa_id.in_(all_ids),
-        DailyPlayerStats.agent_id.in_(all_ids)
-    )).all())
-    found_agent_ids = set(r[0] for r in DailyPlayerStats.query.with_entities(
-        sqlfunc.distinct(DailyPlayerStats.agent_id)
+        StatsModel.sa_id.in_(all_ids),
+        StatsModel.agent_id.in_(all_ids)
+    ), *scope_filters).all())
+    found_agent_ids = set(r[0] for r in StatsModel.query.with_entities(
+        sqlfunc.distinct(StatsModel.agent_id)
     ).filter(or_(
-        DailyPlayerStats.sa_id.in_(all_ids),
-        DailyPlayerStats.agent_id.in_(all_ids)
-    ), DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id != '-').all())
+        StatsModel.sa_id.in_(all_ids),
+        StatsModel.agent_id.in_(all_ids)
+    ), StatsModel.agent_id != '', StatsModel.agent_id != '-', *scope_filters).all())
     if found_agent_ids:
-        extra = DailyPlayerStats.query.with_entities(
-            sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
-            sqlfunc.sum(DailyPlayerStats.rake),
-            sqlfunc.sum(DailyPlayerStats.pnl),
-            sqlfunc.sum(DailyPlayerStats.hands),
+        extra = StatsModel.query.with_entities(
+            sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
+            sqlfunc.sum(StatsModel.rake),
+            sqlfunc.sum(StatsModel.pnl),
+            sqlfunc.sum(StatsModel.hands),
         ).filter(
-            DailyPlayerStats.agent_id.in_(list(found_agent_ids)),
-            DailyPlayerStats.player_id.notin_(list(initial_pids)),
-            DailyPlayerStats.role != 'Name Entry'
+            StatsModel.agent_id.in_(list(found_agent_ids)),
+            StatsModel.player_id.notin_(list(initial_pids)),
+            StatsModel.role != 'Name Entry',
+            *scope_filters
         ).first()
         if extra and extra[0]:
             player_count += extra[0]
@@ -815,28 +865,30 @@ def get_agent_totals(player_id):
             club_name = club_id_to_name.get(cfg.managed_club_id, '')
             if not club_name:
                 continue
-            club_stats = DailyPlayerStats.query.with_entities(
-                sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
-                sqlfunc.sum(DailyPlayerStats.rake),
-                sqlfunc.sum(DailyPlayerStats.pnl),
-                sqlfunc.sum(DailyPlayerStats.hands),
-            ).filter(DailyPlayerStats.club == club_name).first()
+            club_stats = StatsModel.query.with_entities(
+                sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
+                sqlfunc.sum(StatsModel.rake),
+                sqlfunc.sum(StatsModel.pnl),
+                sqlfunc.sum(StatsModel.hands),
+            ).filter(StatsModel.club == club_name, *scope_filters).first()
             if club_stats and club_stats[0]:
                 player_count += (club_stats[0] or 0)
                 total_rake += round(float(club_stats[1] or 0), 2)
                 total_pnl += round(float(club_stats[2] or 0), 2)
                 total_hands += int(club_stats[3] or 0)
 
-    # Transfer adjustments
-    all_player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
-        sqlfunc.distinct(DailyPlayerStats.player_id)
-    ).filter(or_(
-        DailyPlayerStats.sa_id.in_(all_ids),
-        DailyPlayerStats.agent_id.in_(all_ids)
-    )).all()]
-    if all_player_ids:
-        xfer = get_transfer_adjustments(all_player_ids)
-        total_pnl = round(total_pnl + sum(xfer.values()), 2)
+    # Transfer adjustments — only applied for the unfiltered (all-time) view,
+    # since transfers are not dated per upload.
+    if not use_archive and not upload_ids:
+        all_player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
+            sqlfunc.distinct(DailyPlayerStats.player_id)
+        ).filter(or_(
+            DailyPlayerStats.sa_id.in_(all_ids),
+            DailyPlayerStats.agent_id.in_(all_ids)
+        )).all()]
+        if all_player_ids:
+            xfer = get_transfer_adjustments(all_player_ids)
+            total_pnl = round(total_pnl + sum(xfer.values()), 2)
 
     return {
         'total_rake': total_rake, 'total_pnl': total_pnl,

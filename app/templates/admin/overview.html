@@ -2,6 +2,234 @@
 {% block title %}סקירה - לוח בקרה{% endblock %}
 
 {% block content %}
+{# ── Date Picker — same pattern as player/agent dashboards ── #}
+<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+    <div style="position:relative; display:inline-block;">
+        <button id="ovDpBtn" onclick="ovToggleCalendar()" class="dp-trigger">
+            <span class="dp-icon">📅</span>
+            <span id="ovDpLabel">
+                {% if selected_dates %}{{ selected_dates|length }} ימים נבחרו{% else %}כל התקופות{% endif %}
+            </span>
+            <span class="dp-arrow">▾</span>
+        </button>
+
+        <div id="ovDpPopup" class="dp-popup" style="display:none;">
+            <div class="dp-header">
+                <button onclick="ovDpChangeMonth(-1)" class="dp-nav">→</button>
+                <strong id="ovDpMonthLabel"></strong>
+                <button onclick="ovDpChangeMonth(1)" class="dp-nav">←</button>
+            </div>
+            <div class="dp-weekdays">
+                <span>א</span><span>ב</span><span>ג</span><span>ד</span><span>ה</span><span>ו</span><span>ש</span>
+            </div>
+            <div id="ovDpGrid" class="dp-grid"></div>
+
+            <div class="dp-scope">
+                <button id="ovDpScopeActive" class="dp-scope-btn active" onclick="ovDpSetScope('active')">מחזור נוכחי</button>
+                <button id="ovDpScopeArchive" class="dp-scope-btn" onclick="ovDpSetScope('archive')">90 יום אחורה (ארכיון)</button>
+            </div>
+
+            <div class="dp-legend">
+                <span><span class="sw sw-active"></span>פעיל</span>
+                <span><span class="sw sw-archived"></span>ארכיון</span>
+                <span><span class="sw sw-selected"></span>נבחר</span>
+            </div>
+
+            <div class="dp-footer">
+                <span id="ovDpSelCount" class="dp-sel-info"></span>
+                <div style="display:flex; gap:0.3rem;">
+                    <button onclick="ovDpClear()" class="dp-footer-btn">נקה</button>
+                    <button onclick="ovDpApply()" class="dp-footer-btn dp-apply">החל</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% if selected_dates %}
+    <a href="{{ url_for('admin.overview') }}" class="dp-reset">✕ הצג הכל</a>
+    {% endif %}
+</div>
+
+<script>
+/* ── Overview date picker ── */
+var _ovActiveDates = {{ active_dates|tojson }};
+var _ovArchiveDates = {{ archive_dates|tojson }};
+var _ovSelectedDates = {{ selected_dates|tojson }};
+var _ovScope = 'active';  // default: current cycle only
+var _ovDpYear, _ovDpMonth;
+
+(function() {
+    var anchor = _ovSelectedDates[0] || _ovActiveDates[_ovActiveDates.length - 1];
+    if (anchor) {
+        var p = anchor.split('-');
+        _ovDpYear = parseInt(p[0]); _ovDpMonth = parseInt(p[1]) - 1;
+    } else {
+        var n = new Date(); _ovDpYear = n.getFullYear(); _ovDpMonth = n.getMonth();
+    }
+    // If any selected date is in archive, pre-open with archive scope
+    var archSet = new Set(_ovArchiveDates);
+    for (var i = 0; i < _ovSelectedDates.length; i++) {
+        if (archSet.has(_ovSelectedDates[i])) { _ovScope = 'archive'; break; }
+    }
+})();
+
+function ovToggleCalendar() {
+    var p = document.getElementById('ovDpPopup');
+    if (p.style.display === 'none') { p.style.display = 'block'; ovRenderCal(); }
+    else { p.style.display = 'none'; }
+}
+document.addEventListener('click', function(e) {
+    var popup = document.getElementById('ovDpPopup');
+    var btn = document.getElementById('ovDpBtn');
+    if (popup && popup.style.display !== 'none' && !popup.contains(e.target) && !btn.contains(e.target)) {
+        popup.style.display = 'none';
+    }
+});
+function ovDpSetScope(s) {
+    _ovScope = s;
+    document.getElementById('ovDpScopeActive').classList.toggle('active', s === 'active');
+    document.getElementById('ovDpScopeArchive').classList.toggle('active', s === 'archive');
+    ovRenderCal();
+}
+function ovRenderCal() {
+    var months = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+    document.getElementById('ovDpMonthLabel').textContent = months[_ovDpMonth] + ' ' + _ovDpYear;
+    var grid = document.getElementById('ovDpGrid');
+    var startDay = new Date(_ovDpYear, _ovDpMonth, 1).getDay();
+    var lastDay = new Date(_ovDpYear, _ovDpMonth + 1, 0).getDate();
+    var activeSet = new Set(_ovActiveDates);
+    var archiveSet = new Set(_ovArchiveDates);
+    var html = '';
+    for (var i = 0; i < startDay; i++) html += '<div class="dp-day empty"></div>';
+    for (var d = 1; d <= lastDay; d++) {
+        var ds = _ovDpYear + '-' + String(_ovDpMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        var isActive = activeSet.has(ds);
+        var isArchived = archiveSet.has(ds);
+        var clickable = isActive || (_ovScope === 'archive' && isArchived);
+        var isSel = _ovSelectedDates.indexOf(ds) >= 0;
+        var inRange = false;
+        if (_ovSelectedDates.length === 2) {
+            var sorted = _ovSelectedDates.slice().sort();
+            inRange = ds > sorted[0] && ds < sorted[1] && clickable;
+        }
+        var cls = 'dp-day';
+        if (isActive) cls += ' active-data';
+        else if (isArchived) cls += ' archived-data';
+        else cls += ' empty';
+        if (_ovScope !== 'archive' && isArchived) cls += ' scope-hidden';
+        if (isSel) cls += ' selected';
+        else if (inRange) cls += ' in-range';
+        var onclick = clickable ? ' onclick="event.stopPropagation(); ovDpToggle(\'' + ds + '\')"' : '';
+        html += '<div class="' + cls + '"' + onclick + '>' + d + '</div>';
+    }
+    grid.innerHTML = html;
+    ovUpdateInfo();
+}
+function ovDpChangeMonth(dir) {
+    _ovDpMonth += dir;
+    if (_ovDpMonth < 0) { _ovDpMonth = 11; _ovDpYear--; }
+    if (_ovDpMonth > 11) { _ovDpMonth = 0; _ovDpYear++; }
+    ovRenderCal();
+}
+function ovDpToggle(ds) {
+    var idx = _ovSelectedDates.indexOf(ds);
+    if (idx >= 0) { _ovSelectedDates.splice(idx, 1); }
+    else {
+        if (_ovSelectedDates.length >= 2) { _ovSelectedDates = []; }
+        _ovSelectedDates.push(ds);
+    }
+    _ovSelectedDates.sort();
+    ovRenderCal();
+}
+function ovDpClear() { _ovSelectedDates = []; ovRenderCal(); }
+function ovGetDateRange() {
+    if (_ovSelectedDates.length <= 1) return _ovSelectedDates.slice();
+    var from = _ovSelectedDates[0], to = _ovSelectedDates[_ovSelectedDates.length - 1];
+    var pool = (_ovScope === 'archive')
+        ? _ovActiveDates.concat(_ovArchiveDates)
+        : _ovActiveDates;
+    return pool.filter(function(d) { return d >= from && d <= to; }).sort();
+}
+function ovDpApply() {
+    var dates = ovGetDateRange();
+    if (!dates.length) { window.location.href = '{{ url_for("admin.overview") }}'; }
+    else { window.location.href = '{{ url_for("admin.overview") }}?dates=' + dates.join(','); }
+}
+function ovUpdateInfo() {
+    var el = document.getElementById('ovDpSelCount');
+    if (!_ovSelectedDates.length) { el.textContent = 'כל התקופות'; }
+    else { el.textContent = ovGetDateRange().length + ' ימים נבחרו'; }
+}
+</script>
+
+<style>
+.dp-trigger { display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem;
+    border:1px solid #e0e4ef; border-radius:8px; background:#fff; cursor:pointer;
+    font-family:inherit; font-size:0.8rem; color:#333; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+.dp-trigger:hover { border-color:#4361ee; box-shadow:0 2px 6px rgba(67,97,238,0.1); }
+.dp-icon { font-size:0.9rem; }
+.dp-arrow { font-size:0.6rem; color:#888; }
+.dp-reset { font-size:0.75rem; color:#ef233c; text-decoration:none; padding:0.25rem 0.5rem; border-radius:5px; }
+.dp-reset:hover { background:#fff0f2; }
+.dp-popup { position:absolute; top:calc(100% + 4px); right:0; z-index:200; background:#fff;
+    border:1px solid #e0e4ef; border-radius:12px; box-shadow:0 6px 22px rgba(0,0,0,0.13);
+    padding:0.6rem; width:240px; }
+.dp-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; }
+.dp-header strong { font-size:0.82rem; }
+.dp-nav { border:none; background:#f0f2f5; border-radius:5px; padding:0.15rem 0.45rem; cursor:pointer; font-size:0.75rem; color:#555; }
+.dp-nav:hover { background:#e0e4ef; }
+.dp-weekdays { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:0.15rem; }
+.dp-weekdays span { font-size:0.62rem; color:#888; font-weight:600; padding:0.12rem 0; }
+.dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; text-align:center; }
+.dp-day { padding:0.25rem 0; border-radius:6px; font-size:0.72rem; cursor:pointer; transition:all 0.12s; color:#ccc; user-select:none; }
+.dp-day.empty { cursor:default; color:transparent; background:transparent; }
+.dp-day.active-data { color:#222; font-weight:600; }
+.dp-day.active-data:hover { background:#e8ebff; }
+.dp-day.archived-data { color:#999; font-weight:500; background:#f6f6fa; }
+.dp-day.archived-data:hover { background:#eceff7; }
+.dp-day.archived-data.scope-hidden { opacity:0.35; pointer-events:none; }
+.dp-day.selected { background:#4361ee !important; color:#fff !important; font-weight:700; }
+.dp-day.in-range { background:#dde3ff; color:#333 !important; }
+.dp-scope { display:flex; gap:0.2rem; margin:0.4rem 0 0.45rem; padding:0.2rem; background:#f6f7fb; border-radius:7px; }
+.dp-scope-btn { flex:1; padding:0.25rem 0.3rem; border:none; background:transparent; border-radius:5px; cursor:pointer; font-family:inherit; font-size:0.68rem; color:#666; font-weight:600; white-space:nowrap; }
+.dp-scope-btn.active { background:#fff; color:#4361ee; box-shadow:0 1px 2px rgba(0,0,0,0.07); }
+.dp-legend { display:flex; gap:0.55rem; font-size:0.62rem; color:#888; margin:0.3rem 0; padding:0 0.1rem; }
+.dp-legend span { display:inline-flex; align-items:center; gap:0.2rem; }
+.dp-legend .sw { display:inline-block; width:8px; height:8px; border-radius:2px; }
+.dp-legend .sw-active { background:#222; }
+.dp-legend .sw-archived { background:#bbb; }
+.dp-legend .sw-selected { background:#4361ee; }
+.dp-footer { display:flex; justify-content:space-between; align-items:center; margin-top:0.4rem; padding-top:0.35rem; border-top:1px solid #f0f0f0; gap:0.3rem; }
+.dp-sel-info { font-size:0.68rem; color:#888; }
+.dp-footer-btn { border:1px solid #ddd; background:#fff; border-radius:5px; padding:0.22rem 0.6rem; cursor:pointer; font-family:inherit; font-size:0.72rem; color:#555; }
+.dp-footer-btn:hover { background:#f0f2f5; }
+.dp-apply { background:#4361ee; color:#fff; border-color:#4361ee; font-weight:600; }
+.dp-apply:hover { background:#3451d1; }
+body.dark .dp-trigger { background:#1e1e2e; border-color:#333; color:#e0e0e0; }
+body.dark .dp-trigger:hover { border-color:#4361ee; }
+body.dark .dp-popup { background:#1e1e2e; border-color:#333; box-shadow:0 8px 30px rgba(0,0,0,0.4); }
+body.dark .dp-nav { background:#252535; color:#ccc; }
+body.dark .dp-day { color:#555; }
+body.dark .dp-day.active-data { color:#ddd; }
+body.dark .dp-day.archived-data { background:#252535; color:#999; }
+body.dark .dp-day.active-data:hover { background:#333355; }
+body.dark .dp-day.in-range { background:#2a2a55; color:#ccc !important; }
+body.dark .dp-footer { border-top-color:#333; }
+body.dark .dp-footer-btn { background:#252535; border-color:#444; color:#ccc; }
+body.dark .dp-scope { background:#252535; }
+body.dark .dp-scope-btn.active { background:#1e1e2e; }
+body.dark .dp-reset { color:#ff6b6b; }
+/* Mobile: wider tap targets, centered popup */
+@media (max-width: 640px) {
+    .dp-trigger { padding:0.4rem 0.65rem; font-size:0.78rem; }
+    .dp-popup { position:fixed; left:50%; right:auto; top:3.5rem; transform:translateX(-50%);
+        width:calc(100vw - 1.5rem); max-width:300px; padding:0.7rem; z-index:400; }
+    .dp-day { padding:0.4rem 0; font-size:0.78rem; border-radius:6px; }
+    .dp-scope-btn { padding:0.35rem 0.3rem; font-size:0.7rem; }
+    .dp-footer-btn { padding:0.35rem 0.7rem; font-size:0.78rem; }
+    .dp-sel-info { font-size:0.72rem; }
+}
+</style>
+
 <div class="stats-grid stats-5" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">מועדונים</div>

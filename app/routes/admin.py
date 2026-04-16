@@ -21,19 +21,51 @@ def admin_required(f):
 @admin_bp.route('/')
 @admin_required
 def overview():
-    from app.union_data import get_union_overview, get_cumulative_totals
-    from app.models import User, DailyPlayerStats
-    from sqlalchemy import func as sqlfunc
+    from app.union_data import get_union_overview, get_cumulative_totals, get_agent_totals
+    from app.models import User, DailyPlayerStats, DailyUpload, ArchivedUpload
+    from app.routes.main import _resolve_date_uploads
+    from datetime import date, timedelta
+
     meta, _, _ = get_union_overview()
-    ct = get_cumulative_totals()
+
+    # Available dates for the calendar picker:
+    #   active_dates — current cycle (DailyUpload)
+    #   archive_dates — last 90 days from ArchivedUpload
+    active_date_objs = [u[0] for u in
+                        DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all() if u[0]]
+    active_dates = sorted({d.strftime('%Y-%m-%d') for d in active_date_objs})
+    cutoff = date.today() - timedelta(days=90)
+    archive_date_objs = [u[0] for u in
+                         ArchivedUpload.query.with_entities(ArchivedUpload.upload_date)
+                         .filter(ArchivedUpload.upload_date >= cutoff).distinct().all() if u[0]]
+    archive_dates = sorted({d.strftime('%Y-%m-%d') for d in archive_date_objs} - set(active_dates))
+
+    # Parse selected dates from URL
+    selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+
+    # Filtered totals (empty filters → all-time, matches prior behavior)
+    ct = get_cumulative_totals(
+        upload_ids=upload_ids_filter or None,
+        archive_period_id=archive_period_id,
+        archive_upload_ids=archive_upload_ids or None,
+    )
     meta['period'] = ct['period']
 
-    # Agent stats - use shared function (same logic as agent dashboard)
-    from app.union_data import get_agent_totals
+    # Agent stats - reuse shared function with the same filter
     agent_users = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
     agents_data = []
     for u in agent_users:
-        totals = get_agent_totals(u.player_id)
+        totals = get_agent_totals(
+            u.player_id,
+            upload_ids=upload_ids_filter or None,
+            archive_period_id=archive_period_id,
+            archive_upload_ids=archive_upload_ids or None,
+        )
         agents_data.append({
             'username': u.username, 'player_id': u.player_id,
             'players': totals['player_count'], 'rake': totals['total_rake'],
@@ -49,7 +81,10 @@ def overview():
                            tables_count=ct['uploads_count'],
                            total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
                            total_hands=ct['total_hands'],
-                           agents=agents_data)
+                           agents=agents_data,
+                           active_dates=active_dates,
+                           archive_dates=archive_dates,
+                           selected_dates=selected_dates)
 
 
 @admin_bp.route('/agent-view/<sa_id>')
