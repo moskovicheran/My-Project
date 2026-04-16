@@ -45,6 +45,8 @@
         </div>
     </div>
     {% if selected_dates %}
+    {% set _sorted = selected_dates|sort %}
+    <span class="range-chip">{{ _sorted[0][8:] }}/{{ _sorted[0][5:7] }}{% if _sorted|length > 1 %} — {{ _sorted[-1][8:] }}/{{ _sorted[-1][5:7] }}{% endif %}</span>
     <a href="{{ url_for('admin.overview') }}" class="dp-reset">✕ הצג הכל</a>
     {% endif %}
 </div>
@@ -170,6 +172,8 @@ function ovUpdateInfo() {
 .dp-arrow { font-size:0.6rem; color:#888; }
 .dp-reset { font-size:0.75rem; color:#ef233c; text-decoration:none; padding:0.25rem 0.5rem; border-radius:5px; }
 .dp-reset:hover { background:#fff0f2; }
+.range-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.25rem 0.5rem; background:#eef3ff; color:#2b3a67; border:1px solid #c6d4ff; border-radius:7px; font-size:0.72rem; font-weight:600; direction:ltr; }
+body.dark .range-chip { background:#1e2044; color:#a8b8ff; border-color:#333366; }
 .dp-popup { position:absolute; top:calc(100% + 4px); right:0; z-index:200; background:#fff;
     border:1px solid #e0e4ef; border-radius:12px; box-shadow:0 6px 22px rgba(0,0,0,0.13);
     padding:0.6rem; width:240px; }

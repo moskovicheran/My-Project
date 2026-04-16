@@ -52,6 +52,19 @@ function applyFilter() {
     var _label = _range.length === 0 ? 'כל התקופות' : _range.length + ' ימים נבחרו';
     var _lblEl = document.getElementById('pdpLabel');
     if (_lblEl) _lblEl.textContent = _label;
+    // Range chip — show "DD/MM — DD/MM" when dates are selected
+    var _chipEl = document.getElementById('pdpRangeChip');
+    if (_chipEl) {
+        if (_range.length > 0) {
+            var _first = _range[0].split('-'), _last = _range[_range.length - 1].split('-');
+            var _txt = _first[2] + '/' + _first[1];
+            if (_range.length > 1) _txt += ' — ' + _last[2] + '/' + _last[1];
+            _chipEl.textContent = _txt;
+            _chipEl.style.display = '';
+        } else {
+            _chipEl.style.display = 'none';
+        }
+    }
     // Apply button is always visible — popup only closes via Apply/trigger click
 
     // Update top cards
@@ -338,6 +351,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
                 </div>
             </div>
         </div>
+        <span id="pdpRangeChip" class="range-chip" style="display:none;"></span>
     </div>
 
     <div id="gv-all">
@@ -404,6 +418,8 @@ body.dark .dp-day.dp-in-range { background:#2a2a55 !important; color:#ccc !impor
 .dp-footer-btn:hover { background:#f5f6ff; border-color:#4361ee; color:#4361ee; }
 .dp-apply { background:#4361ee; color:#fff; border-color:#4361ee; }
 .dp-apply:hover { background:#3451d1; }
+.range-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.25rem 0.5rem; background:#eef3ff; color:#2b3a67; border:1px solid #c6d4ff; border-radius:7px; font-size:0.72rem; font-weight:600; direction:ltr; }
+body.dark .range-chip { background:#1e2044; color:#a8b8ff; border-color:#333366; }
 body.dark .dp-trigger { background:#1e1e2e; border-color:#333; color:#aaa; }
 body.dark .dp-popup { background:#1e1e2e; border-color:#333; box-shadow:0 4px 20px rgba(0,0,0,0.4); }
 body.dark .dp-header strong { color:#ddd; }

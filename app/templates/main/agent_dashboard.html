@@ -56,6 +56,8 @@
     </div>
 
     {% if selected_dates %}
+    {% set _sorted = selected_dates|sort %}
+    <span class="range-chip">{{ _sorted[0][8:] }}/{{ _sorted[0][5:7] }}{% if _sorted|length > 1 %} — {{ _sorted[-1][8:] }}/{{ _sorted[-1][5:7] }}{% endif %}</span>
     <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) if request.args.get('view_as') else url_for('main.dashboard') }}" class="dp-reset">&#10005; הצג הכל</a>
     {% endif %}
 </div>
@@ -869,6 +871,8 @@ function updateDpInfo() {
 .dp-arrow { font-size:0.7rem; color:#888; margin-right:-0.2rem; }
 .dp-reset { font-size:0.82rem; color:#ef233c; text-decoration:none; padding:0.3rem 0.6rem; border-radius:6px; transition:background 0.15s; }
 .dp-reset:hover { background:#fff0f2; }
+.range-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.28rem 0.55rem; background:#eef3ff; color:#2b3a67; border:1px solid #c6d4ff; border-radius:7px; font-size:0.75rem; font-weight:600; direction:ltr; }
+body.dark .range-chip { background:#1e2044; color:#a8b8ff; border-color:#333366; }
 .dp-popup {
     position:absolute; top:calc(100% + 6px); right:0; z-index:200;
     background:#fff; border:1px solid #e0e4ef; border-radius:14px;
