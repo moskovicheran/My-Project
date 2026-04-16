@@ -56,7 +56,7 @@
     </div>
 
     {% if selected_dates %}
-    <a href="{{ url_for('main.dashboard') }}" class="dp-reset">&#10005; הצג הכל</a>
+    <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) if request.args.get('view_as') else url_for('main.dashboard') }}" class="dp-reset">&#10005; הצג הכל</a>
     {% endif %}
 </div>
 
@@ -838,8 +838,14 @@ function _getDateRange() {
 }
 function dpApply() {
     var dates = _getDateRange();
-    if (dates.length === 0) { window.location.href = '{{ url_for("main.dashboard") }}'; }
-    else { window.location.href = '{{ url_for("main.dashboard") }}?dates=' + dates.join(','); }
+    // Preserve view_as when admin is viewing another agent's dashboard
+    var base = '{{ url_for("main.dashboard") }}';
+    {% if request.args.get('view_as') %}
+    base += '?view_as={{ request.args.get("view_as") }}';
+    {% endif %}
+    var sep = base.indexOf('?') >= 0 ? '&' : '?';
+    if (dates.length === 0) { window.location.href = base; }
+    else { window.location.href = base + sep + 'dates=' + dates.join(','); }
 }
 function updateDpInfo() {
     var el = document.getElementById('dpSelCount');
