@@ -121,34 +121,79 @@ function applyFilter() {
     var blindsGrid = document.getElementById('dynamic-blinds-grid');
     if (blindsGrid) blindsGrid.innerHTML = blindsHtml || '<p class="muted" style="padding:0.5rem;">אין נתונים לתקופה זו</p>';
 
-    // Rebuild sessions table
+    // Rebuild sessions table — respects the active tab (current/all) + calendar filter
     var tbody = document.getElementById('sessions-tbody');
     if (!tbody) return;
-    if (!sessions.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:1rem;">אין משחקים לתקופה זו</td></tr>';
-        return;
+    // Tab-scoped sessions: 'current' → active only; 'all' → active + archived (last 90 days)
+    var tabSessions = (typeof _sessionsTab !== 'undefined' && _sessionsTab === 'all')
+        ? _allSessions
+        : _allSessions.filter(function(s) { return s.source === 'active'; });
+    // Apply calendar filter within tab scope
+    var tabFiltered;
+    if (_selectedDates.length === 0) tabFiltered = tabSessions;
+    else {
+        var _r = _getDateRange(), _set = new Set(_r);
+        tabFiltered = tabSessions.filter(function(s) { return _set.has(s.date); });
     }
-    var rows = '';
-    sessions.forEach(function(s) {
-        var cls = s.pnl >= 0 ? 'income' : 'expense';
-        var sign = s.pnl > 0 ? '+' : '';
-        var dateParts = s.date ? s.date.split('-') : null;
-        var dateFmt = dateParts ? dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0] : '—';
-        rows += '<tr>' +
-            '<td class="muted" style="font-size:0.82rem;white-space:nowrap;">' + dateFmt + '</td>' +
-            '<td><strong>' + s.table_name + '</strong></td>' +
-            '<td><span class="badge badge-game">' + s.game_type + '</span></td>' +
-            '<td class="muted">' + s.blinds + '</td>' +
-            '<td class="amount ' + cls + '">' + sign + s.pnl.toFixed(2) + '</td>' +
-            '</tr>';
-    });
-    tbody.innerHTML = rows;
+    // Update tab counts so the user sees how many rows each tab contains under the current filter
+    var curCountEl = document.getElementById('stab-cur-count');
+    var allCountEl = document.getElementById('stab-all-count');
+    if (curCountEl || allCountEl) {
+        var curCount, allCount;
+        if (_selectedDates.length === 0) {
+            curCount = _allSessions.filter(function(s) { return s.source === 'active'; }).length;
+            allCount = _allSessions.length;
+        } else {
+            var r2 = _getDateRange(), set2 = new Set(r2);
+            curCount = _allSessions.filter(function(s) { return s.source === 'active' && set2.has(s.date); }).length;
+            allCount = _allSessions.filter(function(s) { return set2.has(s.date); }).length;
+        }
+        if (curCountEl) curCountEl.textContent = curCount;
+        if (allCountEl) allCountEl.textContent = allCount;
+    }
+    if (!tabFiltered.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:1rem;">אין משחקים לתקופה זו</td></tr>';
+    } else {
+        var rows = '';
+        tabFiltered.forEach(function(s) {
+            var cls = s.pnl >= 0 ? 'income' : 'expense';
+            var sign = s.pnl > 0 ? '+' : '';
+            var dateParts = s.date ? s.date.split('-') : null;
+            var dateFmt = dateParts ? dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0] : '—';
+            rows += '<tr>' +
+                '<td class="muted" style="font-size:0.82rem;white-space:nowrap;">' + dateFmt + '</td>' +
+                '<td><strong>' + s.table_name + '</strong></td>' +
+                '<td><span class="badge badge-game">' + s.game_type + '</span></td>' +
+                '<td class="muted">' + s.blinds + '</td>' +
+                '<td class="amount ' + cls + '">' + sign + s.pnl.toFixed(2) + '</td>' +
+                '</tr>';
+        });
+        // Transfers always shown on the "all" tab; hidden in current-cycle view
+        if (_sessionsTab === 'all' && _transferRows && _transferRows.length) {
+            _transferRows.forEach(function(t) {
+                var cls = t.amount >= 0 ? 'income' : 'expense';
+                var sign = t.amount > 0 ? '+' : '';
+                rows += '<tr style="background:linear-gradient(90deg, #f8f9ff, #f0f3ff);">' +
+                    '<td><strong>' + t.label + '</strong></td>' +
+                    '<td><span class="badge badge-game" style="background:#667eea;color:#fff;">העברה</span></td>' +
+                    '<td></td>' +
+                    '<td class="amount ' + cls + '">' + sign + t.amount.toFixed(2) + '</td>' +
+                    '</tr>';
+            });
+        }
+        tbody.innerHTML = rows;
+    }
+    // Totals row — sum of visible rows (sessions + transfers if any)
+    var tabPnl = tabFiltered.reduce(function(a,s){ return a + s.pnl; }, 0);
+    if (_sessionsTab === 'all' && _transferRows && _transferRows.length) {
+        tabPnl += _transferRows.reduce(function(a,t){ return a + t.amount; }, 0);
+    }
 
-    // Update total row
+    // Update total row for the sessions table (sum of visible rows in the active tab)
     var totalEl = document.getElementById('sessions-total');
     if (totalEl) {
-        totalEl.className = 'amount ' + (totalPnl >= 0 ? 'income' : 'expense');
-        totalEl.innerHTML = '<strong>' + _fmt(Math.round(totalPnl*100)/100) + '</strong>';
+        totalEl.className = 'amount ' + (tabPnl >= 0 ? 'income' : 'expense');
+        totalEl.innerHTML = '<strong>' + _fmt(Math.round(tabPnl*100)/100) + '</strong>';
     }
 
 }
@@ -410,8 +455,16 @@ function switchGameView(btn, view) {
 {% endif %}
 
 {# ── Game Sessions ── #}
+{% set active_count = sessions | selectattr('source', 'equalto', 'active') | list | length %}
 <div class="section">
-    <h2 class="section-title">המשחקים שלי ({{ sessions|length }})</h2>
+    <div class="sessions-tabs">
+        <button id="stab-current" class="sessions-tab active" onclick="switchSessionsTab('current')">
+            מחזור נוכחי <span class="tab-count">(<span id="stab-cur-count">{{ active_count }}</span>)</span>
+        </button>
+        <button id="stab-all" class="sessions-tab" onclick="switchSessionsTab('all')">
+            המשחקים שלי <span class="tab-count">(<span id="stab-all-count">{{ sessions|length }}</span>)</span>
+        </button>
+    </div>
     {% if sessions %}
     <table class="table table-sm">
         <thead>
@@ -423,40 +476,11 @@ function switchGameView(btn, view) {
                 <th>רווח/הפסד</th>
             </tr>
         </thead>
-        <tbody id="sessions-tbody">
-            {% for s in sessions %}
-            <tr>
-                <td class="muted" style="font-size:0.82rem; white-space:nowrap;">{% if s.date %}{{ s.date[8:10] }}/{{ s.date[5:7] }}/{{ s.date[0:4] }}{% else %}—{% endif %}</td>
-                <td><strong>{{ s.table_name }}</strong></td>
-                <td><span class="badge badge-game">{{ s.game_type }}</span></td>
-                <td class="muted">{{ s.blinds }}</td>
-                <td class="amount {% if s.pnl >= 0 %}income{% else %}expense{% endif %}">
-                    {% if s.pnl > 0 %}+{% endif %}{{ s.pnl|comma }}
-                </td>
-            </tr>
-            {% endfor %}
-            {% if transfer_rows is defined and transfer_rows %}
-            {% for t in transfer_rows %}
-            <tr style="background:linear-gradient(90deg, #f8f9ff, #f0f3ff);">
-                <td><strong>{{ t.label }}</strong></td>
-                <td><span class="badge badge-game" style="background:#667eea; color:#fff;">העברה</span></td>
-                <td></td>
-                <td class="amount {% if t.amount >= 0 %}income{% else %}expense{% endif %}">
-                    {% if t.amount > 0 %}+{% endif %}{{ t.amount|comma }}
-                </td>
-            </tr>
-            {% endfor %}
-            {% endif %}
-        </tbody>
+        <tbody id="sessions-tbody"></tbody>
         <tfoot>
             <tr class="total-row">
                 <td colspan="4"><strong>סה"כ</strong></td>
-                {% set games_pnl = sessions|sum(attribute='pnl') %}
-                {% set xfer_total = transfer_rows|sum(attribute='amount') if transfer_rows is defined and transfer_rows else 0 %}
-                {% set total_pnl = games_pnl + xfer_total %}
-                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}" id="sessions-total">
-                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
-                </td>
+                <td class="amount" id="sessions-total"><strong>0</strong></td>
             </tr>
         </tfoot>
     </table>
@@ -466,4 +490,28 @@ function switchGameView(btn, view) {
     </div>
     {% endif %}
 </div>
+
+<style>
+.sessions-tabs { display:flex; gap:0.4rem; margin-bottom:1rem; flex-wrap:wrap; }
+.sessions-tab { padding:0.5rem 1.1rem; border-radius:10px 10px 0 0; font-size:0.95rem; font-weight:700;
+    cursor:pointer; border:2px solid #e0e4ef; border-bottom:none; background:#f8f9ff; color:#666;
+    font-family:inherit; transition:all 0.15s; }
+.sessions-tab:hover { color:#4361ee; border-color:#c8d3ff; }
+.sessions-tab.active { background:#4361ee; color:#fff; border-color:#4361ee; }
+.sessions-tab .tab-count { font-weight:600; opacity:0.85; }
+body.dark .sessions-tab { background:#1e1e2e; border-color:#333; color:#aaa; }
+body.dark .sessions-tab.active { background:#4361ee; color:#fff; border-color:#4361ee; }
+</style>
+
+<script>
+var _transferRows = {{ transfer_rows | default([]) | tojson }};
+var _sessionsTab = 'current'; // 'current' = active only, 'all' = active + archive
+
+function switchSessionsTab(tab) {
+    _sessionsTab = tab;
+    document.getElementById('stab-current').classList.toggle('active', tab === 'current');
+    document.getElementById('stab-all').classList.toggle('active', tab === 'all');
+    applyFilter();
+}
+</script>
 {% endblock %}
