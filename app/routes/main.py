@@ -923,7 +923,8 @@ def dashboard():
                              if not d or d.strftime('%Y-%m-%d') not in set(active_dates)]
 
         session_list = active_sessions + archived_sessions
-        session_list.sort(key=lambda x: x.get('date', ''), reverse=True)
+        # Ascending by date so the earliest game of the cycle appears first, latest last
+        session_list.sort(key=lambda x: x.get('date', ''))
 
         # Per-date stats (hands, rake) — needed for calendar filtering of top cards
         active_daily = (DailyPlayerStats.query
