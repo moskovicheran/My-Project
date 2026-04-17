@@ -435,8 +435,21 @@ body.dark .dp-day:not(.dp-disabled):hover { background:#333355; }
 body.dark .dp-footer { border-top-color:#333; }
 body.dark .dp-footer-btn { background:#252535; border-color:#444; color:#aaa; }
 @media (max-width:640px) {
-    #pdpOverlay { display:none; }
-    .dp-popup { position:fixed !important; top:50% !important; left:50% !important; transform:translate(-50%,-50%) !important; width:220px; z-index:400; }
+    #pdpOverlay { display:block !important; }
+    .dp-trigger { padding:0.35rem 0.6rem; font-size:0.78rem; }
+    .dp-popup {
+        position:fixed !important; top:3.5rem !important; left:50% !important; right:auto !important;
+        transform:translateX(-50%) !important;
+        width:calc(100vw - 1.5rem); max-width:280px; min-width:0; padding:0.55rem; z-index:400;
+    }
+    .dp-header strong { font-size:0.82rem; }
+    .dp-nav { padding:0.2rem 0.4rem; font-size:0.72rem; }
+    .dp-weekdays span { font-size:0.6rem; padding:0.1rem 0; }
+    .dp-day { padding:0.28rem 0; font-size:0.72rem; border-radius:6px; }
+    .dp-footer { margin-top:0.4rem; padding-top:0.4rem; }
+    .dp-footer-btn { padding:0.28rem 0.55rem; font-size:0.72rem; }
+    .dp-sel-info { font-size:0.68rem; }
+    .dp-hint { font-size:0.76rem; }
 }
 
 /* ── Game Stats ── */

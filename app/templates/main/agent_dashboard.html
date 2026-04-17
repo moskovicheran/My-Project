@@ -932,7 +932,20 @@ body.dark .dp-footer { border-top-color:#333; }
 body.dark .dp-footer-btn { background:#252535; border-color:#444; color:#ccc; }
 body.dark .dp-reset { color:#ff6b6b; }
 @media (max-width: 640px) {
-    .dp-popup { position:fixed; right:1rem; left:1rem; top:auto; min-width:auto; width:auto; transform:none; }
+    .dp-trigger { padding:0.4rem 0.65rem; font-size:0.8rem; }
+    .dp-popup {
+        position:fixed; left:50%; right:auto; top:3.5rem; transform:translateX(-50%);
+        width:calc(100vw - 1.5rem); max-width:300px; min-width:0; padding:0.6rem; z-index:400;
+    }
+    .dp-header strong { font-size:0.85rem; }
+    .dp-nav { padding:0.2rem 0.45rem; font-size:0.75rem; }
+    .dp-weekdays span { font-size:0.62rem; padding:0.15rem 0; }
+    .dp-day { padding:0.3rem 0; font-size:0.75rem; border-radius:6px; }
+    .dp-footer { margin-top:0.45rem; padding-top:0.4rem; }
+    .dp-footer-btn { padding:0.3rem 0.6rem; font-size:0.75rem; }
+    .dp-sel-info { font-size:0.7rem; }
+    .dp-hint { font-size:0.8rem; }
+    .range-chip { font-size:0.7rem; padding:0.22rem 0.45rem; }
 }
 /* Export choice modal */
 .export-modal-overlay {
