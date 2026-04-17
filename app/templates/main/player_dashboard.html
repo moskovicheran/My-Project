@@ -549,9 +549,10 @@ function toggleBcDetails(cardEl, gameType, blinds) {
         if (blinds !== null && (s.blinds || '-') !== blinds) return false;
         return true;
     });
-    // Newest first, then highest |pnl|
+    // Oldest first (chronological — 13/04 at top, 16/04 at bottom), then
+    // highest |pnl| within the same day
     matches.sort(function(a, b) {
-        if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
         return Math.abs(b.pnl) - Math.abs(a.pnl);
     });
     if (!matches.length) {
