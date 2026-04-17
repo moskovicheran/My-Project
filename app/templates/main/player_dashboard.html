@@ -52,6 +52,9 @@ function applyFilter() {
     var _label = _range.length === 0 ? 'כל התקופות' : _range.length + ' ימים נבחרו';
     var _lblEl = document.getElementById('pdpLabel');
     if (_lblEl) _lblEl.textContent = _label;
+    // Toggle the hint: only visible when no filter is active
+    var _hintEl = document.getElementById('pdpHint');
+    if (_hintEl) _hintEl.style.display = _range.length === 0 ? '' : 'none';
     // Range chip — show "DD/MM — DD/MM" when dates are selected
     var _chipEl = document.getElementById('pdpRangeChip');
     if (_chipEl) {
@@ -337,6 +340,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
                 <span id="pdpLabel">כל התקופות</span>
                 <span class="dp-arrow">▾</span>
             </button>
+            <span id="pdpHint" class="dp-hint">ללא סינון = נתונים מחזור נוכחי</span>
             <div id="pdpPopup" class="dp-popup" style="display:none;">
                 <div class="dp-header">
                     <button onclick="pdpChangeMonth(-1)" class="dp-nav">→</button>
@@ -398,6 +402,8 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 /* ── Date Picker ── */
 .dp-trigger { display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.75rem; border:1px solid #e0e4ef; border-radius:8px; background:#fff; cursor:pointer; font-family:inherit; font-size:0.82rem; color:#555; transition:all 0.15s; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
 .dp-trigger:hover { border-color:#4361ee; color:#4361ee; box-shadow:0 1px 6px rgba(67,97,238,0.1); }
+.dp-hint { font-size:0.72rem; color:#7a8699; font-style:italic; margin-right:0.2rem; }
+body.dark .dp-hint { color:#8a95aa; }
 .dp-icon { font-size:0.9rem; }
 .dp-arrow { font-size:0.6rem; color:#aaa; }
 .dp-popup { position:absolute; top:calc(100% + 4px); right:0; z-index:400; background:#fff; border:1px solid #e8eaf0; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.12); padding:0.55rem; width:210px; }

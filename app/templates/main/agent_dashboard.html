@@ -35,6 +35,10 @@
             <span class="dp-arrow">▾</span>
         </button>
 
+        <span id="dpHint" class="dp-hint" {% if selected_dates %}style="display:none;"{% endif %}>
+            ללא סינון = נתונים מחזור נוכחי
+        </span>
+
         <div id="calendarPopup" class="dp-popup" style="display:none;">
             <div class="dp-header">
                 <button onclick="dpChangeMonth(-1)" class="dp-nav">→</button>
@@ -885,6 +889,8 @@ function updateDpInfo() {
 .dp-arrow { font-size:0.7rem; color:#888; margin-right:-0.2rem; }
 .dp-reset { font-size:0.82rem; color:#ef233c; text-decoration:none; padding:0.3rem 0.6rem; border-radius:6px; transition:background 0.15s; }
 .dp-reset:hover { background:#fff0f2; }
+.dp-hint { font-size:0.78rem; color:#7a8699; font-style:italic; margin-right:0.2rem; }
+body.dark .dp-hint { color:#8a95aa; }
 .range-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.28rem 0.55rem; background:#eef3ff; color:#2b3a67; border:1px solid #c6d4ff; border-radius:7px; font-size:0.75rem; font-weight:600; direction:ltr; }
 body.dark .range-chip { background:#1e2044; color:#a8b8ff; border-color:#333366; }
 .dp-popup {

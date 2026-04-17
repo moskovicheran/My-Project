@@ -13,6 +13,10 @@
             <span class="dp-arrow">▾</span>
         </button>
 
+        <span id="ovDpHint" class="dp-hint" {% if selected_dates %}style="display:none;"{% endif %}>
+            ללא סינון = נתונים מחזור נוכחי
+        </span>
+
         <div id="ovDpPopup" class="dp-popup" style="display:none;">
             <div class="dp-header">
                 <button onclick="ovDpChangeMonth(-1)" class="dp-nav">→</button>
@@ -172,6 +176,8 @@ function ovUpdateInfo() {
 .dp-arrow { font-size:0.6rem; color:#888; }
 .dp-reset { font-size:0.75rem; color:#ef233c; text-decoration:none; padding:0.25rem 0.5rem; border-radius:5px; }
 .dp-reset:hover { background:#fff0f2; }
+.dp-hint { font-size:0.78rem; color:#7a8699; font-style:italic; margin-right:0.2rem; }
+body.dark .dp-hint { color:#8a95aa; }
 .range-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.25rem 0.5rem; background:#eef3ff; color:#2b3a67; border:1px solid #c6d4ff; border-radius:7px; font-size:0.72rem; font-weight:600; direction:ltr; }
 body.dark .range-chip { background:#1e2044; color:#a8b8ff; border-color:#333366; }
 .dp-popup { position:absolute; top:calc(100% + 4px); right:0; z-index:200; background:#fff;
