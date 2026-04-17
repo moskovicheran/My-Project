@@ -1539,31 +1539,56 @@ def export_player(player_id):
 @main_bp.route('/export/agent/account')
 @login_required
 def export_agent_account():
-    """Export agent account summary - personal rake, club rake, expenses, net."""
+    """Export agent account summary - personal rake, club rake, expenses, net.
+
+    Honors ?dates= — limits the personal & club rake to the selected upload
+    dates (active or archived). Expenses are all-time because they aren't
+    date-bound to uploads. Transfers are applied only in the all-time view."""
     if current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats
-    from app.union_data import get_members_hierarchy
-    from sqlalchemy import func as sqlfunc
+    from app.models import (SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge,
+                            DailyPlayerStats, ArchivedPlayerStats)
+    from app.union_data import get_members_hierarchy, get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_
 
     sa_id = current_user.player_id
 
-    # Personal rake + transfer adjustments
-    from app.union_data import get_transfer_adjustments
-    from sqlalchemy import or_
-    personal = DailyPlayerStats.query.with_entities(
-        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.pnl)
-    ).filter(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.role != 'Name Entry').first()
+    # Date filter
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
+
+    if use_archive and archive_period_id:
+        SM = ArchivedPlayerStats
+        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+    else:
+        SM = DailyPlayerStats
+        scope = []
+        if upload_ids_filter:
+            scope.append(SM.upload_id.in_(upload_ids_filter))
+
+    # Personal rake
+    personal = SM.query.with_entities(
+        sqlfunc.sum(SM.rake), sqlfunc.sum(SM.pnl)
+    ).filter(SM.sa_id == sa_id, SM.role != 'Name Entry', *scope).first()
     personal_rake = round(float(personal[0] or 0), 2)
     personal_pnl = round(float(personal[1] or 0), 2)
-    # Adjust PnL by transfers
-    all_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
-        sqlfunc.distinct(DailyPlayerStats.player_id)
-    ).filter(or_(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.agent_id == sa_id)).all()]
-    if all_pids:
-        xfer_adj = get_transfer_adjustments(all_pids)
-        personal_pnl = round(personal_pnl + sum(xfer_adj.values()), 2)
+    # Transfers only apply to the unfiltered (all-time) view
+    if not had_date_filter:
+        all_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
+            sqlfunc.distinct(DailyPlayerStats.player_id)
+        ).filter(or_(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.agent_id == sa_id)).all()]
+        if all_pids:
+            xfer_adj = get_transfer_adjustments(all_pids)
+            personal_pnl = round(personal_pnl + sum(xfer_adj.values()), 2)
 
     # Club rakes
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
@@ -1574,9 +1599,9 @@ def export_agent_account():
     for cfg in rake_cfgs:
         name = club_id_to_name.get(cfg.managed_club_id, '')
         if name:
-            cr = DailyPlayerStats.query.with_entities(
-                sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.pnl)
-            ).filter(DailyPlayerStats.club == name).first()
+            cr = SM.query.with_entities(
+                sqlfunc.sum(SM.rake), sqlfunc.sum(SM.pnl)
+            ).filter(SM.club == name, *scope).first()
             rake = round(float(cr[0] or 0), 2)
             pnl = round(float(cr[1] or 0), 2)
             club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
@@ -1586,7 +1611,7 @@ def export_agent_account():
                               'מועדון מקבל %': keeps, 'נטו שלי': net})
             total_club_rake += net
 
-    # Expenses
+    # Expenses — not date-bound to uploads, always included
     charges = ExpenseCharge.query.filter_by(agent_player_id=sa_id).all()
     expense_rows = [{'הוצאה': c.expense.description if c.expense else '', 'סכום': c.charge_amount,
                      'תאריך': c.created_at.strftime('%d/%m/%Y')} for c in charges]
@@ -1601,7 +1626,11 @@ def export_agent_account():
         sheets['מועדונים'] = club_rows
     if expense_rows:
         sheets['הוצאות'] = expense_rows
-    return _make_excel(sheets, f'{current_user.username}_account.xlsx')
+
+    suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
+    return _make_excel(sheets, f'{current_user.username}{suffix}_account.xlsx',
+                       period_label=period_label)
 
 
 @main_bp.route('/export/agent/single/<agent_id>')
@@ -1740,12 +1769,17 @@ def export_single_agent(agent_id):
 @main_bp.route('/export/agent/players')
 @login_required
 def export_agent_players():
-    """Export all agent's players, agents, SAs, clubs with rake % and totals."""
+    """Export all agent's players, agents, SAs, clubs with rake % and totals.
+
+    Honors ?dates= — all stats (players, sub-agents, child SAs, clubs) are
+    limited to the selected upload dates. Transfers are only applied in the
+    all-time view."""
     if current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats, RakeConfig
-    from app.union_data import get_members_hierarchy
+    from app.models import (SAHierarchy, SARakeConfig, DailyPlayerStats,
+                            ArchivedPlayerStats, RakeConfig)
+    from app.union_data import get_members_hierarchy, get_transfer_adjustments
     from sqlalchemy import func as sqlfunc
 
     sa_id = current_user.player_id
@@ -1753,7 +1787,29 @@ def export_agent_players():
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     all_sa_ids.extend(child_sa_ids)
 
-    # Nickname map
+    # Date filter
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
+
+    if use_archive and archive_period_id:
+        SM = ArchivedPlayerStats
+        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+    else:
+        SM = DailyPlayerStats
+        scope = []
+        if upload_ids_filter:
+            scope.append(SM.upload_id.in_(upload_ids_filter))
+
+    # Nickname map (always from active data — needed for resolving names even
+    # when archive filter returns no rows for the SA itself)
     all_nicks = dict(DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
@@ -1761,18 +1817,17 @@ def export_agent_players():
     sheets = {}
 
     # ── Sheet 1: My Players (direct) ──
-    players = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.sa_id),
-        sqlfunc.max(DailyPlayerStats.agent_id),
-        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-        sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
+    players = SM.query.with_entities(
+        SM.player_id, sqlfunc.max(SM.nickname),
+        sqlfunc.max(SM.club), sqlfunc.max(SM.sa_id),
+        sqlfunc.max(SM.agent_id),
+        sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
+        sqlfunc.sum(SM.hands),
+    ).filter(SM.sa_id.in_(all_sa_ids), SM.role != 'Name Entry', *scope
+    ).group_by(SM.player_id).all()
 
-    # Get transfer adjustments for all players
-    from app.union_data import get_transfer_adjustments
-    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+    # Transfers only apply to the unfiltered (all-time) view
+    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
 
     # Group players: by agent, by child SA, or direct
     agent_groups = {}  # agent_name -> [players]
@@ -1862,14 +1917,14 @@ def export_agent_players():
         sheets['שחקנים ישירים'] = direct_players
 
     # ── Sheet 2: My Agents ──
-    agent_stats = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.agent_id,
-        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-        sqlfunc.sum(DailyPlayerStats.hands), sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
+    agent_stats = SM.query.with_entities(
+        SM.agent_id,
+        sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
+        sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
     ).filter(
-        DailyPlayerStats.sa_id.in_(all_sa_ids), DailyPlayerStats.role != 'Name Entry',
-        DailyPlayerStats.agent_id != '', DailyPlayerStats.agent_id != '-'
-    ).group_by(DailyPlayerStats.agent_id).all()
+        SM.sa_id.in_(all_sa_ids), SM.role != 'Name Entry',
+        SM.agent_id != '', SM.agent_id != '-', *scope
+    ).group_by(SM.agent_id).all()
 
     agent_rows = []
     for ag in agent_stats:
@@ -1896,10 +1951,10 @@ def export_agent_players():
     # ── Sheet 3: My Super Agents ──
     sa_rows = []
     for csa_id in child_sa_ids:
-        sa_data = DailyPlayerStats.query.with_entities(
-            sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-            sqlfunc.sum(DailyPlayerStats.hands), sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
-        ).filter(DailyPlayerStats.sa_id == csa_id, DailyPlayerStats.role != 'Name Entry').first()
+        sa_data = SM.query.with_entities(
+            sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
+            sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
+        ).filter(SM.sa_id == csa_id, SM.role != 'Name Entry', *scope).first()
         sa_name = all_nicks.get(csa_id, csa_id)
         rc = RakeConfig.query.filter_by(entity_type='agent', entity_id=csa_id).first()
         rake_pct = rc.rake_percent if rc else 0
@@ -1931,10 +1986,10 @@ def export_agent_players():
             name = club_id_to_name.get(cfg.managed_club_id)
             if not name:
                 continue
-            cr = DailyPlayerStats.query.with_entities(
-                sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-                sqlfunc.sum(DailyPlayerStats.hands), sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.player_id)),
-            ).filter(DailyPlayerStats.club == name, DailyPlayerStats.role != 'Name Entry').first()
+            cr = SM.query.with_entities(
+                sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
+                sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
+            ).filter(SM.club == name, SM.role != 'Name Entry', *scope).first()
             club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
             keeps = club_rc.rake_percent if club_rc else 0
             rake = round(float(cr[1] or 0), 2)
@@ -1956,18 +2011,23 @@ def export_agent_players():
             })
         sheets['מועדונים'] = club_rows
 
-    return _make_excel(sheets, f'{current_user.username}_players.xlsx')
+    suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
+    return _make_excel(sheets, f'{current_user.username}{suffix}_players.xlsx',
+                       period_label=period_label)
 
 
 @main_bp.route('/export/agent/club/<club_id>')
 @login_required
 def export_agent_club(club_id):
-    """Export specific club details - SAs, Agents, Players."""
+    """Export specific club details - SAs, Agents, Players.
+
+    Honors ?dates= — limits to the selected upload dates."""
     if current_user.role not in ('agent', 'admin') or (current_user.role == 'agent' and not current_user.player_id):
         return redirect(url_for('main.dashboard'))
 
-    from app.models import DailyPlayerStats
-    from app.union_data import get_members_hierarchy
+    from app.models import DailyPlayerStats, ArchivedPlayerStats
+    from app.union_data import get_members_hierarchy, get_transfer_adjustments
     from sqlalchemy import func as sqlfunc
     import re
 
@@ -1981,21 +2041,42 @@ def export_agent_club(club_id):
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
 
-    players = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
-        sqlfunc.max(DailyPlayerStats.role), sqlfunc.sum(DailyPlayerStats.pnl),
-        sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
+    # Date filter
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
 
-    # Build nickname map
+    if use_archive and archive_period_id:
+        SM = ArchivedPlayerStats
+        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+    else:
+        SM = DailyPlayerStats
+        scope = []
+        if upload_ids_filter:
+            scope.append(SM.upload_id.in_(upload_ids_filter))
+
+    players = SM.query.with_entities(
+        SM.player_id, sqlfunc.max(SM.nickname),
+        sqlfunc.max(SM.sa_id), sqlfunc.max(SM.agent_id),
+        sqlfunc.max(SM.role), sqlfunc.sum(SM.pnl),
+        sqlfunc.sum(SM.rake), sqlfunc.sum(SM.hands),
+    ).filter(SM.club == club_name, SM.role != 'Name Entry', *scope
+    ).group_by(SM.player_id).all()
+
+    # Nickname map (always from active data so names resolve even if the SA
+    # itself has no rows in the filtered range)
     all_nicks = dict(DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
 
-    from app.union_data import get_transfer_adjustments
-    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
 
     full_mode = request.args.get('mode') == 'full'
 
@@ -2062,7 +2143,10 @@ def export_agent_club(club_id):
     if not sheets:
         sheets[club_name[:31]] = []
 
-    return _make_excel(sheets, f'{club_name}_report.xlsx')
+    suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
+    return _make_excel(sheets, f'{club_name}{suffix}_report.xlsx',
+                       period_label=period_label)
 
 
 @main_bp.route('/export/agent/period')
@@ -2184,12 +2268,15 @@ def export_agent_period():
 @main_bp.route('/export/club/report')
 @login_required
 def export_club_report():
-    """Export club report - all SAs, Agents, Players with balances."""
+    """Export club report - all SAs, Agents, Players with balances.
+
+    Honors ?dates= — supports both active and archived uploads, with a
+    banner on each sheet showing the period."""
     if current_user.role != 'club' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import DailyPlayerStats, DailyUpload
-    from app.union_data import get_members_hierarchy
+    from app.models import DailyPlayerStats, ArchivedPlayerStats
+    from app.union_data import get_members_hierarchy, get_transfer_adjustments
     from sqlalchemy import func as sqlfunc
 
     club_id = current_user.player_id
@@ -2203,42 +2290,44 @@ def export_club_report():
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
 
-    # Date filter
-    dates_str = request.args.get('dates', '')
-    base_filters = [DailyPlayerStats.club == club_name, DailyPlayerStats.role != 'Name Entry']
-    filename_suffix = ''
-    if dates_str:
-        from datetime import datetime as dt
-        upload_ids = []
-        for ds in dates_str.split(','):
-            ds = ds.strip()
-            try:
-                sel = dt.strptime(ds, '%Y-%m-%d').date()
-                upload = DailyUpload.query.filter_by(upload_date=sel).first()
-                if upload:
-                    upload_ids.append(upload.id)
-            except ValueError:
-                pass
-        if upload_ids:
-            base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
-            filename_suffix = f'_{dates_str.replace(",", "_")}'
+    # Date filter (shared helper — supports active + archive)
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
+
+    if use_archive and archive_period_id:
+        SM = ArchivedPlayerStats
+        base_filters = [SM.club == club_name, SM.role != 'Name Entry',
+                        SM.period_id == archive_period_id,
+                        SM.upload_id.in_(archive_upload_ids)]
+    else:
+        SM = DailyPlayerStats
+        base_filters = [SM.club == club_name, SM.role != 'Name Entry']
+        if upload_ids_filter:
+            base_filters.append(SM.upload_id.in_(upload_ids_filter))
 
     # All players in this club
-    players = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.sa_id), sqlfunc.max(DailyPlayerStats.agent_id),
-        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-        sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(*base_filters).group_by(DailyPlayerStats.player_id).all()
+    players = SM.query.with_entities(
+        SM.player_id, sqlfunc.max(SM.nickname),
+        sqlfunc.max(SM.sa_id), sqlfunc.max(SM.agent_id),
+        sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
+        sqlfunc.sum(SM.hands),
+    ).filter(*base_filters).group_by(SM.player_id).all()
 
-    # Nickname map
+    # Nickname map (always from active data so names resolve)
     all_nicks = dict(DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
 
     import re
-    from app.union_data import get_transfer_adjustments
-    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
     sheets = {}
 
     # Group by SA - each SA gets its own sheet with all their players
@@ -2307,7 +2396,10 @@ def export_club_report():
         })
         sheets['Super Agents'] = sa_rows
 
-    return _make_excel(sheets, f'{club_name}_report{filename_suffix}.xlsx')
+    filename_suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
+    return _make_excel(sheets, f'{club_name}_report{filename_suffix}.xlsx',
+                       period_label=period_label)
 
 
 @main_bp.route('/club/reports')

@@ -56,6 +56,19 @@
     {% endif %}
 </div>
 
+{# ── Empty-state banner: date filter active but no data in range ── #}
+{% if selected_dates and total_rake == 0 and total_pnl == 0 and player_count == 0 %}
+<div style="background:#fff4e5; border:1px solid #f0b86e; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem;">
+    <div style="color:#7a4e00; font-weight:600;">
+        ⚠️ אין נתונים לתאריכים שנבחרו
+        <div style="font-size:0.8rem; font-weight:400; color:#8a5a00; margin-top:0.2rem;">
+            לא נמצאה פעילות במועדון בטווח הנבחר. נסה תאריך אחר או הצג הכל.
+        </div>
+    </div>
+    <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline btn-sm" style="color:#7a4e00; border-color:#f0b86e;">&#10005; הצג הכל</a>
+</div>
+{% endif %}
+
 <style>
 .dp-trigger {
     display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.9rem;

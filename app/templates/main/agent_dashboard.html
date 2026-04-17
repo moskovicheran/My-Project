@@ -15,8 +15,8 @@
         </p>
     </div>
     <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-        <a href="{{ url_for('main.export_agent_account') }}" class="btn btn-outline btn-sm">📥 דוח חשבון</a>
-        <a href="{{ url_for('main.export_agent_players') }}" class="btn btn-outline btn-sm">📥 דוח שחקנים</a>
+        <a href="{{ url_for('main.export_agent_account', dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm">📥 דוח חשבון</a>
+        <a href="{{ url_for('main.export_agent_players', dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm">📥 דוח שחקנים</a>
     </div>
 </div>
 
@@ -61,6 +61,19 @@
     <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) if request.args.get('view_as') else url_for('main.dashboard') }}" class="dp-reset">&#10005; הצג הכל</a>
     {% endif %}
 </div>
+
+{# ── Empty-state banner: date filter active but no data in range ── #}
+{% if selected_dates and total_rake == 0 and total_pnl == 0 and total_hands == 0 %}
+<div style="background:#fff4e5; border:1px solid #f0b86e; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem;">
+    <div style="color:#7a4e00; font-weight:600;">
+        ⚠️ אין נתונים לתאריכים שנבחרו
+        <div style="font-size:0.8rem; font-weight:400; color:#8a5a00; margin-top:0.2rem;">
+            לא נמצאה פעילות של השחקנים שלך בטווח הנבחר. נסה תאריך אחר או הצג הכל.
+        </div>
+    </div>
+    <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) if request.args.get('view_as') else url_for('main.dashboard') }}" class="btn btn-outline btn-sm" style="color:#7a4e00; border-color:#f0b86e;">&#10005; הצג הכל</a>
+</div>
+{% endif %}
 
 {# ── Search Bar ── #}
 <div style="position:relative; margin-bottom:1rem;">
