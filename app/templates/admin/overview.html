@@ -299,14 +299,10 @@ body.dark .dp-reset { color:#ff6b6b; }
                 </div>
                 <span class="muted" style="font-size:0.75rem;">{{ ag.player_id }}</span>
             </div>
-            <div class="ao-stats">
+            <div class="ao-stats" style="grid-template-columns:repeat(3, 1fr);">
                 <div class="ao-stat">
                     <span class="ao-stat-val">{{ ag.players }}</span>
                     <span class="ao-stat-label">שחקנים</span>
-                </div>
-                <div class="ao-stat">
-                    <span class="ao-stat-val">{{ "{:,}".format(ag.hands) }}</span>
-                    <span class="ao-stat-label">Hands</span>
                 </div>
                 <div class="ao-stat">
                     <span class="ao-stat-val" style="color:#2ec4b6;">{{ ag.rake|comma }}</span>
@@ -383,14 +379,10 @@ body.dark .ao-stat-label { color: #777; }
                 </div>
                 <span class="muted" style="font-size:0.75rem;">{{ cl.club_id }}</span>
             </div>
-            <div class="ao-stats">
+            <div class="ao-stats" style="grid-template-columns:repeat(3, 1fr);">
                 <div class="ao-stat">
                     <span class="ao-stat-val">{{ cl.players }}</span>
                     <span class="ao-stat-label">שחקנים</span>
-                </div>
-                <div class="ao-stat">
-                    <span class="ao-stat-val">{{ "{:,}".format(cl.hands) }}</span>
-                    <span class="ao-stat-label">Hands</span>
                 </div>
                 <div class="ao-stat">
                     <span class="ao-stat-val" style="color:#2ec4b6;">{{ cl.rake|comma }}</span>
