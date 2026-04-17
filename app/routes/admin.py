@@ -101,6 +101,7 @@ def overview():
             'username': username, 'player_id': pid,
             'players': totals['player_count'], 'rake': totals['total_rake'],
             'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
+            'balance_plus_rake': round(totals['total_pnl'] + totals['total_rake'], 2),
         })
     agents_data.sort(key=lambda a: a['rake'], reverse=True)
 
