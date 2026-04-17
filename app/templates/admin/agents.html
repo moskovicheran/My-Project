@@ -217,21 +217,10 @@
 </div>
 
 <script>
-var _allMembers = [
-    {% for m in all_members %}
-    {pid: "{{ m.player_id }}", nick: "{{ m.nickname }}", club: "{{ m.club }}"},
-    {% endfor %}
-];
-var _allAgents = [
-    {% for sa in all_sa %}
-    {id: "{{ sa.id }}", nick: "{{ sa.nick }}", club: "{{ sa.club }}"},
-    {% endfor %}
-];
-var _allSubAgents = [
-    {% for a in all_sub_agents %}
-    {id: "{{ a.id }}", nick: "{{ a.nick }}", club: "{{ a.club }}"},
-    {% endfor %}
-];
+function escapeHtml(t){var d=document.createElement('div');d.appendChild(document.createTextNode(t));return d.innerHTML;}
+var _allMembers = {{ all_members | tojson }};
+var _allAgents = {{ all_sa | tojson }};
+var _allSubAgents = {{ all_sub_agents | tojson }};
 
 function switchRakeEntity(type) {
     var club = document.getElementById('rake-select-club');
@@ -271,7 +260,7 @@ function filterPlayerOptions(query) {
     query = query.trim().toLowerCase();
     if (query.length < 2) { dropdown.style.display = 'none'; return; }
     var matches = _allMembers.filter(function(m) {
-        return m.nick.toLowerCase().indexOf(query) !== -1 || m.pid.indexOf(query) !== -1;
+        return m.nickname.toLowerCase().indexOf(query) !== -1 || m.player_id.indexOf(query) !== -1;
     });
     if (matches.length === 0) {
         dropdown.innerHTML = '<div style="padding:0.5rem; color:#888; font-size:0.85rem;">לא נמצא</div>';
@@ -280,8 +269,8 @@ function filterPlayerOptions(query) {
     }
     var html = '';
     matches.slice(0, 20).forEach(function(m) {
-        html += '<div onclick="selectPlayer(\'' + escapeHtml(m.pid).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(m.nick).replace(/'/g, "&#39;") + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
-        html += '<strong>' + escapeHtml(m.nick) + '</strong> <span style="color:#888; font-size:0.8rem;">(' + escapeHtml(m.pid) + ') - ' + escapeHtml(m.club) + '</span></div>';
+        html += '<div onclick="selectPlayer(\'' + escapeHtml(m.player_id).replace(/'/g, "&#39;") + '\', \'' + escapeHtml(m.nickname).replace(/'/g, "&#39;") + '\')" style="padding:0.45rem 0.7rem; cursor:pointer; font-size:0.88rem; border-bottom:1px solid #f0f0f0; transition:background 0.1s;" onmouseenter="this.style.background=\'#f0f3ff\'" onmouseleave="this.style.background=\'#fff\'">';
+        html += '<strong>' + escapeHtml(m.nickname) + '</strong> <span style="color:#888; font-size:0.8rem;">(' + escapeHtml(m.player_id) + ') - ' + escapeHtml(m.club) + '</span></div>';
     });
     if (matches.length > 20) {
         html += '<div style="padding:0.4rem; color:#888; font-size:0.8rem; text-align:center;">+ עוד ' + (matches.length - 20) + '</div>';
