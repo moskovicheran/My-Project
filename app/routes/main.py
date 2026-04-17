@@ -1574,7 +1574,7 @@ def export_player(player_id):
     })
 
     summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
-                'P&L': cs['pnl'], 'Hands': cs['hands']}]
+                'P&L': cs['pnl']}]
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
@@ -1757,7 +1757,6 @@ def export_single_agent(agent_id):
             'סוכן': ag_name,
             'רווח/הפסד': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[5] or 0), 2),
-            'Hands': int(p[6] or 0),
         }
         all_rows.append(row)
         if ag_name:
@@ -1776,33 +1775,30 @@ def export_single_agent(agent_id):
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'סוכן': '',
             'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in all_rows), 2),
             'Rake': round(sum(r['Rake'] for r in all_rows), 2),
-            'Hands': sum(r['Hands'] for r in all_rows),
         })
         sheets[agent_nick[:31]] = all_rows
     else:
         # Sheet per sub-agent
         for ag_name, ag_rows in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
             ag_rows_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'קלאב': r['קלאב'],
-                              'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in ag_rows]
+                              'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake']} for r in ag_rows]
             ag_rows_clean.sort(key=lambda x: x['Rake'], reverse=True)
             ag_rows_clean.append({
                 'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
                 'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in ag_rows_clean), 2),
                 'Rake': round(sum(r['Rake'] for r in ag_rows_clean), 2),
-                'Hands': sum(r['Hands'] for r in ag_rows_clean),
             })
             safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
             sheets[safe_name] = ag_rows_clean
 
         if direct_rows:
             dr_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'קלאב': r['קלאב'],
-                         'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in direct_rows]
+                         'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake']} for r in direct_rows]
             dr_clean.sort(key=lambda x: x['Rake'], reverse=True)
             dr_clean.append({
                 'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
                 'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in dr_clean), 2),
                 'Rake': round(sum(r['Rake'] for r in dr_clean), 2),
-                'Hands': sum(r['Hands'] for r in dr_clean),
             })
             sheets['שחקנים ישירים'] = dr_clean
 
@@ -1890,7 +1886,6 @@ def export_agent_players():
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
             'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[6] or 0), 2),
-            'Hands': int(p[7] or 0),
         }
         # Check if player belongs to a child SA (not the parent SA)
         if player_sa in child_sa_ids:
@@ -1921,14 +1916,13 @@ def export_agent_players():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in ag_players), 2),
             'Rake': total_rake,
-            'Hands': sum(r['Hands'] for r in ag_players),
         })
         ag_pid = nicks_to_id.get(ag_name, '')
         pct = _get_rake_pct(ag_pid) if ag_pid else 0
         if pct:
             ag_players.append({
                 'שחקן': f'נטו סוכן ({pct}%)', 'ID': '', 'קלאב': '',
-                'P&L': '', 'Rake': round(total_rake * pct / 100, 2), 'Hands': '',
+                'P&L': '', 'Rake': round(total_rake * pct / 100, 2),
             })
         sheets[ag_name[:31]] = ag_players
 
@@ -1941,14 +1935,13 @@ def export_agent_players():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in csa_players), 2),
             'Rake': total_rake,
-            'Hands': sum(r['Hands'] for r in csa_players),
         })
         csa_pid = nicks_to_id.get(csa_name, '')
         pct = _get_rake_pct(csa_pid) if csa_pid else 0
         if pct:
             csa_players.append({
                 'שחקן': f'נטו סוכן ({pct}%)', 'ID': '', 'קלאב': '',
-                'P&L': '', 'Rake': round(total_rake * pct / 100, 2), 'Hands': '',
+                'P&L': '', 'Rake': round(total_rake * pct / 100, 2),
             })
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', csa_name)[:31] or 'SA'
         sheets[safe_name] = csa_players
@@ -1960,7 +1953,6 @@ def export_agent_players():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in direct_players), 2),
             'Rake': round(sum(r['Rake'] for r in direct_players), 2),
-            'Hands': sum(r['Hands'] for r in direct_players),
         })
         sheets['שחקנים ישירים'] = direct_players
 
@@ -1984,7 +1976,6 @@ def export_agent_players():
             'סוכן': ag_name, 'ID': ag[0], 'שחקנים': int(ag[4] or 0),
             'P&L': round(float(ag[1] or 0), 2), 'Rake': rake,
             'אחוז רייק %': rake_pct,
-            'Hands': int(ag[3] or 0),
         })
     agent_rows.sort(key=lambda x: x['Rake'], reverse=True)
     if agent_rows:
@@ -1992,7 +1983,7 @@ def export_agent_players():
             'סוכן': 'סה"כ', 'ID': '', 'שחקנים': sum(r['שחקנים'] for r in agent_rows),
             'P&L': round(sum(r['P&L'] for r in agent_rows), 2),
             'Rake': round(sum(r['Rake'] for r in agent_rows), 2),
-            'אחוז רייק %': '', 'Hands': sum(r['Hands'] for r in agent_rows),
+            'אחוז רייק %': '',
         })
     sheets['סוכנים'] = agent_rows
 
@@ -2011,7 +2002,6 @@ def export_agent_players():
             'Super Agent': sa_name, 'ID': csa_id, 'שחקנים': int(sa_data[3] or 0),
             'P&L': round(float(sa_data[0] or 0), 2), 'Rake': rake,
             'אחוז רייק %': rake_pct,
-            'Hands': int(sa_data[2] or 0),
         })
     sa_rows.sort(key=lambda x: x['Rake'], reverse=True)
     if sa_rows:
@@ -2019,7 +2009,7 @@ def export_agent_players():
             'Super Agent': 'סה"כ', 'ID': '', 'שחקנים': sum(r['שחקנים'] for r in sa_rows),
             'P&L': round(sum(r['P&L'] for r in sa_rows), 2),
             'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
-            'אחוז רייק %': '', 'Hands': sum(r['Hands'] for r in sa_rows),
+            'אחוז רייק %': '',
         })
     if sa_rows:
         sheets['Super Agents'] = sa_rows
@@ -2046,7 +2036,6 @@ def export_agent_players():
                 'מועדון': name, 'שחקנים': int(cr[3] or 0),
                 'P&L': round(float(cr[0] or 0), 2), 'Rake': rake,
                 'מועדון מקבל %': keeps, 'נטו שלי': net,
-                'Hands': int(cr[2] or 0),
             })
         club_rows.sort(key=lambda x: x['Rake'], reverse=True)
         if club_rows:
@@ -2055,7 +2044,6 @@ def export_agent_players():
                 'P&L': round(sum(r['P&L'] for r in club_rows), 2),
                 'Rake': round(sum(r['Rake'] for r in club_rows), 2),
                 'מועדון מקבל %': '', 'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
-                'Hands': sum(r['Hands'] for r in club_rows),
             })
         sheets['מועדונים'] = club_rows
 
@@ -2140,7 +2128,6 @@ def export_agent_club(club_id):
             'סוכן': ag_name,
             'רווח/הפסד': round(float(p[5] or 0) + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[6] or 0), 2),
-            'Hands': int(p[7] or 0),
         }
         all_rows.append(row)
         if sa_name:
@@ -2158,33 +2145,30 @@ def export_agent_club(club_id):
             'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '', 'סוכן': '',
             'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in all_rows), 2),
             'Rake': round(sum(r['Rake'] for r in all_rows), 2),
-            'Hands': sum(r['Hands'] for r in all_rows),
         })
         sheets[club_name[:31]] = all_rows
     else:
         # Sheet per SA
         for sa_name, sa_rows in sorted(sa_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
             sa_rows_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'סוכן': r['סוכן'],
-                              'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in sa_rows]
+                              'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake']} for r in sa_rows]
             sa_rows_clean.sort(key=lambda x: x['Rake'], reverse=True)
             sa_rows_clean.append({
                 'שחקן': 'סה"כ', 'ID': '', 'סוכן': '',
                 'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in sa_rows_clean), 2),
                 'Rake': round(sum(r['Rake'] for r in sa_rows_clean), 2),
-                'Hands': sum(r['Hands'] for r in sa_rows_clean),
             })
             safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sa_name)[:31] or 'SA'
             sheets[safe_name] = sa_rows_clean
 
         if no_sa_rows:
             no_sa_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'סוכן': r['סוכן'],
-                            'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake'], 'Hands': r['Hands']} for r in no_sa_rows]
+                            'רווח/הפסד': r['רווח/הפסד'], 'Rake': r['Rake']} for r in no_sa_rows]
             no_sa_clean.sort(key=lambda x: x['Rake'], reverse=True)
             no_sa_clean.append({
                 'שחקן': 'סה"כ', 'ID': '', 'סוכן': '',
                 'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in no_sa_clean), 2),
                 'Rake': round(sum(r['Rake'] for r in no_sa_clean), 2),
-                'Hands': sum(r['Hands'] for r in no_sa_clean),
             })
             sheets['ללא סוכן'] = no_sa_clean
 
@@ -2289,7 +2273,7 @@ def export_agent_period():
         rows.append({'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
                      'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
                      'Rake': round(float(p[4] or 0), 2),
-                     'Hands': int(p[5] or 0)})
+                     })
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
     sheets = {f'{from_date} - {to_date}': rows}
@@ -2390,7 +2374,6 @@ def export_club_report():
             'Agent': ag_name,
             'P&L': round(float(p[4] or 0) + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[5] or 0), 2),
-            'Hands': int(p[6] or 0),
         }
         if sa_id:
             if sa_id not in sa_groups:
@@ -2407,7 +2390,6 @@ def export_club_report():
             'שחקן': 'סה"כ', 'ID': '', 'Agent': '',
             'P&L': round(sum(r['P&L'] for r in sa_players), 2),
             'Rake': round(sum(r['Rake'] for r in sa_players), 2),
-            'Hands': sum(r['Hands'] for r in sa_players),
         })
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sa_name)[:31] or 'SA'
         sheets[safe_name] = sa_players
@@ -2419,7 +2401,6 @@ def export_club_report():
             'שחקן': 'סה"כ', 'ID': '', 'Agent': '',
             'P&L': round(sum(r['P&L'] for r in no_sa_players), 2),
             'Rake': round(sum(r['Rake'] for r in no_sa_players), 2),
-            'Hands': sum(r['Hands'] for r in no_sa_players),
         })
         sheets['ללא SA'] = no_sa_players
 
@@ -2432,7 +2413,6 @@ def export_club_report():
             'שחקנים': len(real_players),
             'P&L': round(sum(r['P&L'] for r in real_players), 2),
             'Rake': round(sum(r['Rake'] for r in real_players), 2),
-            'Hands': sum(r['Hands'] for r in real_players),
         })
     sa_rows.sort(key=lambda x: x['Rake'], reverse=True)
     if sa_rows:
@@ -2440,7 +2420,6 @@ def export_club_report():
             'Super Agent': 'סה"כ', 'ID': '', 'שחקנים': sum(r['שחקנים'] for r in sa_rows),
             'P&L': round(sum(r['P&L'] for r in sa_rows), 2),
             'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
-            'Hands': sum(r['Hands'] for r in sa_rows),
         })
         sheets['Super Agents'] = sa_rows
 
@@ -2545,7 +2524,7 @@ def export_club_period():
     rows = [{'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
              'P&L': round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2),
              'Rake': round(float(p[4] or 0), 2),
-             'Hands': int(p[5] or 0)} for p in players]
+             } for p in players]
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
     sheets = {f'{from_date} - {to_date}': rows}
@@ -2811,7 +2790,7 @@ def export_admin_period():
         rows.append({'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
                      'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
                      'Rake': round(float(p[4] or 0), 2),
-                     'Hands': int(p[5] or 0)})
+                     })
     rows.sort(key=lambda x: x['Rake'], reverse=True)
 
     sheets = {f'{from_date} - {to_date}': rows}
@@ -2907,7 +2886,6 @@ def export_periodic():
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
             'P&L': round(float(p[3] or 0) + xfer_adj.get(p[0], 0), 2),
             'Rake': round(float(p[4] or 0), 2),
-            'Hands': int(p[5] or 0),
         })
     summary_rows.sort(key=lambda x: x['Rake'], reverse=True)
     if summary_rows:
@@ -2915,7 +2893,6 @@ def export_periodic():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in summary_rows), 2),
             'Rake': round(sum(r['Rake'] for r in summary_rows), 2),
-            'Hands': sum(r['Hands'] for r in summary_rows),
         })
 
     # Sheet 2: Sessions
