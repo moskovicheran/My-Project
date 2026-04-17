@@ -291,3 +291,27 @@ class ArchivedTournamentStats(db.Model):
     prize_pool = db.Column(db.Float, default=0)
     start = db.Column(db.String(20), default='')
     duration = db.Column(db.String(20), default='')
+
+
+class PlayerAssignment(db.Model):
+    """Manual override of a player's sa_id / agent_id.
+
+    The Excel/PPPoker file is treated as read-only. When an admin wants to
+    attach a player to a specific SA or agent, we store the override here.
+    Dashboards and exports apply it at display time via
+    `union_data.apply_player_overrides`."""
+    __tablename__ = 'player_assignments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    assigned_sa_id = db.Column(db.String(20), default='')
+    assigned_agent_id = db.Column(db.String(20), default='')
+    assigned_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    note = db.Column(db.String(200), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    assigned_by = db.relationship('User', backref='player_assignments')
+
+    def __repr__(self):
+        return f'<PlayerAssignment {self.player_id} → sa={self.assigned_sa_id} ag={self.assigned_agent_id}>'

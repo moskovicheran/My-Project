@@ -216,6 +216,58 @@
     {% endif %}
 </div>
 
+{# ═══════ Section 4: Manual Player Overrides ═══════ #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">🔗 שיוכים ידניים של שחקנים</h2>
+    <p class="muted" style="margin-bottom:1rem;">
+        שחקנים ששויכו ידנית ל-Super Agent או לסוכן דרך
+        <a href="{{ url_for('admin.lost_players') }}" style="color:#4361ee;">דף שחקנים אבודים</a>.
+        השיוך דורס את מה שמופיע בקובץ ה-PPPoker ושורד העלאות עתידיות. מחיקה כאן מחזירה לאמת-הקובץ.
+    </p>
+
+    {% if player_overrides %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>שחקן</th>
+                <th>ID</th>
+                <th>שויך ל-SA</th>
+                <th>שויך לסוכן</th>
+                <th>הערה</th>
+                <th>ע״י</th>
+                <th>תאריך</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for po in player_overrides %}
+            <tr>
+                <td><strong>{{ po.player_nick }}</strong></td>
+                <td class="muted small">{{ po.player_id }}</td>
+                <td>{% if po.sa_nick %}{{ po.sa_nick }} <span class="muted small">{{ po.sa_id }}</span>{% else %}—{% endif %}</td>
+                <td>{% if po.agent_nick %}{{ po.agent_nick }} <span class="muted small">{{ po.agent_id }}</span>{% else %}—{% endif %}</td>
+                <td class="muted small">{{ po.note }}</td>
+                <td class="muted small">{{ po.assigned_by }}</td>
+                <td class="muted small">{{ po.updated_at.strftime('%d/%m/%Y') if po.updated_at else '' }}</td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('לבטל את השיוך הידני של {{ po.player_nick }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="delete_player_override">
+                        <input type="hidden" name="player_id" value="{{ po.player_id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">בטל שיוך</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">אין שיוכים ידניים. שחקנים שיש להם סוכן/SA בקובץ יוצגו אוטומטית; כדי לשייך שחקן ללא סוכן, עבור ל-
+        <a href="{{ url_for('admin.lost_players') }}" style="color:#4361ee;">שחקנים אבודים</a>.
+    </p>
+    {% endif %}
+</div>
+
 <script>
 function escapeHtml(t){var d=document.createElement('div');d.appendChild(document.createTextNode(t));return d.innerHTML;}
 var _allMembers = {{ all_members | tojson }};

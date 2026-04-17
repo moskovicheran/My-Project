@@ -290,7 +290,7 @@ function toggleExpenseDetails() {
                 <tbody>
                     {% for m in managed_club.all_members %}
                     <tr>
-                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong>{% if m.overridden %} <span class="override-badge" title="שויך ידנית ע״י מנהל">🔗</span>{% endif %}</a></td>
                         <td class="muted" style="font-size:0.8rem;">{{ m.sa_nick }}</td>
                         <td class="muted" style="font-size:0.8rem;">{{ m.agent_nick }}</td>
                         <td class="amount income">{{ m.rake_total|comma }}</td>
@@ -365,7 +365,7 @@ function toggleExpenseDetails() {
                 <tbody>
                     {% for m in ag.members %}
                     <tr>
-                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong>{% if m.overridden %} <span class="override-badge" title="שויך ידנית ע״י מנהל">🔗</span>{% endif %}</a></td>
                         <td class="amount income">{{ m.rake|comma }}</td>
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                             {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
@@ -418,7 +418,7 @@ function toggleExpenseDetails() {
                 <tbody>
                     {% for m in my_sa.direct %}
                     <tr>
-                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong></a></td>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong>{% if m.overridden %} <span class="override-badge" title="שויך ידנית ע״י מנהל">🔗</span>{% endif %}</a></td>
                         <td class="amount income">{{ m.rake|comma }}</td>
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                             {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}
@@ -891,6 +891,7 @@ function updateDpInfo() {
 .dp-reset:hover { background:#fff0f2; }
 .dp-hint { font-size:0.92rem; color:#4361ee; font-weight:600; margin-right:0.35rem; letter-spacing:0.01em; }
 body.dark .dp-hint { color:#8ea4ff; }
+.override-badge { display:inline-block; font-size:0.78rem; color:#4361ee; cursor:help; opacity:0.85; }
 .range-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.28rem 0.55rem; background:#eef3ff; color:#2b3a67; border:1px solid #c6d4ff; border-radius:7px; font-size:0.75rem; font-weight:600; direction:ltr; }
 body.dark .range-chip { background:#1e2044; color:#a8b8ff; border-color:#333366; }
 .dp-popup {

@@ -2,13 +2,105 @@
 {% block title %}שחקנים אבודים - לוח בקרה{% endblock %}
 
 {% block content %}
-<div class="section" style="text-align:center; padding:3rem 1.5rem;">
-    <h2 class="section-title" style="font-size:1.3rem;">שחקנים אבודים</h2>
-    <p style="color:#666; font-size:1rem; margin-bottom:1rem;">
-        שחקנים שלא ניתן לשייך אותם לאף מועדון או סוכן בזמן סריקת הקובץ.
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">שחקנים אבודים ({{ lost_players|length }})</h2>
+    <p class="muted" style="margin-bottom:0.5rem;">
+        שחקנים עם פעילות (ידיים או רייק) שלא משויכים לשום Super Agent או סוכן בקבצי PPPoker.
+        שייך אותם ידנית כדי שיופיעו אצל הסוכן הרצוי בדשבורד שלו. השיוך שורד העלאות עתידיות
+        — ניתן לביטול בכל עת בטבלת "שיוכים ידניים" בדף
+        <a href="{{ url_for('admin.agents') }}" style="color:#4361ee;">שיוך סוכנים</a>.
     </p>
-    <p class="muted">
-        כאשר תועלה מערכת סריקה אוטומטית, שחקנים שלא זוהו יופיעו כאן לשיוך ידני.
+    <p style="margin:0 0 0.4rem; font-size:0.85rem; color:#4361ee; font-weight:600;">
+        🎯 הדף מציג רק שחקנים מהמועדונים המנוהלים:
+        {% for c in managed_clubs %}<span style="background:#eef3ff; padding:0.15rem 0.5rem; border-radius:6px; margin-left:0.25rem;">{{ c }}</span>{% endfor %}
+        <span class="muted small" style="font-weight:400; margin-right:0.5rem;">(מועדונים אחרים לא רלוונטיים)</span>
     </p>
+    <p style="margin:0 0 1rem; font-size:0.8rem; color:#666;">
+        סף פעילות: רייק &gt; 0 <strong>או</strong> לפחות {{ min_hands }} ידיים. שחקנים עם פחות מזה מוסתרים (זנב של "ניסיונות קצרים").
+    </p>
+
+    {% if lost_players %}
+    <div style="overflow-x:auto;">
+    <table class="table table-sm lost-table">
+        <thead>
+            <tr>
+                <th>שחקן</th>
+                <th>ID</th>
+                <th>מועדון</th>
+                <th>Rake</th>
+                <th>Hands</th>
+                <th>P&amp;L</th>
+                <th style="min-width:180px;">Super Agent</th>
+                <th style="min-width:180px;">סוכן</th>
+                <th>הערה</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in lost_players %}
+            <tr>
+                <form method="POST" style="display:contents;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="assign">
+                    <input type="hidden" name="player_id" value="{{ p.player_id }}">
+                    <td><strong>{{ p.nickname }}</strong></td>
+                    <td class="muted small">{{ p.player_id }}</td>
+                    <td>{{ p.club }}</td>
+                    <td class="amount income">{{ '{:,.2f}'.format(p.rake) }}</td>
+                    <td>{{ p.hands }}</td>
+                    <td class="amount {% if p.pnl >= 0 %}income{% else %}expense{% endif %}">
+                        {% if p.pnl > 0 %}+{% endif %}{{ '{:,.2f}'.format(p.pnl) }}
+                    </td>
+                    <td>
+                        <select name="sa_key" class="assign-select">
+                            <option value="">— ללא —</option>
+                            {% for sa in all_sa %}
+                            <option value="{{ sa.id }}|{{ sa.nick }}">{{ sa.nick }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <select name="agent_key" class="assign-select">
+                            <option value="">— ללא —</option>
+                            {% for ag in all_agents %}
+                            <option value="{{ ag.id }}|{{ ag.nick }}">{{ ag.nick }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" name="note" placeholder="אופציונלי" class="assign-note" maxlength="200">
+                    </td>
+                    <td>
+                        <button type="submit" class="btn btn-primary btn-sm">שייך</button>
+                    </td>
+                </form>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:2.5rem 1rem; color:#666;">
+        <div style="font-size:2rem; margin-bottom:0.5rem;">✨</div>
+        <div style="font-weight:600; margin-bottom:0.3rem;">אין שחקנים אבודים</div>
+        <div style="font-size:0.85rem;" class="muted">כל השחקנים הפעילים משויכים לסוכן או ל-SA.</div>
+    </div>
+    {% endif %}
 </div>
+
+<style>
+.lost-table th, .lost-table td { vertical-align:middle; padding:0.45rem 0.55rem; }
+.lost-table .assign-select {
+    width:100%; padding:0.3rem 0.5rem; border:1px solid #ddd; border-radius:6px;
+    font-family:inherit; font-size:0.82rem;
+}
+.lost-table .assign-note {
+    width:140px; padding:0.3rem 0.5rem; border:1px solid #ddd; border-radius:6px;
+    font-family:inherit; font-size:0.82rem;
+}
+body.dark .lost-table .assign-select,
+body.dark .lost-table .assign-note {
+    background:#252535; border-color:#444; color:#ddd;
+}
+</style>
 {% endblock %}

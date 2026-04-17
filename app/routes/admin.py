@@ -2,7 +2,17 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from functools import wraps
 from app.models import (db, AdminNote, MoneyTransfer, SAHierarchy, SARakeConfig,
-                        RakeConfig, SharedExpense, ExpenseCharge, User, LoginLog)
+                        RakeConfig, SharedExpense, ExpenseCharge, User, LoginLog,
+                        PlayerAssignment)
+
+# Clubs where unassigned players need attention. Players outside these clubs
+# are ignored by /admin/lost-players even if they have no sa_id/agent_id.
+MANAGED_LOST_CLUBS = ['SPC T', 'SPC C']
+
+# Activity thresholds: show a player in /admin/lost-players only if EITHER
+# they generated some rake, OR they played at least this many hands.
+# Filters out "tried-a-few-hands-and-left" tails from the list.
+LOST_MIN_HANDS = 50
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -596,10 +606,118 @@ def clubs():
                            uploads_count=ct.get('uploads_count', 0))
 
 
-@admin_bp.route('/lost-players')
+@admin_bp.route('/lost-players', methods=['GET', 'POST'])
 @admin_required
 def lost_players():
-    return render_template('admin/lost_players.html')
+    from app.models import DailyPlayerStats
+    from app.union_data import get_all_super_agents
+    from sqlalchemy import or_, func
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'assign':
+            pid = (request.form.get('player_id') or '').strip()
+            sa_key = (request.form.get('sa_key') or '').strip()    # "sa_id|nick"
+            ag_key = (request.form.get('agent_key') or '').strip() # "agent_id|nick"
+            note = (request.form.get('note') or '').strip()
+            sa_id_val = sa_key.split('|', 1)[0] if '|' in sa_key else ''
+            ag_id_val = ag_key.split('|', 1)[0] if '|' in ag_key else ''
+            if not pid:
+                flash('חסר מזהה שחקן.', 'danger')
+            elif not sa_id_val and not ag_id_val:
+                flash('חובה לבחור לפחות SA אחד או סוכן אחד.', 'warning')
+            else:
+                existing = PlayerAssignment.query.filter_by(player_id=pid).first()
+                if not existing:
+                    existing = PlayerAssignment(player_id=pid)
+                    db.session.add(existing)
+                existing.assigned_sa_id = sa_id_val
+                existing.assigned_agent_id = ag_id_val
+                existing.assigned_by_user_id = current_user.id
+                existing.note = note[:200]
+                db.session.commit()
+                flash(f'השחקן שויך בהצלחה.', 'success')
+        elif action == 'unassign':
+            pid = (request.form.get('player_id') or '').strip()
+            row = PlayerAssignment.query.filter_by(player_id=pid).first()
+            if row:
+                db.session.delete(row)
+                db.session.commit()
+                flash('השיוך הידני בוטל.', 'success')
+        return redirect(url_for('admin.lost_players'))
+
+    # List players in active uploads with no sa_id AND no agent_id and some activity.
+    # Scope: only players who played in the MANAGED_LOST_CLUBS (others are out of scope).
+    base = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id,
+        func.max(DailyPlayerStats.nickname),
+        func.max(DailyPlayerStats.club),
+        func.sum(DailyPlayerStats.rake),
+        func.sum(DailyPlayerStats.hands),
+        func.sum(DailyPlayerStats.pnl),
+    ).filter(
+        DailyPlayerStats.role != 'Name Entry',
+        DailyPlayerStats.club.in_(MANAGED_LOST_CLUBS),
+        or_(DailyPlayerStats.sa_id.is_(None), DailyPlayerStats.sa_id == '', DailyPlayerStats.sa_id == '-'),
+        or_(DailyPlayerStats.agent_id.is_(None), DailyPlayerStats.agent_id == '', DailyPlayerStats.agent_id == '-'),
+    ).group_by(DailyPlayerStats.player_id)
+
+    # Exclude players already overridden (they appear in the "overrides" table instead)
+    overridden_pids = {r.player_id for r in PlayerAssignment.query.all()}
+    lost = []
+    for pid, nick, club, rake, hands, pnl in base.all():
+        if pid in overridden_pids:
+            continue
+        rk = round(float(rake or 0), 2)
+        hd = int(hands or 0)
+        # Activity threshold: show only if they generated rake OR played a
+        # meaningful number of hands. This filters out short "tried and left"
+        # sessions that aren't worth assigning.
+        if rk <= 0 and hd < LOST_MIN_HANDS:
+            continue
+        lost.append({
+            'player_id': pid,
+            'nickname': nick,
+            'club': club or '',
+            'rake': rk,
+            'hands': hd,
+            'pnl': round(float(pnl or 0), 2),
+        })
+    # Sort by rake descending (most valuable first)
+    lost.sort(key=lambda x: x['rake'], reverse=True)
+
+    # Options for the assignment dropdowns
+    all_sa = get_all_super_agents()
+    # Also add SAs that exist only in DB (not Excel)
+    sa_ids_excel = {sa['id'] for sa in all_sa}
+    db_sas = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.sa_id, func.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.sa_id != '-', DailyPlayerStats.sa_id != '',
+             DailyPlayerStats.sa_id.isnot(None)
+    ).group_by(DailyPlayerStats.sa_id).all()
+    for sid, nick in db_sas:
+        if sid and sid not in sa_ids_excel:
+            all_sa.append({'id': sid, 'nick': nick or sid, 'club': ''})
+    all_sa.sort(key=lambda x: (x.get('nick') or '').lower())
+
+    # All agents (non-SA) from DB
+    agent_ids_db = [r[0] for r in DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.agent_id
+    ).filter(DailyPlayerStats.agent_id != '-', DailyPlayerStats.agent_id != '',
+             DailyPlayerStats.agent_id.isnot(None)
+    ).group_by(DailyPlayerStats.agent_id).all() if r[0]]
+    agent_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, func.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id.in_(agent_ids_db)
+    ).group_by(DailyPlayerStats.player_id).all()) if agent_ids_db else {}
+    all_agents = [{'id': aid, 'nick': agent_nicks.get(aid, aid)} for aid in agent_ids_db]
+    all_agents.sort(key=lambda x: (x['nick'] or '').lower())
+
+    return render_template('admin/lost_players.html',
+                           lost_players=lost,
+                           all_sa=all_sa, all_agents=all_agents,
+                           managed_clubs=MANAGED_LOST_CLUBS,
+                           min_hands=LOST_MIN_HANDS)
 
 
 @admin_bp.route('/agents', methods=['GET', 'POST'])
@@ -735,6 +853,15 @@ def agents():
                 db.session.commit()
                 flash('הגדרת רייק נמחקה.', 'success')
 
+        # Player override management (manual player → SA/agent assignment)
+        elif action == 'delete_player_override':
+            pid = (request.form.get('player_id') or '').strip()
+            row = PlayerAssignment.query.filter_by(player_id=pid).first()
+            if row:
+                db.session.delete(row)
+                db.session.commit()
+                flash('השיוך הידני בוטל.', 'success')
+
         return redirect(url_for('admin.agents'))
 
     # GET - build all data
@@ -819,13 +946,32 @@ def agents():
     ).group_by(DailyPlayerStats.agent_id).all()) if agent_ids_db else {}
     all_sub_agents = [{'id': aid, 'nick': agent_nicks.get(aid, aid), 'club': agent_clubs.get(aid, '')} for aid in agent_ids_db]
 
+    # Player overrides list (manual player → SA/agent assignments)
+    nicks_all = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+    player_overrides = []
+    for pa in PlayerAssignment.query.order_by(PlayerAssignment.updated_at.desc()).all():
+        player_overrides.append({
+            'player_id': pa.player_id,
+            'player_nick': nicks_all.get(pa.player_id, pa.player_id),
+            'sa_id': pa.assigned_sa_id or '',
+            'sa_nick': nicks_all.get(pa.assigned_sa_id, pa.assigned_sa_id) if pa.assigned_sa_id else '',
+            'agent_id': pa.assigned_agent_id or '',
+            'agent_nick': nicks_all.get(pa.assigned_agent_id, pa.assigned_agent_id) if pa.assigned_agent_id else '',
+            'note': pa.note or '',
+            'assigned_by': pa.assigned_by.username if pa.assigned_by else '',
+            'updated_at': pa.updated_at,
+        })
+
     return render_template('admin/agents.html',
                            all_sa=all_sa, all_clubs=all_clubs,
                            all_members=all_members,
                            all_sub_agents=all_sub_agents,
                            hierarchy_links=hierarchy_links,
                            configs=configs, sa_stats=sa_stats,
-                           rake_configs=rake_configs)
+                           rake_configs=rake_configs,
+                           player_overrides=player_overrides)
 
 
 @admin_bp.route('/expenses', methods=['GET', 'POST'])

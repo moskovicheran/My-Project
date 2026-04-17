@@ -896,6 +896,61 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     }
 
 
+def get_player_overrides(player_ids=None):
+    """Return a dict {player_id: {'sa_id': str, 'agent_id': str}} for manual
+    assignments stored in PlayerAssignment. Empty strings in the returned
+    dict mean "no override for that field" — only non-empty fields should
+    replace the source value."""
+    from app.models import PlayerAssignment
+    query = PlayerAssignment.query
+    if player_ids:
+        query = query.filter(PlayerAssignment.player_id.in_(list(player_ids)))
+    out = {}
+    for row in query.all():
+        out[row.player_id] = {
+            'sa_id': row.assigned_sa_id or '',
+            'agent_id': row.assigned_agent_id or '',
+        }
+    return out
+
+
+def apply_player_overrides(rows, sa_key='sa_id', agent_key='agent_id',
+                           pid_key='player_id', overrides=None):
+    """Mutate `rows` in-place so each row's sa_id/agent_id reflects any
+    admin override stored in PlayerAssignment.
+
+    Works on a list of dicts (mutated) or a list of tuples (returned as a
+    new list of dicts — callers using tuples should switch).
+
+    Also sets `row['overridden'] = True` when the row was touched, so
+    templates can render a badge.
+
+    Pass `overrides=` to share one lookup across many calls within one
+    request; otherwise it's fetched once per call."""
+    if overrides is None:
+        pids = [r.get(pid_key) if isinstance(r, dict) else r[0] for r in rows]
+        overrides = get_player_overrides(pids)
+    if not overrides:
+        return rows
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        pid = r.get(pid_key)
+        ov = overrides.get(pid)
+        if not ov:
+            continue
+        touched = False
+        if ov.get('sa_id'):
+            r[sa_key] = ov['sa_id']
+            touched = True
+        if ov.get('agent_id'):
+            r[agent_key] = ov['agent_id']
+            touched = True
+        if touched:
+            r['overridden'] = True
+    return rows
+
+
 def get_transfer_adjustments(player_ids):
     """Returns dict of player_id → adjustment amount for PnL.
     Settlements: payer (from, minus) pays → their PnL goes up (+out);

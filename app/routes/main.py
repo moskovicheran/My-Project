@@ -355,6 +355,21 @@ def dashboard():
         else:
             SM = DailyPlayerStats
 
+        # Manual overrides: players the admin has attached to one of our SAs/agents
+        # via /admin/lost-players (or the overrides section of /admin/agents).
+        from app.models import PlayerAssignment
+        _override_rows = PlayerAssignment.query.filter(
+            or_(
+                PlayerAssignment.assigned_sa_id.in_(all_sa_ids),
+                PlayerAssignment.assigned_agent_id.in_(all_sa_ids),
+            )
+        ).all()
+        override_player_ids = {r.player_id for r in _override_rows}
+        # Also build a global overrides map (pid → {sa_id, agent_id}) for all
+        # players — used below to replace natural sa_id/agent_id on display.
+        from app.union_data import get_player_overrides
+        overrides_map = get_player_overrides()
+
         # Get ALL players that ever belonged to this SA/Agent
         # Step 1: Find all player_ids that belong to this SA
         _pid_filters = [or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)), SM.role != 'Name Entry']
@@ -364,6 +379,9 @@ def dashboard():
             _pid_filters.append(SM.upload_id.in_(upload_ids_filter))
         my_player_ids_query = SM.query.with_entities(SM.player_id).filter(*_pid_filters).distinct()
         my_player_id_list = [r[0] for r in my_player_ids_query.all()]
+        # Union with override-assigned players (they may not belong naturally)
+        if override_player_ids:
+            my_player_id_list = list(set(my_player_id_list) | override_player_ids)
 
         # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
         base_agent_filters = [SM.player_id.in_(my_player_id_list), SM.role != 'Name Entry']
@@ -395,6 +413,10 @@ def dashboard():
         player_sa_lookup = dict(SM.query.with_entities(
             SM.player_id, sqlfunc.max(SM.sa_id)
         ).filter(*_sa_lookup_filters).group_by(SM.player_id).all())
+        # Apply sa overrides to the lookup
+        for _pid, _ov in overrides_map.items():
+            if _ov.get('sa_id'):
+                player_sa_lookup[_pid] = _ov['sa_id']
 
         has_child_sas = len(child_sa_ids) > 0
         all_my_player_ids = set()
@@ -405,8 +427,14 @@ def dashboard():
             rake = round(float(rake or 0), 2)
             hands = int(hands or 0)
             all_my_player_ids.add(pid)
+            # Apply agent_id override — if admin attached this player to a specific agent
+            _ov = overrides_map.get(pid)
+            if _ov and _ov.get('agent_id'):
+                ag_id = _ov['agent_id']
+            _is_overridden = bool(_ov and (_ov.get('sa_id') or _ov.get('agent_id')))
             member = {'player_id': pid, 'nickname': nick, 'role': role or 'Player',
-                      'pnl': pnl, 'rake': rake, 'hands': hands}
+                      'pnl': pnl, 'rake': rake, 'hands': hands,
+                      'overridden': _is_overridden}
             actual_sa = player_sa_lookup.get(pid, '')
             # SA filtering only needed when user has child SAs (to prevent duplicates)
             sa_ok = actual_sa in known_ids if has_child_sas else True
