@@ -9,6 +9,25 @@ from app.models import (db, AdminNote, MoneyTransfer, SAHierarchy, SARakeConfig,
 # are ignored by /admin/lost-players even if they have no sa_id/agent_id.
 MANAGED_LOST_CLUBS = ['SPC T', 'SPC C']
 
+# Whitelist of managers to show on the admin overview page.
+# Order here is the display order on the page.
+# (username, player_id) — player_id is authoritative; username is the label.
+OVERVIEW_MANAGERS = [
+    ('Riko2425',       '4447-3687'),
+    ('Mangisto San',   '4406-1298'),
+    ('Kenny777',       '7526-3392'),
+    ('robin hood 777', '3849-4104'),
+    ('niroha27',       '8040-6815'),
+    ('Pagsos',         '2786-6715'),
+]
+
+# Whitelist of clubs to show on the admin overview as tracked clubs.
+# (display_name, club_id). Clicking a card opens the full club dashboard
+# via /dashboard?view_as=<club_id>.
+OVERVIEW_CLUBS = [
+    ('פוקר בדופק גבוהה', '170653'),
+]
+
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
 # they generated some rake, OR they played at least this many hands.
 # Filters out "tried-a-few-hands-and-left" tails from the list.
@@ -31,7 +50,8 @@ def admin_required(f):
 @admin_bp.route('/')
 @admin_required
 def overview():
-    from app.union_data import get_union_overview, get_cumulative_totals, get_agent_totals
+    from app.union_data import (get_union_overview, get_cumulative_totals,
+                                 get_agent_totals, get_club_totals)
     from app.models import User, DailyPlayerStats, DailyUpload, ArchivedUpload
     from app.routes.main import _resolve_date_uploads
     from datetime import date, timedelta
@@ -66,22 +86,42 @@ def overview():
     )
     meta['period'] = ct['period']
 
-    # Agent stats - reuse shared function with the same filter
-    agent_users = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
+    # Agent stats — use the fixed whitelist above (not all agent users).
+    # Uses the same get_agent_totals() as the agent dashboard so numbers match
+    # what each manager sees when they log in themselves.
     agents_data = []
-    for u in agent_users:
+    for username, pid in OVERVIEW_MANAGERS:
         totals = get_agent_totals(
-            u.player_id,
+            pid,
             upload_ids=upload_ids_filter or None,
             archive_period_id=archive_period_id,
             archive_upload_ids=archive_upload_ids or None,
         )
         agents_data.append({
-            'username': u.username, 'player_id': u.player_id,
+            'username': username, 'player_id': pid,
             'players': totals['player_count'], 'rake': totals['total_rake'],
             'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
         })
     agents_data.sort(key=lambda a: a['rake'], reverse=True)
+
+    # Tracked clubs — separate section, uses get_club_totals (filters by
+    # club name, not by sa_id/agent_id). Includes net rake after RakeConfig %.
+    tracked_clubs = []
+    for display_name, club_id in OVERVIEW_CLUBS:
+        totals = get_club_totals(
+            club_id,
+            upload_ids=upload_ids_filter or None,
+            archive_period_id=archive_period_id,
+            archive_upload_ids=archive_upload_ids or None,
+        )
+        tracked_clubs.append({
+            'name': display_name, 'club_id': club_id,
+            'players': totals['player_count'], 'rake': totals['total_rake'],
+            'net_rake': totals['net_rake'], 'rake_pct': totals['rake_pct'],
+            'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
+            'resolved_name': totals['club_name'],
+        })
+    tracked_clubs.sort(key=lambda c: c['rake'], reverse=True)
 
     return render_template('admin/overview.html',
                            meta=meta, clubs=ct['clubs'],
@@ -92,6 +132,7 @@ def overview():
                            total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
                            total_hands=ct['total_hands'],
                            agents=agents_data,
+                           tracked_clubs=tracked_clubs,
                            active_dates=active_dates,
                            archive_dates=archive_dates,
                            selected_dates=selected_dates)

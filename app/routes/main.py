@@ -83,7 +83,17 @@ def index():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    if hasattr(current_user, 'role') and current_user.role == 'admin' and not request.args.get('view_as'):
+    # admin1 lands on the admin overview page (/admin/) as their home page —
+    # the one with the manager whitelist cards. Still full admin otherwise.
+    if (hasattr(current_user, 'role') and current_user.role == 'admin'
+            and current_user.username == 'admin1'
+            and not request.args.get('view_as')):
+        # Preserve ?dates= filter if present
+        qs = request.query_string.decode() if request.query_string else ''
+        return redirect(url_for('admin.overview') + (('?' + qs) if qs else ''))
+
+    if (hasattr(current_user, 'role') and current_user.role == 'admin'
+            and not request.args.get('view_as')):
         from app.union_data import get_union_overview, get_cumulative_totals
         meta, _, _ = get_union_overview()
         ct = get_cumulative_totals()
@@ -99,13 +109,23 @@ def dashboard():
                                ring_rake=ct.get('ring_rake', 0),
                                mtt_rake=ct.get('mtt_rake', 0))
 
-    if hasattr(current_user, 'role') and current_user.role == 'club' and current_user.player_id:
+    # Admin may view any club's dashboard via ?view_as=<club_id> (numeric id).
+    # Distinguished from agent view_as by format: clubs have no '-' in id.
+    _admin_view_as_club = None
+    if (hasattr(current_user, 'role') and current_user.role == 'admin'
+            and request.args.get('view_as')):
+        _va = request.args.get('view_as')
+        if _va and '-' not in _va:
+            _admin_view_as_club = _va
+
+    if (hasattr(current_user, 'role') and current_user.role == 'club' and current_user.player_id) \
+            or _admin_view_as_club:
         from app.models import DailyPlayerStats, DailyUpload
         from app.union_data import get_members_hierarchy
         from sqlalchemy import func as sqlfunc
         from datetime import datetime as dt
 
-        club_id = current_user.player_id
+        club_id = _admin_view_as_club if _admin_view_as_club else current_user.player_id
         # Find club name
         clubs_data, _ = get_members_hierarchy()
         club_name = None

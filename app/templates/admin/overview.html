@@ -352,6 +352,46 @@ body.dark .ao-stat-label { color: #777; }
 </style>
 {% endif %}
 
+{# ── Tracked Clubs Section ── #}
+{% if tracked_clubs %}
+<div class="section" style="margin-top:1.5rem;">
+    <h2 class="section-title">מועדונים מנוהלים ({{ tracked_clubs|length }})</h2>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:0.8rem;">
+        {% for cl in tracked_clubs %}
+        <a href="{{ url_for('main.dashboard', view_as=cl.club_id) }}" class="agent-overview-card" style="text-decoration:none; color:inherit;">
+            <div class="ao-header">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span class="role-badge role-club" style="font-size:0.7rem; background:#7209b7; color:#fff; padding:0.15rem 0.5rem; border-radius:4px;">Club</span>
+                    <strong class="ao-name">{{ cl.name }}</strong>
+                </div>
+                <span class="muted" style="font-size:0.75rem;">{{ cl.club_id }}</span>
+            </div>
+            <div class="ao-stats">
+                <div class="ao-stat">
+                    <span class="ao-stat-val">{{ cl.players }}</span>
+                    <span class="ao-stat-label">שחקנים</span>
+                </div>
+                <div class="ao-stat">
+                    <span class="ao-stat-val">{{ "{:,}".format(cl.hands) }}</span>
+                    <span class="ao-stat-label">Hands</span>
+                </div>
+                <div class="ao-stat">
+                    <span class="ao-stat-val" style="color:#2ec4b6;">{{ cl.rake|comma }}</span>
+                    <span class="ao-stat-label">Rake</span>
+                </div>
+                <div class="ao-stat">
+                    <span class="ao-stat-val" style="color:{% if cl.pnl >= 0 %}#2ec4b6{% else %}#ef233c{% endif %};">
+                        {% if cl.pnl > 0 %}+{% endif %}{{ cl.pnl|comma }}
+                    </span>
+                    <span class="ao-stat-label">רווח/הפסד</span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <div class="section" style="margin-top:1.5rem;">
     <h2 class="section-title">מועדונים פעילים</h2>
     <table class="table table-sm">

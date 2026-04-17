@@ -896,6 +896,72 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     }
 
 
+def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
+    """Calculate total rake/pnl/hands/players for a club — filtered by
+    DailyPlayerStats.club == <club_name> (not by sa_id/agent_id like agents).
+
+    Returns dict with:
+      total_rake   — gross rake generated in the club
+      net_rake     — rake kept by us after RakeConfig percent (falls back to 0 if no config)
+      rake_pct     — the configured keep-percent (0 if no RakeConfig exists)
+      total_pnl    — cumulative P&L of club players
+      total_hands  — total hands
+      player_count — distinct players with activity
+      club_name    — resolved club name (empty string if club_id not found)
+
+    Optional filters identical in shape to get_agent_totals()."""
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, RakeConfig
+    from sqlalchemy import func as sqlfunc
+
+    use_archive = bool(archive_period_id and archive_upload_ids)
+    StatsModel = ArchivedPlayerStats if use_archive else DailyPlayerStats
+    if use_archive:
+        scope_filters = [StatsModel.period_id == archive_period_id,
+                         StatsModel.upload_id.in_(archive_upload_ids)]
+    else:
+        scope_filters = []
+        if upload_ids:
+            scope_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
+
+    # Resolve club name from the hierarchy (same source used elsewhere)
+    clubs_data, _ = get_members_hierarchy()
+    club_name = ''
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            club_name = c['name']
+            break
+
+    if not club_name:
+        return {'total_rake': 0.0, 'net_rake': 0.0, 'rake_pct': 0,
+                'total_pnl': 0.0, 'total_hands': 0, 'player_count': 0,
+                'club_name': ''}
+
+    stats = StatsModel.query.with_entities(
+        sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
+        sqlfunc.sum(StatsModel.rake),
+        sqlfunc.sum(StatsModel.pnl),
+        sqlfunc.sum(StatsModel.hands),
+    ).filter(StatsModel.club == club_name,
+             StatsModel.role != 'Name Entry',
+             *scope_filters).first()
+
+    player_count = stats[0] or 0
+    total_rake = round(float(stats[1] or 0), 2)
+    total_pnl = round(float(stats[2] or 0), 2)
+    total_hands = int(stats[3] or 0)
+
+    # Net rake = club's configured keep-percent. No config → 0% kept (neutral).
+    club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=club_id).first()
+    rake_pct = club_rc.rake_percent if club_rc else 0
+    net_rake = round(total_rake * rake_pct / 100, 2)
+
+    return {
+        'total_rake': total_rake, 'net_rake': net_rake, 'rake_pct': rake_pct,
+        'total_pnl': total_pnl, 'total_hands': total_hands,
+        'player_count': player_count, 'club_name': club_name,
+    }
+
+
 def get_player_overrides(player_ids=None):
     """Return a dict {player_id: {'sa_id': str, 'agent_id': str}} for manual
     assignments stored in PlayerAssignment. Empty strings in the returned
