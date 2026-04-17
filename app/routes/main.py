@@ -87,13 +87,15 @@ def dashboard():
     # the one with the manager whitelist cards. Still full admin otherwise.
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and current_user.username == 'admin1'
-            and not request.args.get('view_as')):
+            and not request.args.get('view_as')
+            and not request.args.get('view_player')):
         # Preserve ?dates= filter if present
         qs = request.query_string.decode() if request.query_string else ''
         return redirect(url_for('admin.overview') + (('?' + qs) if qs else ''))
 
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
-            and not request.args.get('view_as')):
+            and not request.args.get('view_as')
+            and not request.args.get('view_player')):
         from app.union_data import get_union_overview, get_cumulative_totals
         meta, _, _ = get_union_overview()
         ct = get_cumulative_totals()
@@ -989,11 +991,18 @@ def dashboard():
                                selected_dates=selected_dates,
                                view_as_username=view_as_username)
 
-    if hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id:
+    # Admin preview of any player's dashboard via ?view_player=<player_id>
+    _admin_view_player = None
+    if (hasattr(current_user, 'role') and current_user.role == 'admin'
+            and request.args.get('view_player')):
+        _admin_view_player = request.args.get('view_player')
+
+    if (hasattr(current_user, 'role') and current_user.role == 'player' and current_user.player_id) \
+            or _admin_view_player:
         from app.union_data import get_cumulative_stats
         from app.models import PlayerSession, MoneyTransfer
 
-        player_id = current_user.player_id
+        player_id = _admin_view_player if _admin_view_player else current_user.player_id
         cs = get_cumulative_stats([player_id]).get(player_id)
         if cs:
             from app.union_data import get_transfer_adjustments
@@ -1122,6 +1131,7 @@ def dashboard():
 
         return render_template('main/player_dashboard.html',
                                player=cs or {'nickname': current_user.username, 'club': '-', 'pnl': 0, 'rake': 0, 'hands': 0},
+                               viewing_player_id=player_id,
                                sessions=session_list, transfer_rows=transfer_rows,
                                rake_refund=rake_refund,
                                rake_refund_pct=(player_rc.rake_percent if player_rc else 0),
