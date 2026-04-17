@@ -12,7 +12,15 @@ INCOME_CATEGORIES = ['משכורת', 'פרילנס', 'השקעות', 'מתנה',
 
 def _resolve_date_uploads(selected_dates):
     """Resolve selected date strings to upload IDs, checking both active and archived data.
-    Returns (active_upload_ids, archive_period_id, archive_upload_ids, valid_dates)"""
+
+    Returns (active_upload_ids, archive_period_id, archive_upload_ids, valid_dates).
+
+    IMPORTANT: If the caller passed at least one date string but NONE of them
+    resolved to an upload, active_upload_ids is returned as [-1] (a sentinel
+    non-existent upload id). This way, callers that use
+    `if upload_ids_filter: filter.append(upload_id.in_(ids))` will still
+    apply the filter and get zero rows, instead of silently falling back to
+    all-time data. Passing an empty input list still returns empty (no filter)."""
     from app.models import DailyUpload, ArchivedUpload
     from datetime import datetime as dt
     active_upload_ids = []
@@ -36,7 +44,32 @@ def _resolve_date_uploads(selected_dates):
                     valid_dates.append(ds)
         except ValueError:
             pass
+    # Sentinel for "user asked for a filter that matched nothing"
+    if selected_dates and not active_upload_ids and not archive_upload_ids:
+        active_upload_ids = [-1]
     return active_upload_ids, archive_period_id, archive_upload_ids, valid_dates
+
+
+def _format_period_label(selected_dates):
+    """Human-readable date label for Excel banners.
+    Single date → DD/MM/YYYY. Range → DD/MM/YYYY — DD/MM/YYYY. Multiple non-contiguous → list."""
+    if not selected_dates:
+        return None
+    from datetime import datetime as dt
+    try:
+        parsed = sorted({dt.strptime(d, '%Y-%m-%d').date() for d in selected_dates})
+    except ValueError:
+        return ', '.join(selected_dates)
+    if len(parsed) == 1:
+        return parsed[0].strftime('%d/%m/%Y')
+    # If the dates are a contiguous run, render as a range
+    from datetime import timedelta
+    is_contiguous = all((parsed[i] - parsed[i - 1]) == timedelta(days=1) for i in range(1, len(parsed)))
+    if is_contiguous:
+        return f"{parsed[0].strftime('%d/%m/%Y')} — {parsed[-1].strftime('%d/%m/%Y')}"
+    return ', '.join(d.strftime('%d/%m/%Y') for d in parsed)
+
+
 EXPENSE_CATEGORIES = ['מזון', 'דיור', 'תחבורה', 'בריאות', 'בידור', 'קניות', 'חינוך', 'חשבונות', 'אחר']
 
 
@@ -92,7 +125,9 @@ def dashboard():
         available_dates = sorted(active_dates | archive_dates, reverse=True)
 
         # Date filter — supports multiple dates: ?dates=2026-03-30,2026-03-31
-        selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        had_date_filter = bool(requested_dates)
+        selected_dates = requested_dates
         upload_ids_filter = []
         use_archive = False
         archive_period_id = None
@@ -116,6 +151,9 @@ def dashboard():
                                 DailyPlayerStats.role != 'Name Entry']
                 if upload_ids_filter:
                     base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+                elif had_date_filter:
+                    # Dates requested but none resolved to uploads → return empty, don't silently show all-time
+                    base_filters.append(DailyPlayerStats.upload_id == -1)
                 StatsModel = DailyPlayerStats
 
             club_players_db = StatsModel.query.with_entities(
@@ -234,7 +272,9 @@ def dashboard():
         available_dates = sorted(active_dates | archive_dates, reverse=True)
 
         # Date filter
-        selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        had_date_filter = bool(requested_dates)
+        selected_dates = requested_dates
         upload_ids_filter = []
         use_archive = False
         archive_period_id = None
@@ -329,8 +369,10 @@ def dashboard():
         base_agent_filters = [SM.player_id.in_(my_player_id_list), SM.role != 'Name Entry']
         if use_archive and archive_period_id:
             base_agent_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
-            if upload_ids_filter:
-                base_agent_filters.append(SM.upload_id.in_(upload_ids_filter))
+        elif upload_ids_filter:
+            # Active data with date filter — was missing, causing direct players
+            # to aggregate across ALL active uploads instead of only the filtered ones
+            base_agent_filters.append(SM.upload_id.in_(upload_ids_filter))
 
         my_players_db = SM.query.with_entities(
             SM.player_id,
@@ -620,36 +662,61 @@ def dashboard():
                                      'rake': round(float(rake or 0), 2),
                                      'hands': int(hands or 0)}
 
+            # When a date filter is active, players without data in the filtered
+            # range are dropped from the display — they didn't play in that window,
+            # so they shouldn't appear under the SA at all.
             cs_rake = cs_pnl = cs_hands = 0
+            direct_kept = []
             for m in cs.get('direct', []):
                 c = cumul_cs.get(m['player_id'])
                 if c:
                     m['pnl'] = c['pnl']
                     m['rake'] = c['rake']
                     m['hands'] = c.get('hands', 0)
-                cs_rake += m.get('rake', 0)
-                cs_pnl += m.get('pnl', 0)
-                cs_hands += m.get('hands', 0)
-            for ag in cs.get('agents', {}).values():
+                    direct_kept.append(m)
+                elif not had_date_filter:
+                    direct_kept.append(m)
+                # else: filtered view and player has no data in range → drop
+                if m in direct_kept:
+                    cs_rake += m.get('rake', 0)
+                    cs_pnl += m.get('pnl', 0)
+                    cs_hands += m.get('hands', 0)
+            cs['direct'] = direct_kept
+            for ag_id_key, ag in list(cs.get('agents', {}).items()):
                 ag_r = ag_p = ag_h = 0
+                members_kept = []
                 for m in ag.get('members', []):
                     c = cumul_cs.get(m['player_id'])
                     if c:
                         m['pnl'] = c['pnl']
                         m['rake'] = c['rake']
                         m['hands'] = c.get('hands', 0)
-                    ag_r += m.get('rake', 0)
-                    ag_p += m.get('pnl', 0)
-                    ag_h += m.get('hands', 0)
+                        members_kept.append(m)
+                    elif not had_date_filter:
+                        members_kept.append(m)
+                    # else: drop in filtered view
+                    if m in members_kept:
+                        ag_r += m.get('rake', 0)
+                        ag_p += m.get('pnl', 0)
+                        ag_h += m.get('hands', 0)
+                ag['members'] = members_kept
                 ag['total_rake'] = round(ag_r, 2)
                 ag['total_pnl'] = round(ag_p, 2)
                 ag['total_hands'] = ag_h
                 cs_rake += ag_r
                 cs_pnl += ag_p
                 cs_hands += ag_h
+                # Drop empty sub-agents when filtered
+                if had_date_filter and not members_kept:
+                    cs['agents'].pop(ag_id_key, None)
             cs['total_rake'] = round(cs_rake, 2)
             cs['total_pnl'] = round(cs_pnl, 2)
             cs['total_hands'] = cs_hands
+
+        # Drop child SAs that have no players at all in the filtered range
+        if had_date_filter:
+            child_sas = [cs for cs in child_sas
+                         if cs.get('direct') or cs.get('agents')]
 
         # Find agent nicknames from Excel + DB
         all_nicks_db = dict(SM.query.with_entities(
@@ -1279,8 +1346,13 @@ def agent_reports():
 
 # ═══════════════════════ EXCEL EXPORTS ═══════════════════════
 
-def _make_excel(sheets_data, filename):
-    """Create Excel file from dict of {sheet_name: [{col: val, ...}]}."""
+def _make_excel(sheets_data, filename, period_label=None):
+    """Create Excel file from dict of {sheet_name: [{col: val, ...}]}.
+
+    When period_label is given (e.g. "01/04/2026 — 05/04/2026"), a banner row
+    is added at the top of every sheet so the reader can see which dates the
+    export covers.
+    """
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
     wb = openpyxl.Workbook()
@@ -1289,14 +1361,25 @@ def _make_excel(sheets_data, filename):
         import re
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sheet_name)[:31] or 'Sheet'
         ws = wb.create_sheet(title=safe_name)
+        # Optional period banner on row 1
+        banner_offset = 0
+        if period_label:
+            banner = ws.cell(row=1, column=1, value=f'דוח אקסל לתאריכים: {period_label}')
+            banner.font = Font(bold=True, color='4361EE', size=12)
+            banner.alignment = Alignment(horizontal='right')
+            banner_offset = 1
         if not rows:
             continue
         # Headers
         headers = list(rows[0].keys())
+        header_row = 1 + banner_offset
+        # Merge banner across the header columns for readability
+        if banner_offset and len(headers) > 1:
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
         header_font = Font(bold=True, color='FFFFFF')
         header_fill = PatternFill(start_color='4361EE', end_color='4361EE', fill_type='solid')
         for col, h in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=h)
+            cell = ws.cell(row=header_row, column=col, value=h)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center')
@@ -1304,7 +1387,7 @@ def _make_excel(sheets_data, filename):
         green_font = Font(color='2EC4B6', bold=True)
         red_font = Font(color='EF233C', bold=True)
         bold_font = Font(bold=True)
-        for row_idx, row_data in enumerate(rows, 2):
+        for row_idx, row_data in enumerate(rows, header_row + 1):
             for col_idx, key in enumerate(headers, 1):
                 val = row_data.get(key, '')
                 cell = ws.cell(row=row_idx, column=col_idx, value=val)
@@ -1321,10 +1404,18 @@ def _make_excel(sheets_data, filename):
                 first_val = str(row_data.get(headers[0], ''))
                 if first_val.startswith('נטו סוכן'):
                     cell.font = Font(bold=True, color='217346')
-        # Auto-width
+        # Auto-width (skip merged banner cells)
         for col in ws.columns:
-            max_len = max(len(str(cell.value or '')) for cell in col)
-            ws.column_dimensions[col[0].column_letter].width = min(max_len + 3, 40)
+            lengths = []
+            for cell in col:
+                if getattr(cell, 'column_letter', None) is None:
+                    continue
+                lengths.append(len(str(cell.value or '')))
+            if lengths:
+                # col[0] for a MergedCell may not have column_letter; find first real cell
+                first_real = next((c for c in col if getattr(c, 'column_letter', None) is not None), None)
+                if first_real is not None:
+                    ws.column_dimensions[first_real.column_letter].width = min(max(lengths) + 3, 40)
 
     output = io.BytesIO()
     wb.save(output)
@@ -1336,44 +1427,96 @@ def _make_excel(sheets_data, filename):
 @main_bp.route('/export/player/<player_id>')
 @login_required
 def export_player(player_id):
-    """Export player personal report - all games, P&L, record."""
-    from app.union_data import get_cumulative_stats
-    from app.models import PlayerSession
+    """Export player personal report - all games, P&L, record.
 
-    cs = get_cumulative_stats([player_id]).get(player_id)
-    if not cs:
+    Honors ?dates=YYYY-MM-DD,... the same way dashboards do: when set, stats
+    and sessions are filtered to those upload dates (active or archived).
+    Transfers are only included in the all-time export (no date filter)."""
+    from app.models import (PlayerSession, DailyPlayerStats,
+                            ArchivedPlayerStats, ArchivedPlayerSession)
+    from app.union_data import get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc
+
+    # Parse ?dates= filter (shared with dashboards)
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
+
+    if use_archive and archive_period_id:
+        StatsModel = ArchivedPlayerStats
+        SessionModel = ArchivedPlayerSession
+        stat_filters = [ArchivedPlayerStats.player_id == player_id,
+                        ArchivedPlayerStats.period_id == archive_period_id,
+                        ArchivedPlayerStats.upload_id.in_(archive_upload_ids)]
+        sess_filters = [ArchivedPlayerSession.player_id == player_id,
+                        ArchivedPlayerSession.period_id == archive_period_id,
+                        ArchivedPlayerSession.upload_id.in_(archive_upload_ids)]
+    else:
+        StatsModel = DailyPlayerStats
+        SessionModel = PlayerSession
+        stat_filters = [DailyPlayerStats.player_id == player_id]
+        sess_filters = [PlayerSession.player_id == player_id]
+        if upload_ids_filter:
+            stat_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+            sess_filters.append(PlayerSession.upload_id.in_(upload_ids_filter))
+        elif had_date_filter:
+            # Dates requested but didn't resolve → return empty instead of silent all-time fallback
+            stat_filters.append(DailyPlayerStats.upload_id == -1)
+            sess_filters.append(PlayerSession.upload_id == -1)
+
+    agg = StatsModel.query.with_entities(
+        sqlfunc.sum(StatsModel.pnl), sqlfunc.sum(StatsModel.rake),
+        sqlfunc.sum(StatsModel.hands),
+        sqlfunc.max(StatsModel.nickname), sqlfunc.max(StatsModel.club),
+    ).filter(*stat_filters).first()
+
+    if not agg or agg[3] is None:
         flash('שחקן לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
 
-    from app.union_data import get_transfer_adjustments
-    xfer_adj = get_transfer_adjustments([player_id])
-    cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
+    cs = {
+        'pnl': round(float(agg[0] or 0), 2),
+        'rake': round(float(agg[1] or 0), 2),
+        'hands': int(agg[2] or 0),
+        'nickname': agg[3],
+        'club': agg[4],
+    }
 
-    sessions = PlayerSession.query.filter_by(player_id=player_id).all()
+    # Transfers aren't date-bound; apply them only when exporting the full cumulative view
+    if not selected_dates:
+        xfer_adj = get_transfer_adjustments([player_id])
+        cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
+
+    sessions = SessionModel.query.filter(*sess_filters).all()
     session_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
                      'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
 
-    # Add transfer rows to the record
-    from app.models import MoneyTransfer
-    from datetime import timedelta
-    transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
-    transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
-    for t in transfers_out:
-        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
-        session_rows.append({
-            'משחק': f'העברה ל-{t.to_name}',
-            'סוג': 'העברה',
-            'בליינדס': t.description or '',
-            'P&L': round(-t.amount, 2),
-        })
-    for t in transfers_in:
-        il_time = t.created_at + timedelta(hours=3) if t.created_at else None
-        session_rows.append({
-            'משחק': f'קיבלת מ-{t.from_name}',
-            'סוג': 'העברה',
-            'בליינדס': t.description or '',
-            'P&L': round(t.amount, 2),
-        })
+    # Transfer rows — only in the all-time export
+    if not selected_dates:
+        from app.models import MoneyTransfer
+        transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
+        transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
+        for t in transfers_out:
+            session_rows.append({
+                'משחק': f'העברה ל-{t.to_name}',
+                'סוג': 'העברה',
+                'בליינדס': t.description or '',
+                'P&L': round(-t.amount, 2),
+            })
+        for t in transfers_in:
+            session_rows.append({
+                'משחק': f'קיבלת מ-{t.from_name}',
+                'סוג': 'העברה',
+                'בליינדס': t.description or '',
+                'P&L': round(t.amount, 2),
+            })
 
     # Add total row at the end
     total_pnl = sum(r['P&L'] for r in session_rows)
@@ -1385,10 +1528,12 @@ def export_player(player_id):
     summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
                 'P&L': cs['pnl'], 'Hands': cs['hands']}]
 
+    suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
     return _make_excel({
         'סיכום': summary,
         'רקורד משחקים': session_rows,
-    }, f'{cs["nickname"]}_report.xlsx')
+    }, f'{cs["nickname"]}{suffix}_report.xlsx', period_label=period_label)
 
 
 @main_bp.route('/export/agent/account')
@@ -1466,32 +1611,59 @@ def export_single_agent(agent_id):
     if current_user.role not in ('agent', 'admin', 'club') :
         return redirect(url_for('main.dashboard'))
 
-    from app.models import DailyPlayerStats
+    from app.models import DailyPlayerStats, ArchivedPlayerStats
     from app.union_data import get_transfer_adjustments
     from sqlalchemy import func as sqlfunc, or_
 
+    # Parse ?dates= filter (shared with dashboards)
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
+
+    if use_archive and archive_period_id:
+        StatsModel = ArchivedPlayerStats
+        base_filters = [ArchivedPlayerStats.period_id == archive_period_id,
+                        ArchivedPlayerStats.upload_id.in_(archive_upload_ids),
+                        ArchivedPlayerStats.role != 'Name Entry']
+    else:
+        StatsModel = DailyPlayerStats
+        base_filters = [DailyPlayerStats.role != 'Name Entry']
+        if upload_ids_filter:
+            base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+        elif had_date_filter:
+            # Dates were requested but didn't resolve to any upload → return empty, don't silently fall back
+            base_filters.append(DailyPlayerStats.upload_id == -1)
+
     # Get all players under this agent/SA (by agent_id or sa_id)
-    players = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
-        sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
-        sqlfunc.sum(DailyPlayerStats.hands),
+    players = StatsModel.query.with_entities(
+        StatsModel.player_id, sqlfunc.max(StatsModel.nickname),
+        sqlfunc.max(StatsModel.club), sqlfunc.max(StatsModel.agent_id),
+        sqlfunc.sum(StatsModel.pnl), sqlfunc.sum(StatsModel.rake),
+        sqlfunc.sum(StatsModel.hands),
     ).filter(
-        or_(DailyPlayerStats.agent_id == agent_id, DailyPlayerStats.sa_id == agent_id),
-        DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
+        or_(StatsModel.agent_id == agent_id, StatsModel.sa_id == agent_id),
+        *base_filters
+    ).group_by(StatsModel.player_id).all()
 
-    xfer_adj = get_transfer_adjustments([p[0] for p in players])
+    # Transfer adjustments only apply to the unfiltered cumulative view
+    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not selected_dates else {}
 
-    # Agent/SA nickname
-    agent_nick = DailyPlayerStats.query.with_entities(
-        sqlfunc.max(DailyPlayerStats.nickname)
-    ).filter(DailyPlayerStats.player_id == agent_id).scalar() or agent_id
+    # Agent/SA nickname (look in both active and archive)
+    agent_nick = StatsModel.query.with_entities(
+        sqlfunc.max(StatsModel.nickname)
+    ).filter(StatsModel.player_id == agent_id).scalar() or agent_id
 
     # Nickname lookup
-    all_nicks = dict(DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-    ).group_by(DailyPlayerStats.player_id).all())
+    all_nicks = dict(StatsModel.query.with_entities(
+        StatsModel.player_id, sqlfunc.max(StatsModel.nickname)
+    ).group_by(StatsModel.player_id).all())
 
     import re
     full_mode = request.args.get('mode') == 'full'
@@ -1560,7 +1732,9 @@ def export_single_agent(agent_id):
     if not sheets:
         sheets[agent_nick[:31]] = []
 
-    return _make_excel(sheets, f'{agent_nick}_players.xlsx')
+    suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
+    return _make_excel(sheets, f'{agent_nick}{suffix}_players.xlsx', period_label=period_label)
 
 
 @main_bp.route('/export/agent/players')

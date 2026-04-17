@@ -333,7 +333,7 @@ var _allPlayers = [
                     <span class="summary-chip {% if ag_pnl_val >= 0 %}chip-win{% else %}chip-lose{% endif %} chip-sm">
                         רווח/הפסד {% if ag_pnl_val > 0 %}+{% endif %}{{ ag_pnl_val|comma }}
                     </span>
-                    <a href="{{ url_for('main.export_single_agent', agent_id=ag_id) }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.65rem;">📥 XLS</a>
+                    <a href="{{ url_for('main.export_single_agent', agent_id=ag_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.65rem;">📥 XLS</a>
                 </div>
             </div>
             <div class="accordion-body" style="display:none; padding:0.3rem 0.6rem 0.5rem;">
@@ -350,7 +350,7 @@ var _allPlayers = [
                             </td>
                             <td class="player-actions">
                                 <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
-                                <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                                <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                             </td>
                         </tr>
                         <tr class="record-row" style="display:none;">
@@ -391,7 +391,7 @@ var _allPlayers = [
                         </td>
                         <td class="player-actions">
                             <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
-                            <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                            <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                         </td>
                     </tr>
                     <tr class="record-row" style="display:none;">
@@ -437,7 +437,7 @@ var _allPlayers = [
             <span class="summary-chip {% if ag_pnl_val >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                 רווח/הפסד {% if ag_pnl_val > 0 %}+{% endif %}{{ ag_pnl_val|comma }}
             </span>
-            <a href="{{ url_for('main.export_single_agent', agent_id=ag_id) }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥 XLS</a>
+            <a href="{{ url_for('main.export_single_agent', agent_id=ag_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" onclick="event.stopPropagation();" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥 XLS</a>
         </div>
     </div>
     <div class="accordion-body" style="display:none; padding:0.5rem 0.8rem;">
@@ -454,7 +454,7 @@ var _allPlayers = [
                     </td>
                     <td class="player-actions">
                         <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
-                        <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                        <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                     </td>
                 </tr>
                 <tr class="record-row" style="display:none;">
@@ -510,7 +510,7 @@ var _allPlayers = [
                     </td>
                     <td class="player-actions">
                         <button class="btn btn-outline btn-sm" onclick="toggleRecord(this, '{{ m.player_id }}')">רקורד</button>
-                        <a href="{{ url_for('main.export_player', player_id=m.player_id) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                        <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                     </td>
                 </tr>
                 <tr class="record-row" style="display:none;">
@@ -733,8 +733,14 @@ function clearDashboardSearch() {
 
 function showExportChoice(agentId, agentNick) {
     document.getElementById('exportModalTitle').textContent = 'דוח ' + agentNick;
-    document.getElementById('exportFullLink').href = '/export/agent/single/' + agentId + '?mode=full';
-    document.getElementById('exportAgentsLink').href = '/export/agent/single/' + agentId;
+    var datesQS = (Array.isArray(_selectedDates) && _selectedDates.length)
+        ? '&dates=' + encodeURIComponent(_selectedDates.join(','))
+        : '';
+    var datesQSOnly = (Array.isArray(_selectedDates) && _selectedDates.length)
+        ? '?dates=' + encodeURIComponent(_selectedDates.join(','))
+        : '';
+    document.getElementById('exportFullLink').href = '/export/agent/single/' + agentId + '?mode=full' + datesQS;
+    document.getElementById('exportAgentsLink').href = '/export/agent/single/' + agentId + datesQSOnly;
     document.getElementById('exportModal').classList.add('active');
 }
 function closeExportModal() {
