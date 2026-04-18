@@ -1521,18 +1521,30 @@ def report_debug_api():
     from app.models import (DailyPlayerStats, DailyUpload, ArchivedUpload,
                             ArchivedPlayerStats, SAHierarchy, SARakeConfig)
     from sqlalchemy import func as sqlfunc, or_
-    from datetime import datetime as _dt
+    from datetime import datetime as _dt, timedelta
 
     from_date = request.args.get('from')
     to_date = request.args.get('to')
     period_id = request.args.get('period_id', '')
-    if not from_date or not to_date:
-        return jsonify({'error': 'missing dates'}), 400
+    # Defaults for easy ad-hoc use via the browser URL bar.
+    if not from_date:
+        from_date = (_dt.utcnow().date() - timedelta(days=14)).isoformat()
+    if not to_date:
+        to_date = _dt.utcnow().date().isoformat()
     try:
         fd = _dt.strptime(from_date, '%Y-%m-%d').date()
         td = _dt.strptime(to_date, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({'error': 'invalid date format'}), 400
+
+    # Auto-resolve period_id if not given: if the date range maps to an
+    # archived upload, pick that period. Otherwise use active.
+    if not period_id:
+        arch = ArchivedUpload.query.filter(
+            ArchivedUpload.upload_date >= fd,
+            ArchivedUpload.upload_date <= td).first()
+        if arch:
+            period_id = str(arch.period_id)
 
     sa_id = current_user.player_id
     all_sa_ids = [sa_id] + [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
