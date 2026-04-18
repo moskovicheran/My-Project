@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import db, User
 
@@ -75,6 +75,7 @@ def login():
             flash('שם משתמש או סיסמה שגויים.', 'danger')
         else:
             login_user(user, remember=remember)
+            session.permanent = True
             # Log the login
             try:
                 from app.models import LoginLog

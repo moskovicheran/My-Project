@@ -1,5 +1,6 @@
 import os
 import warnings
+from datetime import timedelta
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -13,6 +14,13 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+
+    # CSRF token tied to session lifetime (no fixed expiry) — avoids
+    # "CSRF token has expired" on login forms left open for a while.
+    WTF_CSRF_TIME_LIMIT = None
+
+    # Keep users logged in for 30 days when session.permanent is set.
+    PERMANENT_SESSION_LIFETIME = timedelta(days=30)
 
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB upload limit
 
