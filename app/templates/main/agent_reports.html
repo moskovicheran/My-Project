@@ -115,8 +115,14 @@ body.dark .cal-day.in-range { background:#333355; color:#ddd; }
 var dataDates = [];
 var calYear, calMonth;
 var selectedFrom = null, selectedTo = null;
+// Full union — used only for the dropdown / display. Per-period filtering
+// uses the pair below so reports match the dashboard for the right table.
 var myPlayerIds = {{ player_ids|tojson }};
 var hierarchyPlayerIds = {{ hierarchy_player_ids|tojson }};
+var dailyPlayerIds = {{ daily_player_ids|tojson }};
+var dailyHierarchyIds = {{ daily_hierarchy_ids|tojson }};
+var archivePlayerIds = {{ archive_player_ids|tojson }};
+var archiveHierarchyIds = {{ archive_hierarchy_ids|tojson }};
 var managedClubNames = {{ managed_club_names|tojson }};
 var currentPeriodId = '';
 
@@ -229,15 +235,20 @@ function loadReport() {
     }
     document.getElementById('reportInfo').textContent = 'טוען...';
     fetch(url).then(r => r.json()).then(data => {
+        // Pick the player-set matching the table /api/report used:
+        //   current period → Daily, archived period → Archive.
+        var activeAllIds = currentPeriodId ? archivePlayerIds : dailyPlayerIds;
+        var activeHierIds = currentPeriodId ? archiveHierarchyIds : dailyHierarchyIds;
+
         // Table: show all players in my scope (hierarchy ∪ managed clubs)
-        var filtered = data.players.filter(p => myPlayerIds.indexOf(p.player_id) >= 0);
+        var filtered = data.players.filter(p => activeAllIds.indexOf(p.player_id) >= 0);
 
         // Card totals — match dashboard:
         //   Rake / PnL = sum over hierarchy players + full managed-clubs bucket
         //                (overlap counted twice — same as dashboard).
         //   Players    = unique count of everyone visible on the dashboard
         //                (hierarchy + managed-club members with activity in range).
-        var hier = filtered.filter(p => hierarchyPlayerIds.indexOf(p.player_id) >= 0);
+        var hier = filtered.filter(p => activeHierIds.indexOf(p.player_id) >= 0);
         var hierSum = {pnl:0, rake:0, hands:0};
         hier.forEach(p => { hierSum.pnl += p.pnl; hierSum.rake += p.rake; hierSum.hands += p.hands; });
         var mc = data.managed_clubs_totals || {pnl:0, rake:0, hands:0};
