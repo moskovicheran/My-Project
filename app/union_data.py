@@ -763,6 +763,55 @@ def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_uploa
     }
 
 
+def get_agent_scope(player_id):
+    """Resolve the hierarchy SA IDs and managed-club names for an agent.
+
+    Callers build a row-level scope predicate as:
+      or_(M.sa_id.in_(all_sa_ids),
+          M.agent_id.in_(all_sa_ids),
+          M.club.in_(managed_club_names))            # if any clubs
+    Use managed_club_names with notin_() when aggregating the
+    'personal' (hier-only-not-club) bucket so it excludes overlap rows.
+    """
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig
+
+    known_ids = {player_id}
+    for M in (DailyPlayerStats, ArchivedPlayerStats):
+        if M.query.filter(M.sa_id == player_id).first():
+            break
+        if M.query.filter(M.agent_id == player_id).first():
+            break
+    else:
+        # player_id isn't literally used as sa_id/agent_id anywhere —
+        # fall back to resolving via their own role row.
+        own_row = (DailyPlayerStats.query.filter(DailyPlayerStats.player_id == player_id).first()
+                   or ArchivedPlayerStats.query.filter(ArchivedPlayerStats.player_id == player_id).first())
+        if own_row:
+            role_lower = (own_row.role or '').lower()
+            if 'super' in role_lower or role_lower in ('sa',):
+                if own_row.sa_id and own_row.sa_id != '-':
+                    known_ids.add(own_row.sa_id)
+            elif 'agent' in role_lower:
+                if own_row.agent_id and own_row.agent_id != '-':
+                    known_ids.add(own_row.agent_id)
+    known_ids.discard(''); known_ids.discard('-')
+
+    child_sa_ids = []
+    for kid in list(known_ids):
+        child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+    all_sa_ids = list(set(list(known_ids) + child_sa_ids))
+
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=player_id).filter(
+        SARakeConfig.managed_club_id.isnot(None)).all()
+    managed_club_names = []
+    if rake_cfgs:
+        clubs_data, _ = get_members_hierarchy()
+        cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        managed_club_names = [cid_to_name[c.managed_club_id]
+                              for c in rake_cfgs if cid_to_name.get(c.managed_club_id)]
+    return all_sa_ids, managed_club_names
+
+
 def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
     """Unified-scope totals for an agent.
 

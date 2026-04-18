@@ -1262,7 +1262,16 @@ def agent_top_players():
                 if has_stats:
                     my_pids.append(sid)
 
-        # Step 2: Get cumulative stats for all their history
+        # Step 2: Single unified-scope aggregation — each row counted ONCE
+        # iff it's in this agent's scope (sa_id/agent_id in hierarchy OR
+        # club in managed clubs). Same logic used by /api/report and
+        # agent_dashboard — prevents cross-channel leakage and double counts.
+        from app.union_data import get_agent_scope
+        _scope_sa_ids, managed_club_names = get_agent_scope(sa_id)
+        scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
+                       DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
+        if managed_club_names:
+            scope_preds.append(DailyPlayerStats.club.in_(managed_club_names))
         players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -1272,34 +1281,9 @@ def agent_top_players():
             sqlfunc.sum(DailyPlayerStats.rake),
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(
-            DailyPlayerStats.player_id.in_(my_pids),
-            DailyPlayerStats.role != 'Name Entry'
+            or_(*scope_preds),
+            DailyPlayerStats.role != 'Name Entry',
         ).group_by(DailyPlayerStats.player_id).all()
-
-        # Also get managed club players
-        managed_club_pids = set(p[0] for p in players_db)
-        rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
-        if rake_cfgs:
-            from app.union_data import get_members_hierarchy
-            clubs_data, _ = get_members_hierarchy()
-            club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
-            for cfg in rake_cfgs:
-                club_name = club_id_to_name.get(cfg.managed_club_id, '')
-                if club_name:
-                    club_players = DailyPlayerStats.query.with_entities(
-                        DailyPlayerStats.player_id,
-                        sqlfunc.max(DailyPlayerStats.nickname),
-                        sqlfunc.max(DailyPlayerStats.club),
-                        sqlfunc.max(DailyPlayerStats.agent_id),
-                        sqlfunc.sum(DailyPlayerStats.pnl),
-                        sqlfunc.sum(DailyPlayerStats.rake),
-                        sqlfunc.sum(DailyPlayerStats.hands),
-                    ).filter(
-                        DailyPlayerStats.club == club_name,
-                        DailyPlayerStats.role != 'Name Entry',
-                        DailyPlayerStats.player_id.notin_(list(managed_club_pids))
-                    ).group_by(DailyPlayerStats.player_id).all()
-                    players_db = list(players_db) + list(club_players)
 
         # Nickname lookup for agent names
         all_nicks = dict(DailyPlayerStats.query.with_entities(
@@ -1892,17 +1876,27 @@ def export_agent_account():
         if upload_ids_filter:
             scope.append(SM.upload_id.in_(upload_ids_filter))
 
-    # Personal rake
+    # Personal rake — hier channel only (exclude managed-club rows so they
+    # aren't double-counted below in the clubs section).
+    from app.union_data import get_agent_scope
+    _scope_sa_ids, _mc_names = get_agent_scope(sa_id)
+    personal_filters = [
+        or_(SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)),
+        SM.role != 'Name Entry',
+    ]
+    if _mc_names:
+        personal_filters.append(SM.club.notin_(_mc_names))
     personal = SM.query.with_entities(
         sqlfunc.sum(SM.rake), sqlfunc.sum(SM.pnl)
-    ).filter(SM.sa_id == sa_id, SM.role != 'Name Entry', *scope).first()
+    ).filter(*personal_filters, *scope).first()
     personal_rake = round(float(personal[0] or 0), 2)
     personal_pnl = round(float(personal[1] or 0), 2)
     # Transfers only apply to the unfiltered (all-time) view
     if not had_date_filter:
         all_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
             sqlfunc.distinct(DailyPlayerStats.player_id)
-        ).filter(or_(DailyPlayerStats.sa_id == sa_id, DailyPlayerStats.agent_id == sa_id)).all()]
+        ).filter(or_(DailyPlayerStats.sa_id.in_(_scope_sa_ids),
+                     DailyPlayerStats.agent_id.in_(_scope_sa_ids))).all()]
         if all_pids:
             xfer_adj = get_transfer_adjustments(all_pids)
             personal_pnl = round(personal_pnl + sum(xfer_adj.values()), 2)
@@ -2121,6 +2115,15 @@ def export_agent_players():
         if upload_ids_filter:
             scope.append(SM.upload_id.in_(upload_ids_filter))
 
+    # Unified scope predicate — row is in scope iff sa_id/agent_id in
+    # hierarchy OR club in managed clubs. Every row counted once.
+    from app.union_data import get_agent_scope
+    from sqlalchemy import or_ as _or
+    _scope_sa_ids, _mc_names = get_agent_scope(sa_id)
+    _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
+    if _mc_names:
+        _scope_preds.append(SM.club.in_(_mc_names))
+
     # Nickname map (always from active data — needed for resolving names even
     # when archive filter returns no rows for the SA itself)
     all_nicks = dict(DailyPlayerStats.query.with_entities(
@@ -2136,7 +2139,8 @@ def export_agent_players():
         sqlfunc.max(SM.agent_id),
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands),
-    ).filter(SM.sa_id.in_(all_sa_ids), SM.role != 'Name Entry', *scope
+    ).filter(
+        _or(*_scope_preds), SM.role != 'Name Entry', *scope,
     ).group_by(SM.player_id).all()
 
     # Transfers only apply to the unfiltered (all-time) view
@@ -2226,14 +2230,17 @@ def export_agent_players():
         sheets['שחקנים ישירים'] = direct_players
 
     # ── Sheet 2: My Agents ──
+    _agent_filters = [
+        SM.sa_id.in_(all_sa_ids), SM.role != 'Name Entry',
+        SM.agent_id != '', SM.agent_id != '-',
+    ]
+    if _mc_names:
+        _agent_filters.append(SM.club.notin_(_mc_names))
     agent_stats = SM.query.with_entities(
         SM.agent_id,
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
-    ).filter(
-        SM.sa_id.in_(all_sa_ids), SM.role != 'Name Entry',
-        SM.agent_id != '', SM.agent_id != '-', *scope
-    ).group_by(SM.agent_id).all()
+    ).filter(*_agent_filters, *scope).group_by(SM.agent_id).all()
 
     agent_rows = []
     for ag in agent_stats:
@@ -2259,10 +2266,13 @@ def export_agent_players():
     # ── Sheet 3: My Super Agents ──
     sa_rows = []
     for csa_id in child_sa_ids:
+        _csa_filters = [SM.sa_id == csa_id, SM.role != 'Name Entry']
+        if _mc_names:
+            _csa_filters.append(SM.club.notin_(_mc_names))
         sa_data = SM.query.with_entities(
             sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
             sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
-        ).filter(SM.sa_id == csa_id, SM.role != 'Name Entry', *scope).first()
+        ).filter(*_csa_filters, *scope).first()
         sa_name = all_nicks.get(csa_id, csa_id)
         rc = RakeConfig.query.filter_by(entity_type='agent', entity_id=csa_id).first()
         rake_pct = rc.rake_percent if rc else 0
@@ -2479,6 +2489,17 @@ def export_agent_period():
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     all_sa_ids.extend(child_sa_ids)
 
+    # Unified scope: sa_id/agent_id in hierarchy OR club in managed clubs.
+    from app.union_data import get_agent_scope
+    from sqlalchemy import or_ as _or
+    _scope_sa_ids, _mc_names = get_agent_scope(current_user.player_id)
+
+    def _scope_preds(M):
+        preds = [M.sa_id.in_(_scope_sa_ids), M.agent_id.in_(_scope_sa_ids)]
+        if _mc_names:
+            preds.append(M.club.in_(_mc_names))
+        return _or(*preds)
+
     if period_id:
         # Query from archive tables
         uploads = ArchivedUpload.query.filter(
@@ -2493,7 +2514,7 @@ def export_agent_period():
         base_filters = [
             ArchivedPlayerStats.period_id == int(period_id),
             ArchivedPlayerStats.upload_id.in_(upload_ids),
-            ArchivedPlayerStats.sa_id.in_(all_sa_ids),
+            _scope_preds(ArchivedPlayerStats),
             ArchivedPlayerStats.role != 'Name Entry',
         ]
         if player_id_filter:
@@ -2517,7 +2538,7 @@ def export_agent_period():
 
         base_filters = [
             DailyPlayerStats.upload_id.in_(upload_ids),
-            DailyPlayerStats.sa_id.in_(all_sa_ids),
+            _scope_preds(DailyPlayerStats),
             DailyPlayerStats.role != 'Name Entry',
         ]
         if player_id_filter:

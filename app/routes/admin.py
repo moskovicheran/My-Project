@@ -453,6 +453,16 @@ def agent_view(sa_id):
     total_hands = sum(m['hands'] for m in direct_players) + sum(a['total_hands'] for a in agents_map.values())
     player_count = len(my_players_db)
 
+    # Override summary totals with the unified scope-based calculation —
+    # each row counted once if sa_id/agent_id in hierarchy OR club in
+    # managed clubs. Matches agent_dashboard, /api/report and admin overview.
+    from app.union_data import get_agent_totals as _unified
+    _t = _unified(sa_id)
+    total_rake  = _t['total_rake']
+    total_pnl   = _t['total_pnl']
+    total_hands = _t['total_hands']
+    player_count = _t['player_count']
+
     agents_sorted = dict(sorted(agents_map.items(), key=lambda x: x[1].get('total_rake', 0), reverse=True))
 
     sa_nick = my_sas[0]['sa_nick'] if my_sas else sa_id
