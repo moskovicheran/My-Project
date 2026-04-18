@@ -347,6 +347,12 @@ def dashboard():
                 for c in clubs_data_early:
                     if c['club_id'] == cfg.managed_club_id:
                         managed_club_names.add(c['name'])
+        # List form for use in .notin_() filters — ensures hier-tree aggregations
+        # exclude rows where the player is actually playing in one of our
+        # managed clubs (those rows belong to the clubs bucket, not personal).
+        # Without this, an overlap player's managed-club activity would be
+        # counted in both personal and clubs → double-count / leakage.
+        managed_club_names_list = list(managed_club_names)
         child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids
                      and sa.get('club', '') not in managed_club_names]
         # Deduplicate child_sas by sa_id (same SA may appear in multiple clubs)
@@ -405,8 +411,12 @@ def dashboard():
         if override_player_ids:
             my_player_id_list = list(set(my_player_id_list) | override_player_ids)
 
-        # Step 2: Get cumulative stats for ALL their data (including rows where sa_id was '-')
+        # Step 2: Get cumulative stats for ALL their data (hier channel only —
+        # rows where the player played in one of our managed clubs belong to
+        # the clubs bucket below, not personal).
         base_agent_filters = [SM.player_id.in_(my_player_id_list), SM.role != 'Name Entry']
+        if managed_club_names_list:
+            base_agent_filters.append(SM.club.notin_(managed_club_names_list))
         if use_archive and archive_period_id:
             base_agent_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
         elif upload_ids_filter:
@@ -484,6 +494,8 @@ def dashboard():
                     SM.player_id.notin_(list(all_my_player_ids)),
                     SM.role != 'Name Entry'
                 ]
+                if managed_club_names_list:
+                    _miss_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
                     _miss_filters.append(SM.period_id == archive_period_id)
                     _miss_filters.append(SM.upload_id.in_(archive_upload_ids))
@@ -528,6 +540,8 @@ def dashboard():
             existing_pids = set(m['player_id'] for m in ag['members'])
             if ag_id not in existing_pids:
                 _own_filters = [SM.player_id == ag_id, SM.role != 'Name Entry']
+                if managed_club_names_list:
+                    _own_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
                     _own_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
@@ -553,6 +567,8 @@ def dashboard():
         for sid in known_ids:
             if sid not in all_my_player_ids:
                 _sa_filters = [SM.player_id == sid, SM.role != 'Name Entry']
+                if managed_club_names_list:
+                    _sa_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
                     _sa_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
@@ -599,6 +615,8 @@ def dashboard():
                 _mem_filters = [SM.agent_id == ag_id, SM.role != 'Name Entry']
                 if existing_pids:
                     _mem_filters.append(SM.player_id.notin_(list(existing_pids)))
+                if managed_club_names_list:
+                    _mem_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
                     _mem_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
@@ -627,6 +645,8 @@ def dashboard():
                 all_existing = existing_direct_pids | existing_agent_pids | {sa_id_val}
                 _dir_filters = [SM.sa_id == sa_id_val, SM.agent_id.in_(['', '-']),
                                 SM.player_id.notin_(list(all_existing)), SM.role != 'Name Entry']
+                if managed_club_names_list:
+                    _dir_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
                     _dir_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
@@ -655,6 +675,8 @@ def dashboard():
                         existing_pids.add(m['player_id'])
                 if sa_id_val not in existing_pids:
                     _csa_filters = [SM.player_id == sa_id_val, SM.role != 'Name Entry']
+                    if managed_club_names_list:
+                        _csa_filters.append(SM.club.notin_(managed_club_names_list))
                     if use_archive and archive_period_id:
                         _csa_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                     elif upload_ids_filter:
@@ -697,6 +719,8 @@ def dashboard():
             cumul_cs = {}
             if cs_player_ids and cs_sa:
                 _cumul_filters = [or_(SM.sa_id == cs_sa, SM.player_id == cs_sa), SM.player_id.in_(list(cs_player_ids)), SM.role != 'Name Entry']
+                if managed_club_names_list:
+                    _cumul_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
                     _cumul_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
