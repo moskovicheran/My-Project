@@ -86,20 +86,10 @@ def dashboard():
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and not request.args.get('view_as')
             and not request.args.get('view_player')):
-        from app.union_data import get_union_overview, get_cumulative_totals
-        meta, _, _ = get_union_overview()
-        ct = get_cumulative_totals()
-        meta['period'] = ct['period']
-        return render_template('main/admin_dashboard.html',
-                               meta=meta, clubs=ct['clubs'],
-                               total={'active_players': ct['total_players'],
-                                      'total_hands': ct['total_hands'],
-                                      'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
-                               tables_count=ct['uploads_count'],
-                               total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
-                               total_hands=ct['total_hands'],
-                               ring_rake=ct.get('ring_rake', 0),
-                               mtt_rake=ct.get('mtt_rake', 0))
+        # Admin home dashboard mirrors the /admin/ overview (managers,
+        # tracked clubs, date picker, totals) via the shared context builder.
+        from app.routes.admin import build_overview_context
+        return render_template('main/admin_dashboard.html', **build_overview_context())
 
     # Admin may view any club's dashboard via ?view_as=<club_id> (numeric id).
     # Distinguished from agent view_as by format: clubs have no '-' in id.

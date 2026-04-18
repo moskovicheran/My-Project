@@ -47,12 +47,13 @@ def admin_required(f):
     return decorated
 
 
-@admin_bp.route('/')
-@admin_required
-def overview():
+def build_overview_context():
+    """Shared data for the admin overview — used by both /admin/ and the
+    admin-home dashboard at /dashboard so both render identical numbers.
+    Honors ?dates= on the current request."""
     from app.union_data import (get_union_overview, get_cumulative_totals,
                                  get_agent_totals, get_club_totals)
-    from app.models import User, DailyPlayerStats, DailyUpload, ArchivedUpload
+    from app.models import DailyUpload, ArchivedUpload
     from app.routes.main import _resolve_date_uploads
     from datetime import date, timedelta
 
@@ -124,19 +125,28 @@ def overview():
         })
     tracked_clubs.sort(key=lambda c: c['rake'], reverse=True)
 
-    return render_template('admin/overview.html',
-                           meta=meta, clubs=ct['clubs'],
-                           total={'active_players': ct['total_players'],
-                                  'total_hands': ct['total_hands'],
-                                  'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
-                           tables_count=ct['uploads_count'],
-                           total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
-                           total_hands=ct['total_hands'],
-                           agents=agents_data,
-                           tracked_clubs=tracked_clubs,
-                           active_dates=active_dates,
-                           archive_dates=archive_dates,
-                           selected_dates=selected_dates)
+    return dict(
+        meta=meta, clubs=ct['clubs'],
+        total={'active_players': ct['total_players'],
+               'total_hands': ct['total_hands'],
+               'total_fee': ct['total_rake'], 'pnl': ct['total_pnl']},
+        tables_count=ct['uploads_count'],
+        total_rake=ct['total_rake'], total_pnl=ct['total_pnl'],
+        total_hands=ct['total_hands'],
+        ring_rake=ct.get('ring_rake', 0),
+        mtt_rake=ct.get('mtt_rake', 0),
+        agents=agents_data,
+        tracked_clubs=tracked_clubs,
+        active_dates=active_dates,
+        archive_dates=archive_dates,
+        selected_dates=selected_dates,
+    )
+
+
+@admin_bp.route('/')
+@admin_required
+def overview():
+    return render_template('admin/overview.html', **build_overview_context())
 
 
 @admin_bp.route('/agent-view/<sa_id>')
