@@ -411,10 +411,21 @@ def dashboard():
         if override_player_ids:
             my_player_id_list = list(set(my_player_id_list) | override_player_ids)
 
-        # Step 2: Get cumulative stats for ALL their data (hier channel only —
-        # rows where the player played in one of our managed clubs belong to
-        # the clubs bucket below, not personal).
-        base_agent_filters = [SM.player_id.in_(my_player_id_list), SM.role != 'Name Entry']
+        # Step 2: Get cumulative stats — hier channel ONLY.
+        # Row-level scope:
+        #  - sa_id OR agent_id in hierarchy (keeps only this agent's channel)
+        #  - club NOT IN managed_clubs (clubs bucket handles those)
+        # Override players (manually attached via PlayerAssignment) are
+        # exempt — include their rows even if they don't match the scope,
+        # because that's the whole point of an override.
+        _hier_row_pred = or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids))
+        if override_player_ids:
+            _row_scope = or_(_hier_row_pred, SM.player_id.in_(list(override_player_ids)))
+        else:
+            _row_scope = _hier_row_pred
+        base_agent_filters = [SM.player_id.in_(my_player_id_list),
+                              SM.role != 'Name Entry',
+                              _row_scope]
         if managed_club_names_list:
             base_agent_filters.append(SM.club.notin_(managed_club_names_list))
         if use_archive and archive_period_id:
