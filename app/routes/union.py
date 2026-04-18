@@ -242,13 +242,18 @@ def players():
     # Add players from cumulative DB that are NOT in the active Excel
     from app.models import DailyPlayerStats
     from sqlalchemy import func as sqlfunc
+    # Only include rows whose role is actually 'Player'. Super Agent / Agent /
+    # Manager / Master rows appear in the Excel as aggregate manager entries
+    # (0 hands, non-zero rake/pnl representing manager take) and must not be
+    # rendered as regular players — it produces entries like "0 hands, -223 PNL"
+    # that look like data bugs.
     db_only_players = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
         sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.sa_id),
         sqlfunc.max(DailyPlayerStats.agent_id),
     ).filter(
         DailyPlayerStats.player_id.notin_(list(excel_pids)) if excel_pids else True,
-        DailyPlayerStats.role != 'Name Entry'
+        DailyPlayerStats.role == 'Player'
     ).group_by(DailyPlayerStats.player_id).all()
 
     club_map = {c['name']: c for c in clubs}
@@ -326,12 +331,21 @@ def player_detail(player_id):
     cumulative = get_cumulative_stats([player_id])
     cs = cumulative.get(player_id)
 
-    # If player not in Excel but exists in DB - build member_info from DB
+    # If player not in Excel but exists in DB - build member_info from DB.
+    # Use the actual role from DailyPlayerStats rather than hardcoding 'Player':
+    # the hierarchy includes Super Agents / Agents / Managers whose stat rows
+    # are administrative (0 hands + non-zero rake/pnl), not real play data.
     if not member_info and cs:
+        from app.models import DailyPlayerStats as _DPS
+        from sqlalchemy import func as _sqlfunc
+        actual_role = _DPS.query.with_entities(_sqlfunc.max(_DPS.role)).filter(
+            _DPS.player_id == player_id,
+            _DPS.role != 'Name Entry'
+        ).scalar() or 'Player'
         member_info = {
             'player_id': player_id,
             'nickname': cs.get('nickname', player_id),
-            'role': 'Player',
+            'role': actual_role,
             'country': '-',
             'club': cs.get('club', '-'),
             'sa_nick': '-',
