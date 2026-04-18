@@ -3201,7 +3201,8 @@ def periodic_report_api():
 def report_api():
     from app.models import DailyPlayerStats, DailyUpload, ArchivedUpload, ArchivedPlayerStats
     from datetime import datetime
-    from sqlalchemy import func
+    from sqlalchemy import func, or_
+    from app.models import SAHierarchy, SARakeConfig
 
     from_date = request.args.get('from')
     to_date = request.args.get('to')
@@ -3219,6 +3220,44 @@ def report_api():
     except ValueError:
         return jsonify({'error': 'invalid date format'}), 400
 
+    # Compute the agent's hierarchy for row-level channel filtering. When a
+    # player appears in multiple channels (e.g. rows under sa_id=Hatofer AND
+    # rows under club=AnDenDino), only the rows that belong to the agent's
+    # own channels should be aggregated into their totals — otherwise reports
+    # mixes in activity from outside the agent's scope.
+    agent_sa_ids = []
+    agent_club_names = list(club_names)
+    if getattr(current_user, 'role', None) == 'agent' and current_user.player_id:
+        _sa = current_user.player_id
+        _all = {_sa}
+        _all.update(h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=_sa).all())
+        _all.discard(''); _all.discard('-')
+        agent_sa_ids = list(_all)
+        if not agent_club_names:
+            _rake_cfgs = SARakeConfig.query.filter_by(sa_id=_sa).filter(
+                SARakeConfig.managed_club_id.isnot(None)).all()
+            if _rake_cfgs:
+                from app.union_data import get_members_hierarchy
+                _clubs_data, _ = get_members_hierarchy()
+                _cid_to_name = {c['club_id']: c['name'] for c in _clubs_data}
+                agent_club_names = [_cid_to_name[c.managed_club_id]
+                                    for c in _rake_cfgs
+                                    if _cid_to_name.get(c.managed_club_id)]
+
+    def _hierarchy_row_filter(M):
+        """Row-level filter: keep only rows whose sa_id/agent_id is in our
+        hierarchy, or whose club is one of our managed clubs. Returns None
+        if the user is not an agent (no filtering applied — admin case)."""
+        if not agent_sa_ids and not agent_club_names:
+            return None
+        preds = []
+        if agent_sa_ids:
+            preds.append(M.sa_id.in_(agent_sa_ids))
+            preds.append(M.agent_id.in_(agent_sa_ids))
+        if agent_club_names:
+            preds.append(M.club.in_(agent_club_names))
+        return or_(*preds)
+
     if period_id:
         # Query from archive tables
         uploads = ArchivedUpload.query.filter(
@@ -3229,8 +3268,17 @@ def report_api():
         upload_ids = [u.original_id for u in uploads]
 
         if not upload_ids:
-            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0})
+            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0,
+                            'managed_clubs_totals': None})
 
+        base_filters = [
+            ArchivedPlayerStats.period_id == int(period_id),
+            ArchivedPlayerStats.upload_id.in_(upload_ids),
+            ArchivedPlayerStats.role != 'Name Entry',
+        ]
+        row_filter = _hierarchy_row_filter(ArchivedPlayerStats)
+        if row_filter is not None:
+            base_filters.append(row_filter)
         query = ArchivedPlayerStats.query.with_entities(
             ArchivedPlayerStats.player_id,
             func.max(ArchivedPlayerStats.nickname),
@@ -3238,11 +3286,7 @@ def report_api():
             func.sum(ArchivedPlayerStats.pnl),
             func.sum(ArchivedPlayerStats.rake),
             func.sum(ArchivedPlayerStats.hands),
-        ).filter(
-            ArchivedPlayerStats.period_id == int(period_id),
-            ArchivedPlayerStats.upload_id.in_(upload_ids),
-            ArchivedPlayerStats.role != 'Name Entry',
-        )
+        ).filter(*base_filters)
         if player_id:
             query = query.filter(ArchivedPlayerStats.player_id == player_id)
         query = query.group_by(ArchivedPlayerStats.player_id)
@@ -3255,8 +3299,16 @@ def report_api():
         upload_ids = [u.id for u in uploads]
 
         if not upload_ids:
-            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0})
+            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0,
+                            'managed_clubs_totals': None})
 
+        base_filters = [
+            DailyPlayerStats.upload_id.in_(upload_ids),
+            DailyPlayerStats.role != 'Name Entry',
+        ]
+        row_filter = _hierarchy_row_filter(DailyPlayerStats)
+        if row_filter is not None:
+            base_filters.append(row_filter)
         query = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             func.max(DailyPlayerStats.nickname),
@@ -3264,10 +3316,7 @@ def report_api():
             func.sum(DailyPlayerStats.pnl),
             func.sum(DailyPlayerStats.rake),
             func.sum(DailyPlayerStats.hands),
-        ).filter(
-            DailyPlayerStats.upload_id.in_(upload_ids),
-            DailyPlayerStats.role != 'Name Entry',
-        )
+        ).filter(*base_filters)
         if player_id:
             query = query.filter(DailyPlayerStats.player_id == player_id)
         query = query.group_by(DailyPlayerStats.player_id)
