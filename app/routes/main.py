@@ -956,7 +956,15 @@ def dashboard():
         clubs_total_rake = round(sum(c.get('total_rake', 0) for c in managed_clubs), 2)
         sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
-        player_count = len(all_my_player_ids)
+        # Player count must include everyone visible on the dashboard:
+        # hierarchy (direct + agents + super-agents) + managed-club members.
+        # Matches what /agent/reports and /admin/ overview count.
+        club_member_ids = set()
+        for c in managed_clubs:
+            for m in c.get('all_members', []):
+                if m.get('player_id'):
+                    club_member_ids.add(m['player_id'])
+        player_count = len(all_my_player_ids | club_member_ids)
 
         # My own rake percentage (if configured as sub_agent or agent)
         my_rake_rc = RakeConfig.query.filter(
@@ -1352,39 +1360,97 @@ def agent_reports():
     if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.models import SAHierarchy, SARakeConfig, DailyPlayerStats
-    from sqlalchemy import func as sqlfunc
+    from app.models import (SAHierarchy, SARakeConfig, DailyPlayerStats,
+                            PlayerAssignment)
+    from sqlalchemy import func as sqlfunc, or_
 
     sa_id = current_user.player_id
 
-    # Collect ALL player IDs in the box: direct SA players + child SAs + managed clubs
     all_sa_ids = [sa_id]
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     all_sa_ids.extend(child_sa_ids)
 
-    # Players under my SAs (from cumulative DB)
-    sa_players = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-    ).filter(
-        DailyPlayerStats.sa_id.in_(all_sa_ids),
-        DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
-
     my_players = []
     my_player_ids = set()
-    for pid, nick in sa_players:
-        my_players.append({'player_id': pid, 'nickname': nick})
-        my_player_ids.add(pid)
+    hierarchy_player_ids = set()  # Subset: players matching dashboard's personal-rake scope
 
-    # Players from managed clubs
+    def _add(pid, nick, hierarchy=False):
+        if pid not in my_player_ids:
+            my_players.append({'player_id': pid, 'nickname': nick or pid})
+            my_player_ids.add(pid)
+        if hierarchy:
+            hierarchy_player_ids.add(pid)
+
+    # 1) Players whose sa_id OR agent_id is in our hierarchy (matches dashboard:397)
+    hierarchy_rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(
+        or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
+            DailyPlayerStats.agent_id.in_(all_sa_ids)),
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+    for pid, nick in hierarchy_rows:
+        _add(pid, nick, hierarchy=True)
+
+    # 2) PlayerAssignment overrides (lost-players / admin manual attach — dashboard:382)
+    override_rows = PlayerAssignment.query.filter(
+        or_(
+            PlayerAssignment.assigned_sa_id.in_(all_sa_ids),
+            PlayerAssignment.assigned_agent_id.in_(all_sa_ids),
+        )
+    ).all()
+    override_pids = [r.player_id for r in override_rows]
+    if override_pids:
+        ov_rows = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).filter(DailyPlayerStats.player_id.in_(override_pids)).group_by(
+            DailyPlayerStats.player_id).all()
+        for pid, nick in ov_rows:
+            _add(pid, nick, hierarchy=True)
+
+    # 3) "Missing agents" players — sub-agents under our SA, then all their players
+    # (dashboard:475-512). Find agents whose sa_id is one of ours:
+    sub_agent_rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.agent_id
+    ).filter(
+        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        DailyPlayerStats.agent_id.isnot(None),
+        DailyPlayerStats.agent_id != '-',
+    ).distinct().all()
+    sub_agent_ids = [r[0] for r in sub_agent_rows if r[0] and r[0] not in all_sa_ids]
+    if sub_agent_ids:
+        extra_rows = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).filter(
+            DailyPlayerStats.agent_id.in_(sub_agent_ids),
+            DailyPlayerStats.role != 'Name Entry'
+        ).group_by(DailyPlayerStats.player_id).all()
+        for pid, nick in extra_rows:
+            _add(pid, nick, hierarchy=True)
+
+    # 4) The agent's own game stats (+ their sub-SAs') — dashboard:552-573
+    own_rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(
+        DailyPlayerStats.player_id.in_(all_sa_ids),
+        DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+    for pid, nick in own_rows:
+        _add(pid, nick, hierarchy=True)
+
+    # 5) Managed clubs — add their players to the full set but NOT to hierarchy_player_ids
+    # (dashboard keeps them in a separate "רייק מועדונים" bucket that's added on top)
     from app.union_data import get_members_hierarchy
-    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(
+        SARakeConfig.managed_club_id.isnot(None)).all()
+    managed_club_names = []
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
         for cfg in rake_cfgs:
             club_name = club_id_to_name.get(cfg.managed_club_id)
-            if club_name:
+            if club_name and club_name not in managed_club_names:
+                managed_club_names.append(club_name)
                 club_players = DailyPlayerStats.query.with_entities(
                     DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
                 ).filter(
@@ -1392,14 +1458,15 @@ def agent_reports():
                     DailyPlayerStats.role != 'Name Entry'
                 ).group_by(DailyPlayerStats.player_id).all()
                 for pid, nick in club_players:
-                    if pid not in my_player_ids:
-                        my_players.append({'player_id': pid, 'nickname': nick})
-                        my_player_ids.add(pid)
+                    _add(pid, nick, hierarchy=False)
 
-    my_players.sort(key=lambda x: x['nickname'].lower())
+    my_players.sort(key=lambda x: (x['nickname'] or '').lower())
 
     return render_template('main/agent_reports.html',
-                           players=my_players, player_ids=list(my_player_ids))
+                           players=my_players,
+                           player_ids=list(my_player_ids),
+                           hierarchy_player_ids=list(hierarchy_player_ids),
+                           managed_club_names=managed_club_names)
 
 
 # ═══════════════════════ EXCEL EXPORTS ═══════════════════════
@@ -3102,6 +3169,8 @@ def report_api():
     to_date = request.args.get('to')
     player_id = request.args.get('player_id', '')
     period_id = request.args.get('period_id', '')
+    club_names_raw = request.args.get('club_names', '')
+    club_names = [c for c in club_names_raw.split(',') if c.strip()]
 
     if not from_date or not to_date:
         return jsonify({'error': 'missing dates'}), 400
@@ -3182,10 +3251,45 @@ def report_api():
 
     players.sort(key=lambda x: x['pnl'], reverse=True)
 
+    # Managed-clubs totals — sum rake/pnl over ALL players in the given clubs
+    # in the same date range. Mirrors the dashboard's "רייק מועדונים" bucket,
+    # which is added on top of the hierarchy total (overlap is counted twice —
+    # this is intentional, to match dashboard arithmetic).
+    managed_clubs_totals = None
+    if club_names and upload_ids:
+        if period_id:
+            mc_q = ArchivedPlayerStats.query.with_entities(
+                func.sum(ArchivedPlayerStats.pnl),
+                func.sum(ArchivedPlayerStats.rake),
+                func.sum(ArchivedPlayerStats.hands),
+            ).filter(
+                ArchivedPlayerStats.period_id == int(period_id),
+                ArchivedPlayerStats.upload_id.in_(upload_ids),
+                ArchivedPlayerStats.club.in_(club_names),
+                ArchivedPlayerStats.role != 'Name Entry',
+            ).first()
+        else:
+            mc_q = DailyPlayerStats.query.with_entities(
+                func.sum(DailyPlayerStats.pnl),
+                func.sum(DailyPlayerStats.rake),
+                func.sum(DailyPlayerStats.hands),
+            ).filter(
+                DailyPlayerStats.upload_id.in_(upload_ids),
+                DailyPlayerStats.club.in_(club_names),
+                DailyPlayerStats.role != 'Name Entry',
+            ).first()
+        mc_pnl, mc_rake, mc_hands = mc_q if mc_q else (0, 0, 0)
+        managed_clubs_totals = {
+            'pnl': round(float(mc_pnl or 0), 2),
+            'rake': round(float(mc_rake or 0), 2),
+            'hands': int(mc_hands or 0),
+        }
+
     return jsonify({
         'players': players,
         'totals': {'pnl': round(total_pnl, 2), 'rake': round(total_rake, 2), 'hands': total_hands},
-        'days': len(upload_ids)
+        'days': len(upload_ids),
+        'managed_clubs_totals': managed_clubs_totals,
     })
 
 

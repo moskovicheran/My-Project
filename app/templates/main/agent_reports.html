@@ -116,6 +116,8 @@ var dataDates = [];
 var calYear, calMonth;
 var selectedFrom = null, selectedTo = null;
 var myPlayerIds = {{ player_ids|tojson }};
+var hierarchyPlayerIds = {{ hierarchy_player_ids|tojson }};
+var managedClubNames = {{ managed_club_names|tojson }};
 var currentPeriodId = '';
 
 fetch('/api/report-dates').then(r => r.json()).then(d => {
@@ -222,20 +224,34 @@ function loadReport() {
     var url = '/api/report?from=' + from + '&to=' + to;
     if (pid) url += '&player_id=' + pid;
     if (currentPeriodId) url += '&period_id=' + currentPeriodId;
+    if (managedClubNames && managedClubNames.length) {
+        url += '&club_names=' + encodeURIComponent(managedClubNames.join(','));
+    }
     document.getElementById('reportInfo').textContent = 'טוען...';
     fetch(url).then(r => r.json()).then(data => {
-        // Filter only my players
+        // Table: show all players in my scope (hierarchy ∪ managed clubs)
         var filtered = data.players.filter(p => myPlayerIds.indexOf(p.player_id) >= 0);
-        var totals = {pnl:0, rake:0, hands:0};
-        filtered.forEach(p => { totals.pnl += p.pnl; totals.rake += p.rake; totals.hands += p.hands; });
+
+        // Card totals — match dashboard:
+        //   Rake / PnL = sum over hierarchy players + full managed-clubs bucket
+        //                (overlap counted twice — same as dashboard).
+        //   Players    = unique count of everyone visible on the dashboard
+        //                (hierarchy + managed-club members with activity in range).
+        var hier = filtered.filter(p => hierarchyPlayerIds.indexOf(p.player_id) >= 0);
+        var hierSum = {pnl:0, rake:0, hands:0};
+        hier.forEach(p => { hierSum.pnl += p.pnl; hierSum.rake += p.rake; hierSum.hands += p.hands; });
+        var mc = data.managed_clubs_totals || {pnl:0, rake:0, hands:0};
+        var totalRake = hierSum.rake + (mc.rake || 0);
+        var totalPnl  = hierSum.pnl  + (mc.pnl  || 0);
+
         document.getElementById('summaryCards').style.display = 'grid';
         document.getElementById('exportBar').style.display = 'block';
         document.getElementById('reportResults').style.display = 'block';
         document.getElementById('sumDays').textContent = data.days;
         document.getElementById('sumPlayers').textContent = filtered.length;
-        document.getElementById('sumRake').textContent = totals.rake.toFixed(2);
-        document.getElementById('sumPnl').textContent = (totals.pnl > 0 ? '+' : '') + totals.pnl.toFixed(2);
-        document.getElementById('sumPnlCard').className = 'stat-card ' + (totals.pnl >= 0 ? 'income' : 'expense');
+        document.getElementById('sumRake').textContent = totalRake.toFixed(2);
+        document.getElementById('sumPnl').textContent = (totalPnl > 0 ? '+' : '') + totalPnl.toFixed(2);
+        document.getElementById('sumPnlCard').className = 'stat-card ' + (totalPnl >= 0 ? 'income' : 'expense');
         document.getElementById('reportTitle').textContent = 'תוצאות (' + filtered.length + ' שחקנים)';
         document.getElementById('reportInfo').textContent = '';
         var html = '';
