@@ -764,34 +764,36 @@ def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_uploa
 
 
 def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
-    """Calculate total rake/pnl/hands/players for an agent - same logic as agent dashboard.
-    Returns dict with total_rake, total_pnl, total_hands, player_count.
+    """Unified-scope totals for an agent.
 
-    Optional filters:
-      upload_ids: limit to these active DailyUpload ids
-      archive_period_id + archive_upload_ids: use ArchivedPlayerStats instead
+    Each row (in the given period) is counted exactly ONCE if it belongs to
+    the agent's scope — defined as:
+      sa_id in hierarchy  OR  agent_id in hierarchy  OR  club in managed clubs
+    No leakage from external channels and no double-counting of overlap rows.
+
+    Returns dict with total_rake, total_pnl, total_hands, player_count.
     """
-    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, RakeConfig, db
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig
     from sqlalchemy import func as sqlfunc, or_
 
     use_archive = bool(archive_period_id and archive_upload_ids)
-    StatsModel = ArchivedPlayerStats if use_archive else DailyPlayerStats
+    M = ArchivedPlayerStats if use_archive else DailyPlayerStats
+    time_filters = []
     if use_archive:
-        scope_filters = [StatsModel.period_id == archive_period_id,
-                         StatsModel.upload_id.in_(archive_upload_ids)]
-    else:
-        scope_filters = []
-        if upload_ids:
-            scope_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
+        time_filters = [M.period_id == archive_period_id,
+                        M.upload_id.in_(archive_upload_ids)]
+    elif upload_ids:
+        time_filters = [M.upload_id.in_(upload_ids)]
 
     uid = player_id
     known_ids = {uid}
 
-    # Resolve actual SA/Agent ID (use filtered scope so agents who didn't play in period still resolve)
-    is_sa = StatsModel.query.filter(StatsModel.sa_id == uid, *scope_filters).first() is not None
-    is_ag = StatsModel.query.filter(StatsModel.agent_id == uid, *scope_filters).first() is not None
+    # Known-IDs resolution so hierarchy breadth matches the dashboard even
+    # if the agent's own player_id isn't used directly as sa_id/agent_id.
+    is_sa = M.query.filter(M.sa_id == uid, *time_filters).first() is not None
+    is_ag = M.query.filter(M.agent_id == uid, *time_filters).first() is not None
     if not is_sa and not is_ag:
-        own_row = StatsModel.query.filter(StatsModel.player_id == uid, *scope_filters).first()
+        own_row = M.query.filter(M.player_id == uid, *time_filters).first()
         if own_row:
             role_lower = (own_row.role or '').lower()
             if 'super' in role_lower or role_lower in ('sa',):
@@ -800,94 +802,48 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
             elif 'agent' in role_lower:
                 if own_row.agent_id and own_row.agent_id != '-':
                     known_ids.add(own_row.agent_id)
-    known_ids.discard('')
-    known_ids.discard('-')
+    known_ids.discard(''); known_ids.discard('-')
 
-    # Include child SAs
     child_sa_ids = []
     for kid in list(known_ids):
         child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
     all_ids = list(set(list(known_ids) + child_sa_ids))
 
-    # Personal players
-    stats = StatsModel.query.with_entities(
-        sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
-        sqlfunc.sum(StatsModel.rake),
-        sqlfunc.sum(StatsModel.pnl),
-        sqlfunc.sum(StatsModel.hands),
-    ).filter(or_(
-        StatsModel.sa_id.in_(all_ids),
-        StatsModel.agent_id.in_(all_ids)
-    ), *scope_filters).first()
+    # Managed clubs this agent oversees (resolved via Excel club_id → name).
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(
+        SARakeConfig.managed_club_id.isnot(None)).all()
+    managed_club_names = []
+    if rake_cfgs:
+        clubs_data, _ = get_members_hierarchy()
+        cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        managed_club_names = [cid_to_name[c.managed_club_id]
+                              for c in rake_cfgs if cid_to_name.get(c.managed_club_id)]
+
+    # Unified scope predicate: a row is in scope iff ANY of these hold.
+    scope_preds = [M.sa_id.in_(all_ids), M.agent_id.in_(all_ids)]
+    if managed_club_names:
+        scope_preds.append(M.club.in_(managed_club_names))
+    scope_filters = [or_(*scope_preds), M.role != 'Name Entry'] + time_filters
+
+    stats = M.query.with_entities(
+        sqlfunc.count(sqlfunc.distinct(M.player_id)),
+        sqlfunc.sum(M.rake),
+        sqlfunc.sum(M.pnl),
+        sqlfunc.sum(M.hands),
+    ).filter(*scope_filters).first()
     player_count = stats[0] or 0
     total_rake = round(float(stats[1] or 0), 2)
     total_pnl = round(float(stats[2] or 0), 2)
     total_hands = int(stats[3] or 0)
 
-    # Fetch missing players for agents found in the initial query
-    initial_pids = set(r[0] for r in StatsModel.query.with_entities(
-        sqlfunc.distinct(StatsModel.player_id)
-    ).filter(or_(
-        StatsModel.sa_id.in_(all_ids),
-        StatsModel.agent_id.in_(all_ids)
-    ), *scope_filters).all())
-    found_agent_ids = set(r[0] for r in StatsModel.query.with_entities(
-        sqlfunc.distinct(StatsModel.agent_id)
-    ).filter(or_(
-        StatsModel.sa_id.in_(all_ids),
-        StatsModel.agent_id.in_(all_ids)
-    ), StatsModel.agent_id != '', StatsModel.agent_id != '-', *scope_filters).all())
-    if found_agent_ids:
-        extra = StatsModel.query.with_entities(
-            sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
-            sqlfunc.sum(StatsModel.rake),
-            sqlfunc.sum(StatsModel.pnl),
-            sqlfunc.sum(StatsModel.hands),
-        ).filter(
-            StatsModel.agent_id.in_(list(found_agent_ids)),
-            StatsModel.player_id.notin_(list(initial_pids)),
-            StatsModel.role != 'Name Entry',
-            *scope_filters
-        ).first()
-        if extra and extra[0]:
-            player_count += extra[0]
-            total_rake += round(float(extra[1] or 0), 2)
-            total_pnl += round(float(extra[2] or 0), 2)
-            total_hands += int(extra[3] or 0)
-
-    # Managed clubs - same logic as agent dashboard
-    rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
-    if rake_cfgs:
-        from app.union_data import get_members_hierarchy
-        clubs_data, _ = get_members_hierarchy()
-        club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
-        for cfg in rake_cfgs:
-            club_name = club_id_to_name.get(cfg.managed_club_id, '')
-            if not club_name:
-                continue
-            club_stats = StatsModel.query.with_entities(
-                sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
-                sqlfunc.sum(StatsModel.rake),
-                sqlfunc.sum(StatsModel.pnl),
-                sqlfunc.sum(StatsModel.hands),
-            ).filter(StatsModel.club == club_name, *scope_filters).first()
-            if club_stats and club_stats[0]:
-                player_count += (club_stats[0] or 0)
-                total_rake += round(float(club_stats[1] or 0), 2)
-                total_pnl += round(float(club_stats[2] or 0), 2)
-                total_hands += int(club_stats[3] or 0)
-
     # Transfer adjustments — only applied for the unfiltered (all-time) view,
     # since transfers are not dated per upload.
     if not use_archive and not upload_ids:
-        all_player_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
-            sqlfunc.distinct(DailyPlayerStats.player_id)
-        ).filter(or_(
-            DailyPlayerStats.sa_id.in_(all_ids),
-            DailyPlayerStats.agent_id.in_(all_ids)
-        )).all()]
-        if all_player_ids:
-            xfer = get_transfer_adjustments(all_player_ids)
+        pids = [r[0] for r in M.query.with_entities(
+            sqlfunc.distinct(M.player_id)
+        ).filter(or_(*scope_preds)).all()]
+        if pids:
+            xfer = get_transfer_adjustments(pids)
             total_pnl = round(total_pnl + sum(xfer.values()), 2)
 
     return {

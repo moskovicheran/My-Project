@@ -956,15 +956,23 @@ def dashboard():
         clubs_total_rake = round(sum(c.get('total_rake', 0) for c in managed_clubs), 2)
         sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
-        # Player count must include everyone visible on the dashboard:
-        # hierarchy (direct + agents + super-agents) + managed-club members.
-        # Matches what /agent/reports and /admin/ overview count.
-        club_member_ids = set()
-        for c in managed_clubs:
-            for m in c.get('all_members', []):
-                if m.get('player_id'):
-                    club_member_ids.add(m['player_id'])
-        player_count = len(all_my_player_ids | club_member_ids)
+
+        # Summary totals — override with the unified scope-based calculation
+        # that /api/report, /agent/reports and /admin/ overview all use.
+        # Each row counted ONCE iff it is in the agent's scope
+        # (sa_id/agent_id in hierarchy OR club in managed clubs).
+        # Breakdown cards (personal/clubs) keep the display-only values above.
+        from app.union_data import get_agent_totals as _unified_agent_totals
+        _unified = _unified_agent_totals(
+            sa_id,
+            upload_ids=upload_ids_filter or None,
+            archive_period_id=archive_period_id,
+            archive_upload_ids=archive_upload_ids or None,
+        )
+        total_rake = _unified['total_rake']
+        total_pnl = _unified['total_pnl']
+        total_hands = _unified['total_hands']
+        player_count = _unified['player_count']
 
         # My own rake percentage (if configured as sub_agent or agent)
         my_rake_rc = RakeConfig.query.filter(

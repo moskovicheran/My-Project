@@ -235,25 +235,12 @@ function loadReport() {
     }
     document.getElementById('reportInfo').textContent = 'טוען...';
     fetch(url).then(r => r.json()).then(data => {
-        // Pick the player-set matching the table /api/report used:
-        //   current period → Daily, archived period → Archive.
-        var activeAllIds = currentPeriodId ? archivePlayerIds : dailyPlayerIds;
-        var activeHierIds = currentPeriodId ? archiveHierarchyIds : dailyHierarchyIds;
-
-        // Table: show all players in my scope (hierarchy ∪ managed clubs)
-        var filtered = data.players.filter(p => activeAllIds.indexOf(p.player_id) >= 0);
-
-        // Card totals — match dashboard:
-        //   Rake / PnL = sum over hierarchy players + full managed-clubs bucket
-        //                (overlap counted twice — same as dashboard).
-        //   Players    = unique count of everyone visible on the dashboard
-        //                (hierarchy + managed-club members with activity in range).
-        var hier = filtered.filter(p => activeHierIds.indexOf(p.player_id) >= 0);
-        var hierSum = {pnl:0, rake:0, hands:0};
-        hier.forEach(p => { hierSum.pnl += p.pnl; hierSum.rake += p.rake; hierSum.hands += p.hands; });
-        var mc = data.managed_clubs_totals || {pnl:0, rake:0, hands:0};
-        var totalRake = hierSum.rake + (mc.rake || 0);
-        var totalPnl  = hierSum.pnl  + (mc.pnl  || 0);
+        // /api/report already applies the unified scope filter server-side
+        // (row-level or_(hier, clubs)) so data.players and data.totals are
+        // the true "counted once" values. The client just displays them.
+        var filtered = data.players;
+        var totalRake = data.totals.rake;
+        var totalPnl  = data.totals.pnl;
 
         document.getElementById('summaryCards').style.display = 'grid';
         document.getElementById('exportBar').style.display = 'block';
