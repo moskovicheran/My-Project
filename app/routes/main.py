@@ -3240,7 +3240,8 @@ def report_api():
             func.sum(ArchivedPlayerStats.hands),
         ).filter(
             ArchivedPlayerStats.period_id == int(period_id),
-            ArchivedPlayerStats.upload_id.in_(upload_ids)
+            ArchivedPlayerStats.upload_id.in_(upload_ids),
+            ArchivedPlayerStats.role != 'Name Entry',
         )
         if player_id:
             query = query.filter(ArchivedPlayerStats.player_id == player_id)
@@ -3263,7 +3264,10 @@ def report_api():
             func.sum(DailyPlayerStats.pnl),
             func.sum(DailyPlayerStats.rake),
             func.sum(DailyPlayerStats.hands),
-        ).filter(DailyPlayerStats.upload_id.in_(upload_ids))
+        ).filter(
+            DailyPlayerStats.upload_id.in_(upload_ids),
+            DailyPlayerStats.role != 'Name Entry',
+        )
         if player_id:
             query = query.filter(DailyPlayerStats.player_id == player_id)
         query = query.group_by(DailyPlayerStats.player_id)
