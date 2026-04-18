@@ -1361,18 +1361,25 @@ def agent_reports():
         return redirect(url_for('main.dashboard'))
 
     from app.models import (SAHierarchy, SARakeConfig, DailyPlayerStats,
-                            PlayerAssignment)
+                            ArchivedPlayerStats, PlayerAssignment)
     from sqlalchemy import func as sqlfunc, or_
 
     sa_id = current_user.player_id
 
     # Mirror get_agent_totals() known-IDs resolution so hierarchy breadth
-    # matches the dashboard / admin-overview exactly.
+    # matches the dashboard / admin-overview exactly. Use a union of
+    # DailyPlayerStats and ArchivedPlayerStats so that archived-only sa_id
+    # relationships still resolve (required when the user picks an archived
+    # period in the reports page — /api/report switches to archive tables
+    # and the client filter must recognise those players).
     known_ids = {sa_id}
-    is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == sa_id).first() is not None
-    is_ag = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == sa_id).first() is not None
+    is_sa = (DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == sa_id).first()
+             or ArchivedPlayerStats.query.filter(ArchivedPlayerStats.sa_id == sa_id).first()) is not None
+    is_ag = (DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == sa_id).first()
+             or ArchivedPlayerStats.query.filter(ArchivedPlayerStats.agent_id == sa_id).first()) is not None
     if not is_sa and not is_ag:
-        own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == sa_id).first()
+        own_row = (DailyPlayerStats.query.filter(DailyPlayerStats.player_id == sa_id).first()
+                   or ArchivedPlayerStats.query.filter(ArchivedPlayerStats.player_id == sa_id).first())
         if own_row:
             role_lower = (own_row.role or '').lower()
             if 'super' in role_lower or role_lower in ('sa',):
@@ -1400,18 +1407,27 @@ def agent_reports():
         if hierarchy:
             hierarchy_player_ids.add(pid)
 
+    # Helper: run the same query on both Daily and Archived tables and
+    # yield (player_id, nickname) tuples.
+    def _run_both(query_fn):
+        out = {}
+        for pid, nick in query_fn(DailyPlayerStats):
+            out[pid] = nick
+        for pid, nick in query_fn(ArchivedPlayerStats):
+            if pid not in out:
+                out[pid] = nick
+        return list(out.items())
+
     # 1) Players whose sa_id OR agent_id is in our hierarchy (matches dashboard:397)
-    hierarchy_rows = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-    ).filter(
-        or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
-            DailyPlayerStats.agent_id.in_(all_sa_ids)),
-        DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
-    initial_pids = set()
-    for pid, nick in hierarchy_rows:
+    def _q_hierarchy(M):
+        return M.query.with_entities(
+            M.player_id, sqlfunc.max(M.nickname)
+        ).filter(
+            or_(M.sa_id.in_(all_sa_ids), M.agent_id.in_(all_sa_ids)),
+            M.role != 'Name Entry'
+        ).group_by(M.player_id).all()
+    for pid, nick in _run_both(_q_hierarchy):
         _add(pid, nick, hierarchy=True)
-        initial_pids.add(pid)
 
     # 2) PlayerAssignment overrides (lost-players / admin manual attach — dashboard:382)
     override_rows = PlayerAssignment.query.filter(
@@ -1422,44 +1438,46 @@ def agent_reports():
     ).all()
     override_pids = [r.player_id for r in override_rows]
     if override_pids:
-        ov_rows = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-        ).filter(DailyPlayerStats.player_id.in_(override_pids)).group_by(
-            DailyPlayerStats.player_id).all()
-        for pid, nick in ov_rows:
+        def _q_override(M):
+            return M.query.with_entities(
+                M.player_id, sqlfunc.max(M.nickname)
+            ).filter(M.player_id.in_(override_pids)).group_by(M.player_id).all()
+        for pid, nick in _run_both(_q_override):
             _add(pid, nick, hierarchy=True)
 
     # 3) "Missing agents" players — agents found anywhere in our hierarchy
     # (via sa_id OR agent_id match), then fetch all their players.
     # Matches get_agent_totals() lines 834-856 and dashboard's missing-agents logic.
-    found_agent_rows = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.agent_id
-    ).filter(
-        or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
-            DailyPlayerStats.agent_id.in_(all_sa_ids)),
-        DailyPlayerStats.agent_id.isnot(None),
-        DailyPlayerStats.agent_id != '',
-        DailyPlayerStats.agent_id != '-',
-    ).distinct().all()
-    found_agent_ids = [r[0] for r in found_agent_rows if r[0]]
-    if found_agent_ids:
-        extra_rows = DailyPlayerStats.query.with_entities(
-            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-        ).filter(
-            DailyPlayerStats.agent_id.in_(found_agent_ids),
-            DailyPlayerStats.role != 'Name Entry'
-        ).group_by(DailyPlayerStats.player_id).all()
-        for pid, nick in extra_rows:
+    found_agent_ids_set = set()
+    for M in (DailyPlayerStats, ArchivedPlayerStats):
+        rows = M.query.with_entities(M.agent_id).filter(
+            or_(M.sa_id.in_(all_sa_ids), M.agent_id.in_(all_sa_ids)),
+            M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-',
+        ).distinct().all()
+        for r in rows:
+            if r[0]:
+                found_agent_ids_set.add(r[0])
+    if found_agent_ids_set:
+        found_agent_ids = list(found_agent_ids_set)
+        def _q_extra(M):
+            return M.query.with_entities(
+                M.player_id, sqlfunc.max(M.nickname)
+            ).filter(
+                M.agent_id.in_(found_agent_ids),
+                M.role != 'Name Entry'
+            ).group_by(M.player_id).all()
+        for pid, nick in _run_both(_q_extra):
             _add(pid, nick, hierarchy=True)
 
     # 4) The agent's own game stats (+ their sub-SAs') — dashboard:552-573
-    own_rows = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-    ).filter(
-        DailyPlayerStats.player_id.in_(all_sa_ids),
-        DailyPlayerStats.role != 'Name Entry'
-    ).group_by(DailyPlayerStats.player_id).all()
-    for pid, nick in own_rows:
+    def _q_own(M):
+        return M.query.with_entities(
+            M.player_id, sqlfunc.max(M.nickname)
+        ).filter(
+            M.player_id.in_(all_sa_ids),
+            M.role != 'Name Entry'
+        ).group_by(M.player_id).all()
+    for pid, nick in _run_both(_q_own):
         _add(pid, nick, hierarchy=True)
 
     # 5) Managed clubs — add their players to the full set but NOT to hierarchy_player_ids
@@ -1475,13 +1493,14 @@ def agent_reports():
             club_name = club_id_to_name.get(cfg.managed_club_id)
             if club_name and club_name not in managed_club_names:
                 managed_club_names.append(club_name)
-                club_players = DailyPlayerStats.query.with_entities(
-                    DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
-                ).filter(
-                    DailyPlayerStats.club == club_name,
-                    DailyPlayerStats.role != 'Name Entry'
-                ).group_by(DailyPlayerStats.player_id).all()
-                for pid, nick in club_players:
+                def _q_club(M, cn=club_name):
+                    return M.query.with_entities(
+                        M.player_id, sqlfunc.max(M.nickname)
+                    ).filter(
+                        M.club == cn,
+                        M.role != 'Name Entry'
+                    ).group_by(M.player_id).all()
+                for pid, nick in _run_both(_q_club):
                     _add(pid, nick, hierarchy=False)
 
     my_players.sort(key=lambda x: (x['nickname'] or '').lower())
