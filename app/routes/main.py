@@ -1366,9 +1366,28 @@ def agent_reports():
 
     sa_id = current_user.player_id
 
-    all_sa_ids = [sa_id]
-    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
-    all_sa_ids.extend(child_sa_ids)
+    # Mirror get_agent_totals() known-IDs resolution so hierarchy breadth
+    # matches the dashboard / admin-overview exactly.
+    known_ids = {sa_id}
+    is_sa = DailyPlayerStats.query.filter(DailyPlayerStats.sa_id == sa_id).first() is not None
+    is_ag = DailyPlayerStats.query.filter(DailyPlayerStats.agent_id == sa_id).first() is not None
+    if not is_sa and not is_ag:
+        own_row = DailyPlayerStats.query.filter(DailyPlayerStats.player_id == sa_id).first()
+        if own_row:
+            role_lower = (own_row.role or '').lower()
+            if 'super' in role_lower or role_lower in ('sa',):
+                if own_row.sa_id and own_row.sa_id != '-':
+                    known_ids.add(own_row.sa_id)
+            elif 'agent' in role_lower:
+                if own_row.agent_id and own_row.agent_id != '-':
+                    known_ids.add(own_row.agent_id)
+    known_ids.discard('')
+    known_ids.discard('-')
+
+    child_sa_ids = []
+    for kid in list(known_ids):
+        child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+    all_sa_ids = list(set(list(known_ids) + child_sa_ids))
 
     my_players = []
     my_player_ids = set()
@@ -1389,8 +1408,10 @@ def agent_reports():
             DailyPlayerStats.agent_id.in_(all_sa_ids)),
         DailyPlayerStats.role != 'Name Entry'
     ).group_by(DailyPlayerStats.player_id).all()
+    initial_pids = set()
     for pid, nick in hierarchy_rows:
         _add(pid, nick, hierarchy=True)
+        initial_pids.add(pid)
 
     # 2) PlayerAssignment overrides (lost-players / admin manual attach — dashboard:382)
     override_rows = PlayerAssignment.query.filter(
@@ -1408,21 +1429,24 @@ def agent_reports():
         for pid, nick in ov_rows:
             _add(pid, nick, hierarchy=True)
 
-    # 3) "Missing agents" players — sub-agents under our SA, then all their players
-    # (dashboard:475-512). Find agents whose sa_id is one of ours:
-    sub_agent_rows = DailyPlayerStats.query.with_entities(
+    # 3) "Missing agents" players — agents found anywhere in our hierarchy
+    # (via sa_id OR agent_id match), then fetch all their players.
+    # Matches get_agent_totals() lines 834-856 and dashboard's missing-agents logic.
+    found_agent_rows = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.agent_id
     ).filter(
-        DailyPlayerStats.sa_id.in_(all_sa_ids),
+        or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
+            DailyPlayerStats.agent_id.in_(all_sa_ids)),
         DailyPlayerStats.agent_id.isnot(None),
+        DailyPlayerStats.agent_id != '',
         DailyPlayerStats.agent_id != '-',
     ).distinct().all()
-    sub_agent_ids = [r[0] for r in sub_agent_rows if r[0] and r[0] not in all_sa_ids]
-    if sub_agent_ids:
+    found_agent_ids = [r[0] for r in found_agent_rows if r[0]]
+    if found_agent_ids:
         extra_rows = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
         ).filter(
-            DailyPlayerStats.agent_id.in_(sub_agent_ids),
+            DailyPlayerStats.agent_id.in_(found_agent_ids),
             DailyPlayerStats.role != 'Name Entry'
         ).group_by(DailyPlayerStats.player_id).all()
         for pid, nick in extra_rows:
