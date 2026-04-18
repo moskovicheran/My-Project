@@ -132,7 +132,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
     </div>
     <div class="stat-card income" style="border:2px solid #2ec4b6;">
         <div class="stat-label" style="color:#2ec4b6; font-weight:700;">סה"כ רייק</div>
-        <div class="stat-value" style="color:#2ec4b6;">{{ (personal_rake + clubs_total_rake)|comma }}</div>
+        <div class="stat-value" style="color:#2ec4b6;">{{ total_rake|comma }}</div>
     </div>
     {% endif %}
     {% if rake_refund_list is defined and rake_refund_list %}
