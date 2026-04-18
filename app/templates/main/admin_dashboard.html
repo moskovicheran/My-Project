@@ -371,19 +371,23 @@ body.dark .ao-stat-label { color: #777; }
 </style>
 {% endif %}
 
-{# ── Tracked Clubs Section ── #}
+{# ── Tracked Clubs + External Agents Section ── #}
 {% if tracked_clubs %}
 <div class="section" style="margin-top:1.5rem;">
-    <h2 class="section-title">מועדונים מנוהלים ({{ tracked_clubs|length }})</h2>
+    <h2 class="section-title">מועדונים מנוהלים + סוכני חוץ ({{ tracked_clubs|length }})</h2>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:0.8rem;">
         {% for cl in tracked_clubs %}
-        <a href="{{ url_for('main.dashboard', view_as=cl.club_id) }}" class="agent-overview-card" style="text-decoration:none; color:inherit;">
+        <a href="{{ url_for('main.dashboard', view_as=cl.entity_id) }}" class="agent-overview-card" style="text-decoration:none; color:inherit;">
             <div class="ao-header">
                 <div style="display:flex; align-items:center; gap:0.5rem;">
+                    {% if cl.kind == 'agent' %}
+                    <span class="role-badge role-agent" style="font-size:0.7rem;">Agent</span>
+                    {% else %}
                     <span class="role-badge role-club" style="font-size:0.7rem; background:#7209b7; color:#fff; padding:0.15rem 0.5rem; border-radius:4px;">Club</span>
+                    {% endif %}
                     <strong class="ao-name">{{ cl.name }}</strong>
                 </div>
-                <span class="muted" style="font-size:0.75rem;">{{ cl.club_id }}</span>
+                <span class="muted" style="font-size:0.75rem;">{{ cl.entity_id }}</span>
             </div>
             <div class="ao-stats" style="grid-template-columns:repeat(3, 1fr);">
                 <div class="ao-stat">

@@ -28,6 +28,13 @@ OVERVIEW_CLUBS = [
     ('פוקר בדופק גבוהה', '170653'),
 ]
 
+# External agents tracked alongside managed clubs — agents not in the
+# OVERVIEW_MANAGERS whitelist but still worth monitoring on the overview.
+# (display_name, player_id). Clicking a card opens /dashboard?view_as=<pid>.
+OVERVIEW_EXTERNAL_AGENTS = [
+    ('BlindersT', '7622-3272'),
+]
+
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
 # they generated some rake, OR they played at least this many hands.
 # Filters out "tried-a-few-hands-and-left" tails from the list.
@@ -106,8 +113,9 @@ def build_overview_context():
         })
     agents_data.sort(key=lambda a: a['rake'], reverse=True)
 
-    # Tracked clubs — separate section, uses get_club_totals (filters by
-    # club name, not by sa_id/agent_id). Includes net rake after RakeConfig %.
+    # Tracked clubs + external agents — combined section. Clubs use
+    # get_club_totals (filters by club name, with net rake after RakeConfig %);
+    # external agents use get_agent_totals (same as main managers list).
     tracked_clubs = []
     for display_name, club_id in OVERVIEW_CLUBS:
         totals = get_club_totals(
@@ -117,11 +125,25 @@ def build_overview_context():
             archive_upload_ids=archive_upload_ids or None,
         )
         tracked_clubs.append({
-            'name': display_name, 'club_id': club_id,
+            'kind': 'club',
+            'name': display_name, 'entity_id': club_id,
             'players': totals['player_count'], 'rake': totals['total_rake'],
             'net_rake': totals['net_rake'], 'rake_pct': totals['rake_pct'],
             'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
             'resolved_name': totals['club_name'],
+        })
+    for display_name, pid in OVERVIEW_EXTERNAL_AGENTS:
+        totals = get_agent_totals(
+            pid,
+            upload_ids=upload_ids_filter or None,
+            archive_period_id=archive_period_id,
+            archive_upload_ids=archive_upload_ids or None,
+        )
+        tracked_clubs.append({
+            'kind': 'agent',
+            'name': display_name, 'entity_id': pid,
+            'players': totals['player_count'], 'rake': totals['total_rake'],
+            'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
         })
     tracked_clubs.sort(key=lambda c: c['rake'], reverse=True)
 
