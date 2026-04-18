@@ -1507,6 +1507,116 @@ def agent_reports():
                            managed_club_names=managed_club_names)
 
 
+@main_bp.route('/api/report-debug')
+@login_required
+def report_debug_api():
+    """Temporary diagnostic endpoint: for the logged-in agent and a given
+    date range, shows per-player dashboard-style stats (all rows, like the
+    dashboard aggregates) vs reports-style stats (row-filtered by the agent's
+    channels), plus the delta. Use to locate which player(s) cause a gap
+    between the two views."""
+    if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
+        return jsonify({'error': 'agent-only'}), 403
+
+    from app.models import (DailyPlayerStats, DailyUpload, ArchivedUpload,
+                            ArchivedPlayerStats, SAHierarchy, SARakeConfig)
+    from sqlalchemy import func as sqlfunc, or_
+    from datetime import datetime as _dt
+
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    period_id = request.args.get('period_id', '')
+    if not from_date or not to_date:
+        return jsonify({'error': 'missing dates'}), 400
+    try:
+        fd = _dt.strptime(from_date, '%Y-%m-%d').date()
+        td = _dt.strptime(to_date, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'invalid date format'}), 400
+
+    sa_id = current_user.player_id
+    all_sa_ids = [sa_id] + [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(
+        SARakeConfig.managed_club_id.isnot(None)).all()
+    managed_club_names = []
+    if rake_cfgs:
+        from app.union_data import get_members_hierarchy
+        clubs_data, _ = get_members_hierarchy()
+        cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        managed_club_names = [cid_to_name[c.managed_club_id]
+                              for c in rake_cfgs if cid_to_name.get(c.managed_club_id)]
+
+    if period_id:
+        M = ArchivedPlayerStats
+        uploads = ArchivedUpload.query.filter(
+            ArchivedUpload.period_id == int(period_id),
+            ArchivedUpload.upload_date >= fd,
+            ArchivedUpload.upload_date <= td).all()
+        upload_ids = [u.original_id for u in uploads]
+        scope = [M.period_id == int(period_id), M.upload_id.in_(upload_ids),
+                 M.role != 'Name Entry']
+    else:
+        M = DailyPlayerStats
+        uploads = DailyUpload.query.filter(
+            DailyUpload.upload_date >= fd, DailyUpload.upload_date <= td).all()
+        upload_ids = [u.id for u in uploads]
+        scope = [M.upload_id.in_(upload_ids), M.role != 'Name Entry']
+
+    if not upload_ids:
+        return jsonify({'rows': [], 'note': 'no uploads in range'})
+
+    # Dashboard-style: players with sa/agent in hierarchy in any upload
+    dash_pid_rows = M.query.with_entities(M.player_id).filter(
+        or_(M.sa_id.in_(all_sa_ids), M.agent_id.in_(all_sa_ids)),
+        *scope).distinct().all()
+    dash_pids = [r[0] for r in dash_pid_rows]
+    # Aggregate ALL rows for those players in range (dashboard behaviour)
+    dash_agg = {r[0]: r for r in M.query.with_entities(
+        M.player_id, sqlfunc.max(M.nickname), sqlfunc.max(M.club),
+        sqlfunc.sum(M.pnl), sqlfunc.sum(M.rake)
+    ).filter(M.player_id.in_(dash_pids), *scope).group_by(M.player_id).all()}
+
+    # Reports-style: filter rows by channel
+    row_preds = [M.sa_id.in_(all_sa_ids), M.agent_id.in_(all_sa_ids)]
+    if managed_club_names:
+        row_preds.append(M.club.in_(managed_club_names))
+    reports_agg = {r[0]: r for r in M.query.with_entities(
+        M.player_id, sqlfunc.max(M.nickname), sqlfunc.max(M.club),
+        sqlfunc.sum(M.pnl), sqlfunc.sum(M.rake)
+    ).filter(or_(*row_preds), *scope).group_by(M.player_id).all()}
+
+    all_pids = set(dash_agg) | set(reports_agg)
+    rows = []
+    for pid in all_pids:
+        d = dash_agg.get(pid)
+        r = reports_agg.get(pid)
+        d_rake = round(float(d[4] or 0), 2) if d else 0.0
+        d_pnl  = round(float(d[3] or 0), 2) if d else 0.0
+        r_rake = round(float(r[4] or 0), 2) if r else 0.0
+        r_pnl  = round(float(r[3] or 0), 2) if r else 0.0
+        drake = round(d_rake - r_rake, 2)
+        dpnl  = round(d_pnl  - r_pnl,  2)
+        if abs(drake) < 0.01 and abs(dpnl) < 0.01 and (d is not None) == (r is not None):
+            continue  # identical — skip
+        nick = (d[1] if d else r[1]) or pid
+        club = (d[2] if d else r[2]) or ''
+        rows.append({
+            'player_id': pid, 'nickname': nick, 'club': club,
+            'dashboard_rake': d_rake, 'dashboard_pnl': d_pnl,
+            'reports_rake':   r_rake, 'reports_pnl':   r_pnl,
+            'delta_rake': drake, 'delta_pnl': dpnl,
+            'only_in': None if (d and r) else ('dashboard' if d else 'reports'),
+        })
+    rows.sort(key=lambda x: abs(x['delta_rake']) + abs(x['delta_pnl']), reverse=True)
+    return jsonify({
+        'rows': rows,
+        'total_delta_rake': round(sum(r['delta_rake'] for r in rows), 2),
+        'total_delta_pnl':  round(sum(r['delta_pnl']  for r in rows), 2),
+        'hierarchy_sa_ids': all_sa_ids,
+        'managed_clubs': managed_club_names,
+    })
+
+
 # ═══════════════════════ EXCEL EXPORTS ═══════════════════════
 
 def _make_excel(sheets_data, filename, period_label=None):
