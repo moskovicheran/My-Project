@@ -90,6 +90,10 @@ def login():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            # admin1 always lands on the dashboard, never the control panel,
+            # even if ?next= pointed to /admin/ from a prior deep link.
+            if user.username == 'admin1':
+                return redirect(url_for('main.dashboard'))
             next_page = request.args.get('next')
             if not next_page or not next_page.startswith('/') or next_page.startswith('//'):
                 next_page = url_for('main.dashboard')

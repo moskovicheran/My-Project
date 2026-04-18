@@ -83,16 +83,6 @@ def index():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    # admin1 lands on the admin overview page (/admin/) as their home page —
-    # the one with the manager whitelist cards. Still full admin otherwise.
-    if (hasattr(current_user, 'role') and current_user.role == 'admin'
-            and current_user.username == 'admin1'
-            and not request.args.get('view_as')
-            and not request.args.get('view_player')):
-        # Preserve ?dates= filter if present
-        qs = request.query_string.decode() if request.query_string else ''
-        return redirect(url_for('admin.overview') + (('?' + qs) if qs else ''))
-
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and not request.args.get('view_as')
             and not request.args.get('view_player')):
