@@ -3151,14 +3151,14 @@ def export_periodic():
         DailyPlayerStats.role != 'Name Entry',
     ]
     if current_user.role == 'agent' and current_user.player_id:
-        sa_id = current_user.player_id
-        all_sa_ids = [sa_id]
-        child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
-        all_sa_ids.extend(child_sa_ids)
-        base_filters.append(or_(
-            DailyPlayerStats.sa_id.in_(all_sa_ids),
-            DailyPlayerStats.agent_id.in_(all_sa_ids),
-        ))
+        # Unified scope — hierarchy + managed clubs (no leakage).
+        from app.union_data import get_agent_scope
+        _scope_sa_ids, _mc_names = get_agent_scope(current_user.player_id)
+        _scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
+                        DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
+        if _mc_names:
+            _scope_preds.append(DailyPlayerStats.club.in_(_mc_names))
+        base_filters.append(or_(*_scope_preds))
 
     # Sheet 1: Player summary
     players = DailyPlayerStats.query.with_entities(
@@ -3285,9 +3285,13 @@ def periodic_report_api():
     game_type_filter = request.args.get('game_type', '')
 
     if current_user.role == 'agent' and current_user.player_id:
-        sa_id = current_user.player_id
-        all_sa_ids = [sa_id] + [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
-        base_filters.append(or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)))
+        # Unified scope — hierarchy + managed clubs (no leakage across channels).
+        from app.union_data import get_agent_scope
+        _scope_sa_ids, _mc_names = get_agent_scope(current_user.player_id)
+        _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
+        if _mc_names:
+            _scope_preds.append(SM.club.in_(_mc_names))
+        base_filters.append(or_(*_scope_preds))
 
     if game_type_filter:
         # Filter by game type — use PlayerSession for P&L per game type
