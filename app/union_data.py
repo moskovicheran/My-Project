@@ -871,12 +871,22 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     # Manual overrides from PlayerAssignment (/admin/lost-players) — assign a
     # player explicitly to an SA/agent regardless of their raw Excel values.
     # If the override points into THIS scope, include all the player's rows.
+    # Scope targets: our SAs (all_ids) PLUS agent_ids sitting under our SAs
+    # (regular agents aren't in all_ids, so without this, overrides attached
+    # to them would miss the totals).
+    known_agent_ids_rows = M.query.with_entities(M.agent_id).filter(
+        M.sa_id.in_(all_ids),
+        M.agent_id.isnot(None),
+        M.agent_id != '',
+        M.agent_id != '-',
+    ).distinct().all()
+    known_agent_ids = {r[0] for r in known_agent_ids_rows if r[0]}
     override_in_pids = []
-    all_ids_set = set(all_ids)
+    override_target_set = set(all_ids) | known_agent_ids
     for ov in PlayerAssignment.query.all():
         ov_sa = ov.assigned_sa_id or ''
         ov_ag = ov.assigned_agent_id or ''
-        if (ov_sa and ov_sa in all_ids_set) or (ov_ag and ov_ag in all_ids_set):
+        if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
             override_in_pids.append(ov.player_id)
 
     # Unified scope predicate: a row is in scope iff ANY of these hold.
