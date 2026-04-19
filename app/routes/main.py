@@ -171,8 +171,12 @@ def dashboard():
             ).group_by(StatsModel.player_id).all())
 
             # Transfer adjustments
-            from app.union_data import get_transfer_adjustments
+            from app.union_data import get_transfer_adjustments, get_player_overrides
             xfer_adj = get_transfer_adjustments([p[0] for p in club_players_db])
+
+            # Manual overrides (/admin/lost-players) — replace natural sa_id/agent_id
+            # so club view matches the agent's personal dashboard.
+            overrides_map = get_player_overrides()
 
             # Build SA structure
             club_sas = {}
@@ -182,6 +186,12 @@ def dashboard():
             total_pnl = 0
             total_hands = 0
             for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val, hands_val in club_players_db:
+                _ov = overrides_map.get(pid)
+                if _ov:
+                    if _ov.get('sa_id'):
+                        sa_id_val = _ov['sa_id']
+                    if _ov.get('agent_id'):
+                        ag_id_val = _ov['agent_id']
                 p = round(float(pnl_val or 0) + xfer_adj.get(pid, 0), 2)
                 r = round(float(rake_val or 0), 2)
                 h = int(hands_val or 0)
