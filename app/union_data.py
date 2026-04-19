@@ -822,7 +822,7 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
 
     Returns dict with total_rake, total_pnl, total_hands, player_count.
     """
-    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, PlayerAssignment
     from sqlalchemy import func as sqlfunc, or_
 
     use_archive = bool(archive_period_id and archive_upload_ids)
@@ -868,10 +868,23 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         managed_club_names = [cid_to_name[c.managed_club_id]
                               for c in rake_cfgs if cid_to_name.get(c.managed_club_id)]
 
+    # Manual overrides from PlayerAssignment (/admin/lost-players) — assign a
+    # player explicitly to an SA/agent regardless of their raw Excel values.
+    # If the override points into THIS scope, include all the player's rows.
+    override_in_pids = []
+    all_ids_set = set(all_ids)
+    for ov in PlayerAssignment.query.all():
+        ov_sa = ov.assigned_sa_id or ''
+        ov_ag = ov.assigned_agent_id or ''
+        if (ov_sa and ov_sa in all_ids_set) or (ov_ag and ov_ag in all_ids_set):
+            override_in_pids.append(ov.player_id)
+
     # Unified scope predicate: a row is in scope iff ANY of these hold.
     scope_preds = [M.sa_id.in_(all_ids), M.agent_id.in_(all_ids)]
     if managed_club_names:
         scope_preds.append(M.club.in_(managed_club_names))
+    if override_in_pids:
+        scope_preds.append(M.player_id.in_(override_in_pids))
     scope_filters = [or_(*scope_preds), M.role != 'Name Entry'] + time_filters
 
     stats = M.query.with_entities(
@@ -928,13 +941,18 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_up
         if upload_ids:
             scope_filters.append(DailyPlayerStats.upload_id.in_(upload_ids))
 
-    # Resolve club name from the hierarchy (same source used elsewhere)
+    # Resolve club name from the hierarchy (same source used elsewhere).
+    # Fallback: if the argument doesn't match any club_id, treat it as a
+    # direct club name — supports tracking clubs that aren't registered in
+    # the Excel hierarchy (e.g. 4PlaySPC).
     clubs_data, _ = get_members_hierarchy()
     club_name = ''
     for c in clubs_data:
         if c['club_id'] == club_id:
             club_name = c['name']
             break
+    if not club_name and StatsModel.query.filter(StatsModel.club == club_id).first():
+        club_name = club_id
 
     if not club_name:
         return {'total_rake': 0.0, 'net_rake': 0.0, 'rake_pct': 0,

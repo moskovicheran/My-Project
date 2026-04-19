@@ -23,9 +23,12 @@ OVERVIEW_MANAGERS = [
 
 # Whitelist of clubs to show on the admin overview as tracked clubs.
 # (display_name, club_id). Clicking a card opens the full club dashboard
-# via /dashboard?view_as=<club_id>.
+# via /dashboard?view_as=<club_id>. Clubs without a club_id in the Excel
+# hierarchy can pass their club name as the second arg (get_club_totals
+# falls back to a name match).
 OVERVIEW_CLUBS = [
     ('פוקר בדופק גבוהה', '170653'),
+    ('4PlaySPC',          '4PlaySPC'),
 ]
 
 # External agents tracked alongside managed clubs — agents not in the
@@ -34,6 +37,7 @@ OVERVIEW_CLUBS = [
 OVERVIEW_EXTERNAL_AGENTS = [
     ('BlindersT', '7622-3272'),
     ('sarbuvx',   '9319-6677'),
+    ('Doron2',    '4076-8124'),
 ]
 
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
