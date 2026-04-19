@@ -375,11 +375,22 @@ def dashboard():
 
         # Manual overrides: players the admin has attached to one of our SAs/agents
         # via /admin/lost-players (or the overrides section of /admin/agents).
+        # Also collect agent_ids that sit under our SAs — regular agents (not
+        # child SAs) aren't in all_sa_ids, so assignments to them would be
+        # missed without this extra set.
         from app.models import PlayerAssignment
+        _my_agent_ids_rows = SM.query.with_entities(SM.agent_id).filter(
+            SM.sa_id.in_(all_sa_ids),
+            SM.agent_id.isnot(None),
+            SM.agent_id != '',
+            SM.agent_id != '-',
+        ).distinct().all()
+        my_known_agent_ids = {r[0] for r in _my_agent_ids_rows if r[0]}
+        _assign_targets = list(set(all_sa_ids) | my_known_agent_ids)
         _override_rows = PlayerAssignment.query.filter(
             or_(
-                PlayerAssignment.assigned_sa_id.in_(all_sa_ids),
-                PlayerAssignment.assigned_agent_id.in_(all_sa_ids),
+                PlayerAssignment.assigned_sa_id.in_(_assign_targets),
+                PlayerAssignment.assigned_agent_id.in_(_assign_targets),
             )
         ).all()
         override_player_ids = {r.player_id for r in _override_rows}
