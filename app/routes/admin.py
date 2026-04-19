@@ -33,6 +33,7 @@ OVERVIEW_CLUBS = [
 # (display_name, player_id). Clicking a card opens /dashboard?view_as=<pid>.
 OVERVIEW_EXTERNAL_AGENTS = [
     ('BlindersT', '7622-3272'),
+    ('sarbuvx',   '9319-6677'),
 ]
 
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
