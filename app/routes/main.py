@@ -936,8 +936,11 @@ def dashboard():
                     })
                 all_club_members.sort(key=lambda m: m['rake_total'], reverse=True)
 
+                from app.routes.admin import MANAGED_CLUB_DISPLAY_NAMES
+                display_name = MANAGED_CLUB_DISPLAY_NAMES.get(
+                    (sa_id, cfg.managed_club_id), club_name)
                 club_obj = {
-                    'name': club_name, 'club_id': cfg.managed_club_id,
+                    'name': display_name, 'club_id': cfg.managed_club_id,
                     'total_rake': club_rake, 'total_pnl': club_pnl,
                     'super_agents': club_sas, 'no_sa_members': no_sa,
                     'all_members': all_club_members,

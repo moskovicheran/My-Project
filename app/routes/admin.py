@@ -40,6 +40,14 @@ OVERVIEW_EXTERNAL_AGENTS = [
     ('Doron2',    '4076-8124'),
 ]
 
+# Override the display name of a managed club on the agent's own dashboard.
+# Key: (sa_id, club_id) → label shown in the "מועדונים מנוהלים" section.
+# Only affects display — the underlying club filter (by actual name) is
+# unchanged, so all players in that club still count.
+MANAGED_CLUB_DISPLAY_NAMES = {
+    ('4406-1298', '970996'): 'תוספים',  # Mangisto's SPC Un card → "תוספים"
+}
+
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
 # they generated some rake, OR they played at least this many hands.
 # Filters out "tried-a-few-hands-and-left" tails from the list.
