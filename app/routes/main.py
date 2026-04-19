@@ -469,8 +469,10 @@ def dashboard():
                       'pnl': pnl, 'rake': rake, 'hands': hands,
                       'overridden': _is_overridden}
             actual_sa = player_sa_lookup.get(pid, '')
-            # SA filtering only needed when user has child SAs (to prevent duplicates)
-            sa_ok = actual_sa in known_ids if has_child_sas else True
+            # SA filtering only needed when user has child SAs (to prevent duplicates).
+            # Overridden players bypass this check — admin explicitly attached them
+            # via /admin/lost-players, so their natural sa_id is irrelevant.
+            sa_ok = True if (_is_overridden or not has_child_sas) else (actual_sa in known_ids)
             if ag_id and ag_id != '-' and ag_id != sa_id and ag_id not in child_sa_ids and sa_ok:
                 if ag_id not in agents_map:
                     agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
