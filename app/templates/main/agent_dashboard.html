@@ -114,6 +114,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
 
 {# ── Stats Cards ── #}
 {% set base_cards = 3 %}
+{% if hide_personal_breakdown %}{% set base_cards = base_cards - 1 %}{% endif %}
 {% if managed_clubs is defined and managed_clubs %}{% set base_cards = base_cards + 2 %}{% endif %}
 {% if rake_refund_list is defined and rake_refund_list %}{% set base_cards = base_cards + 1 %}{% endif %}
 {% if my_rake_pct is defined and my_rake_pct %}{% set base_cards = base_cards + 1 %}{% endif %}
@@ -122,10 +123,12 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
         <div class="stat-label">שחקנים</div>
         <div class="stat-value">{{ player_count }}</div>
     </div>
+    {% if not hide_personal_breakdown %}
     <div class="stat-card income">
         <div class="stat-label">רייק אישי</div>
         <div class="stat-value">{{ personal_rake|comma }}</div>
     </div>
+    {% endif %}
     {% if managed_clubs is defined and managed_clubs %}
     <div class="stat-card income">
         <div class="stat-label">רייק מועדונים</div>
@@ -144,7 +147,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
     {% endif %}
     {% if my_rake_pct is defined and my_rake_pct %}
     <div class="stat-card" style="cursor:pointer; border:2px solid #2ec4b6;" onclick="toggleMyRake()">
-        <div class="stat-label" style="color:#2ec4b6;">הרייק שלי ({{ my_rake_pct|int }}%)</div>
+        <div class="stat-label" style="color:#2ec4b6;">הרייק שלי{% if not hide_personal_breakdown %} ({{ my_rake_pct|int }}%){% endif %}</div>
         <div class="stat-value" style="color:#2ec4b6;">{{ my_rake_earning|comma }}</div>
     </div>
     {% endif %}
@@ -195,6 +198,7 @@ function toggleRakeRefund() {
         <span onclick="toggleMyRake()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
     </div>
     <div style="padding:0.5rem 1rem 0.8rem;">
+        {% if not hide_personal_breakdown %}
         <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
             <span>רייק כולל</span>
             <strong>{{ personal_rake|comma }}</strong>
@@ -203,6 +207,7 @@ function toggleRakeRefund() {
             <span>האחוז שלי</span>
             <span class="rake-split-badge" style="background:linear-gradient(135deg, #2ec4b6, #1aae9f);">{{ my_rake_pct|int }}%</span>
         </div>
+        {% endif %}
         <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:1.05rem; font-weight:700;">
             <span>הרייק שלי</span>
             <span style="color:#2ec4b6;">{{ my_rake_earning|comma }}</span>

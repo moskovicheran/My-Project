@@ -9,6 +9,10 @@ main_bp = Blueprint('main', __name__)
 
 INCOME_CATEGORIES = ['משכורת', 'פרילנס', 'השקעות', 'מתנה', 'אחר']
 
+# Agents whose dashboard should hide the "רייק אישי" total and the
+# percentage badge next to "הרייק שלי" — they only see their own earning.
+AGENTS_HIDE_PERSONAL_BREAKDOWN = {'9319-6677'}  # Shlomi (sarbuvx)
+
 
 def _resolve_date_uploads(selected_dates):
     """Resolve selected date strings to upload IDs, checking both active and archived data.
@@ -1073,6 +1077,8 @@ def dashboard():
         total_expenses = round(sum(c.charge_amount for c in expense_charges), 2)
         net_rake_after_expenses = round(net_rake - total_expenses, 2)
 
+        hide_personal_breakdown = sa_id in AGENTS_HIDE_PERSONAL_BREAKDOWN
+
         return render_template('main/agent_dashboard.html',
                                my_sas=my_sas, child_sas=child_sas,
                                managed_clubs=managed_clubs,
@@ -1092,7 +1098,8 @@ def dashboard():
                                club_keeps_pct=club_keeps_pct,
                                available_dates=available_dates,
                                selected_dates=selected_dates,
-                               view_as_username=view_as_username)
+                               view_as_username=view_as_username,
+                               hide_personal_breakdown=hide_personal_breakdown)
 
     # Admin preview of any player's dashboard via ?view_player=<player_id>
     _admin_view_player = None
