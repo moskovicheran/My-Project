@@ -579,19 +579,15 @@ def dashboard():
         _self_existing_pids = set(m['player_id'] for m in direct_players)
         _self_existing_pids |= {m['player_id'] for ag in agents_map.values() for m in ag['members']}
         if sa_id not in _self_existing_pids:
-            _self_other_clubs = set()
+            _self_other_clubs = set(managed_club_names_list)  # own managed clubs — shown under managed_clubs section
+            _clubs_ov, _ = get_members_hierarchy()
+            _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
             for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
                 if _c.sa_id == sa_id:
                     continue
-                _nm = None
-                for _cd_c in (clubs_data_early if rake_cfgs_early else []):
-                    if _cd_c['club_id'] == _c.managed_club_id:
-                        _nm = _cd_c['name']; break
-                _self_other_clubs.add(_nm or _c.managed_club_id)
+                _self_other_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
             try:
                 from app.routes.admin import OVERVIEW_CLUBS as _OV
-                _clubs_ov, _ = get_members_hierarchy()
-                _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
                 for _, _cid in _OV:
                     _nm = _c2n_ov.get(_cid)
                     if not _nm and SM.query.filter(SM.club == _cid).first():

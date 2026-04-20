@@ -45,7 +45,10 @@ OVERVIEW_EXTERNAL_AGENTS = [
 # Only affects display — the underlying club filter (by actual name) is
 # unchanged, so all players in that club still count.
 MANAGED_CLUB_DISPLAY_NAMES = {
-    ('4406-1298', '970996'): 'תוספת',  # Mangisto's SPC Un card → "תוספת"
+    # Mangisto's SPC Un card → "תוספת". Keyed on the literal club name now
+    # stored in SARakeConfig (was previously Excel club_id '970996', which
+    # doesn't exist in the hierarchy, so we switched to the literal name).
+    ('4406-1298', 'SPC Un'): 'תוספת',
 }
 
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
@@ -333,9 +336,11 @@ def agent_view(sa_id):
         _clubs_ov, _ = get_members_hierarchy()
         _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
         for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+            _nm = _c2n_ov.get(_c.managed_club_id) or _c.managed_club_id
             if _c.sa_id == sa_id:
-                continue
-            _self_other_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
+                _self_other_clubs.add(_nm)  # own managed clubs shown under managed_clubs section
+            else:
+                _self_other_clubs.add(_nm)  # other SAs' managed clubs
         for _, _cid in OVERVIEW_CLUBS:
             _nm = _c2n_ov.get(_cid)
             if not _nm and DailyPlayerStats.query.filter(DailyPlayerStats.club == _cid).first():
