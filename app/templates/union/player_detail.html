@@ -17,6 +17,34 @@
             &nbsp;{{ member.player_id }}
             {% if member.country != '-' and member.country != 'nan' %}&nbsp;| {{ member.country }}{% endif %}
         </p>
+        {% if hierarchy_chain %}
+        <p class="subtitle hier-chain">
+            <span class="muted">מנוהל תחת:</span>
+            {% for node in hierarchy_chain %}
+            <a href="{{ url_for('main.dashboard', view_as=node.id) }}"
+               class="hier-node {% if node.is_manager %}hier-manager{% endif %}"
+               title="{{ node.role }} {{ node.id }}">
+                {% if node.is_manager %}⭐ {% endif %}{{ node.label }}
+                <span class="hier-role">({{ node.role }})</span>
+            </a>{% if not loop.last %} <span class="hier-arrow">→</span> {% endif %}
+            {% endfor %}
+        </p>
+        <style>
+        .hier-chain { margin-top: 0.35rem; font-size: 0.85rem; line-height: 1.6; }
+        .hier-node { display: inline-block; padding: 0.15rem 0.55rem;
+                     background: #f0f4ff; color: #4361ee; border-radius: 6px;
+                     text-decoration: none; transition: background 0.15s; }
+        .hier-node:hover { background: #dde5ff; text-decoration: none; }
+        .hier-node.hier-manager { background: #fff4d6; color: #b37e00; font-weight: 600; }
+        .hier-node.hier-manager:hover { background: #ffe8a8; }
+        .hier-role { font-size: 0.7rem; opacity: 0.7; margin-right: 0.15rem; }
+        .hier-arrow { color: #aaa; margin: 0 0.1rem; }
+        body.dark .hier-node { background: #1f2a4a; color: #93b5ff; }
+        body.dark .hier-node:hover { background: #2a3866; }
+        body.dark .hier-node.hier-manager { background: #3d2f00; color: #ffd166; }
+        body.dark .hier-node.hier-manager:hover { background: #4a3a00; }
+        </style>
+        {% endif %}
     </div>
     <div style="display:flex; gap:0.4rem;">
         <a href="{{ url_for('main.export_player', player_id=member.player_id) }}" class="btn btn-outline btn-sm">📥 הורד דוח</a>

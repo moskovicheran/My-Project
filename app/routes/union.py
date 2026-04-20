@@ -541,6 +541,10 @@ def player_detail(player_id):
     total_losses = sum(g['losses'] for g in game_stats.values())
     total_sessions = sum(g['count'] for g in game_stats.values())
 
+    # Hierarchy breadcrumb — chain of (Agent → SA → ... → Manager) above
+    # this player. Renders as "מנוהל תחת: X → Y → Z" on the detail page.
+    hierarchy_chain = _build_hierarchy_chain(player_id)
+
     return render_template('union/player_detail.html',
                            member=member_info,
                            sessions=sessions,
@@ -551,7 +555,115 @@ def player_detail(player_id):
                            game_stats=game_stats,
                            total_sessions=total_sessions,
                            total_wins=total_wins,
-                           total_losses=total_losses)
+                           total_losses=total_losses,
+                           hierarchy_chain=hierarchy_chain)
+
+
+def _build_hierarchy_chain(player_id):
+    """Return a list of {'role','id','label','is_manager'} describing the
+    management chain above the player — Agent → SA → (parent SAs) → Manager.
+
+    - If the viewed entity is themselves an SA (appears as sa_id of others or
+      as child in SAHierarchy), we walk upward from their own player_id.
+    - If they're an Agent (appears as agent_id of others), we walk from the
+      SA they typically operate under.
+    - Otherwise (regular Player), we use their raw sa_id/agent_id (honoring
+      any PlayerAssignment override) as the starting node.
+    """
+    from app.models import DailyPlayerStats, SAHierarchy, PlayerAssignment
+    from app.routes.admin import OVERVIEW_MANAGERS
+    from sqlalchemy import func as sqlfunc
+
+    def _nick(pid):
+        if not pid:
+            return ''
+        n = DailyPlayerStats.query.with_entities(
+            sqlfunc.max(DailyPlayerStats.nickname)
+        ).filter(DailyPlayerStats.player_id == pid,
+                 DailyPlayerStats.nickname.isnot(None),
+                 DailyPlayerStats.nickname != '').scalar()
+        return n or pid
+
+    managers_map = {p: u for u, p in OVERVIEW_MANAGERS}
+
+    # Is the viewed entity themselves an SA / Agent?
+    is_sa = (SAHierarchy.query.filter_by(child_sa_id=player_id).first() is not None
+             or DailyPlayerStats.query.filter(
+                 DailyPlayerStats.sa_id == player_id).first() is not None)
+    is_agent_role = DailyPlayerStats.query.filter(
+        DailyPlayerStats.agent_id == player_id,
+        DailyPlayerStats.role != 'Name Entry').first() is not None
+
+    chain = []
+    seen = {player_id}
+
+    # Determine starting node on the SA walk
+    player_club = DailyPlayerStats.query.with_entities(
+        sqlfunc.max(DailyPlayerStats.club)
+    ).filter(DailyPlayerStats.player_id == player_id,
+             DailyPlayerStats.role != 'Name Entry').scalar() or ''
+
+    if is_sa:
+        # Player themselves IS an SA — no upward chain displayed.
+        cur = ''
+    elif is_agent_role:
+        # Player is an Agent — walk from the SA they typically operate under.
+        sa_of_agent = DailyPlayerStats.query.with_entities(
+            sqlfunc.max(DailyPlayerStats.sa_id)
+        ).filter(DailyPlayerStats.agent_id == player_id,
+                 DailyPlayerStats.sa_id.isnot(None),
+                 DailyPlayerStats.sa_id != '',
+                 DailyPlayerStats.sa_id != '-').scalar()
+        cur = sa_of_agent or ''
+    else:
+        # Regular player — start from raw sa_id/agent_id (honor override)
+        pa = PlayerAssignment.query.filter_by(player_id=player_id).first()
+        own_sa, own_ag = DailyPlayerStats.query.with_entities(
+            sqlfunc.max(DailyPlayerStats.sa_id),
+            sqlfunc.max(DailyPlayerStats.agent_id),
+        ).filter(DailyPlayerStats.player_id == player_id,
+                 DailyPlayerStats.role != 'Name Entry').first() or ('', '')
+        sa_id = (pa.assigned_sa_id if pa and pa.assigned_sa_id else (own_sa or ''))
+        ag_id = (pa.assigned_agent_id if pa and pa.assigned_agent_id else (own_ag or ''))
+        # Agent node first (if distinct from SA)
+        if ag_id and ag_id not in ('-', '', sa_id):
+            chain.append({'role': 'Agent', 'id': ag_id,
+                          'label': _nick(ag_id), 'is_manager': False})
+            seen.add(ag_id)
+        cur = sa_id if sa_id and sa_id not in ('-', '') else ''
+
+    # Walk upward through SA hierarchy until hitting a Manager or dead end
+    safety = 10  # cycle guard
+    while cur and cur not in seen and safety > 0:
+        safety -= 1
+        seen.add(cur)
+        if cur in managers_map:
+            chain.append({'role': 'Manager', 'id': cur,
+                          'label': managers_map[cur], 'is_manager': True})
+            return chain
+        chain.append({'role': 'Super Agent', 'id': cur,
+                      'label': _nick(cur), 'is_manager': False})
+        link = SAHierarchy.query.filter_by(child_sa_id=cur).first()
+        cur = link.parent_sa_id if link else ''
+
+    # Fallback — no Manager found via SA hierarchy. Try matching the player's
+    # club against SARakeConfig.managed_club_id (e.g. Spc o → Riko via
+    # literal club-name mapping). Covers players attributed via managed
+    # clubs rather than SA/agent hierarchy.
+    if not any(n['is_manager'] for n in chain) and player_club:
+        from app.models import SARakeConfig
+        from app.union_data import get_members_hierarchy as _gmh
+        _cd, _ = _gmh()
+        _cid_to_name = {c['club_id']: c['name'] for c in _cd}
+        for cfg in SARakeConfig.query.filter(
+                SARakeConfig.managed_club_id.isnot(None)).all():
+            resolved = _cid_to_name.get(cfg.managed_club_id) or cfg.managed_club_id
+            if resolved == player_club and cfg.sa_id in managers_map:
+                chain.append({'role': 'Manager', 'id': cfg.sa_id,
+                              'label': managers_map[cfg.sa_id],
+                              'is_manager': True})
+                break
+    return chain
 
 
 @union_bp.route('/sa-hierarchy', methods=['GET', 'POST'])
