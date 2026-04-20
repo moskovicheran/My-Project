@@ -81,30 +81,38 @@ def create_app():
             pass
         return {'archive_warnings': []}
 
+    # Slow startup DB work (create_all + archive cleanup) can be skipped
+    # locally when Neon is slow to respond over a home connection — set
+    # SKIP_STARTUP_DB_WORK=1 in the env. The two operations are only needed
+    # on first-ever startup (create_all) and as maintenance (cleanup);
+    # skipping them on every dev restart is safe.
+    skip_startup_db = os.environ.get('SKIP_STARTUP_DB_WORK', '').lower() in ('1', 'true', 'yes')
+
     with app.app_context():
-        try:
-            db.create_all()
-        except Exception as e:
-            print(f"DB create_all warning: {e}")
+        if not skip_startup_db:
+            try:
+                db.create_all()
+            except Exception as e:
+                print(f"DB create_all warning: {e}")
 
-        # Cleanup archived data older than 90 days (from archive creation date)
-        try:
-            from datetime import datetime, timedelta
-            from app.models import ArchivePeriod, ArchivedUpload, ArchivedPlayerStats, ArchivedPlayerSession, ArchivedTournamentStats
-            cutoff = datetime.utcnow() - timedelta(days=90)
-            old_periods = ArchivePeriod.query.filter(ArchivePeriod.created_at < cutoff).all()
-            if old_periods:
-                old_ids = [p.id for p in old_periods]
-                ArchivedTournamentStats.query.filter(ArchivedTournamentStats.period_id.in_(old_ids)).delete(synchronize_session=False)
-                ArchivedPlayerSession.query.filter(ArchivedPlayerSession.period_id.in_(old_ids)).delete(synchronize_session=False)
-                ArchivedPlayerStats.query.filter(ArchivedPlayerStats.period_id.in_(old_ids)).delete(synchronize_session=False)
-                ArchivedUpload.query.filter(ArchivedUpload.period_id.in_(old_ids)).delete(synchronize_session=False)
-                ArchivePeriod.query.filter(ArchivePeriod.id.in_(old_ids)).delete(synchronize_session=False)
-                db.session.commit()
-        except Exception:
-            pass
+            # Cleanup archived data older than 90 days (from archive creation date)
+            try:
+                from datetime import datetime, timedelta
+                from app.models import ArchivePeriod, ArchivedUpload, ArchivedPlayerStats, ArchivedPlayerSession, ArchivedTournamentStats
+                cutoff = datetime.utcnow() - timedelta(days=90)
+                old_periods = ArchivePeriod.query.filter(ArchivePeriod.created_at < cutoff).all()
+                if old_periods:
+                    old_ids = [p.id for p in old_periods]
+                    ArchivedTournamentStats.query.filter(ArchivedTournamentStats.period_id.in_(old_ids)).delete(synchronize_session=False)
+                    ArchivedPlayerSession.query.filter(ArchivedPlayerSession.period_id.in_(old_ids)).delete(synchronize_session=False)
+                    ArchivedPlayerStats.query.filter(ArchivedPlayerStats.period_id.in_(old_ids)).delete(synchronize_session=False)
+                    ArchivedUpload.query.filter(ArchivedUpload.period_id.in_(old_ids)).delete(synchronize_session=False)
+                    ArchivePeriod.query.filter(ArchivePeriod.id.in_(old_ids)).delete(synchronize_session=False)
+                    db.session.commit()
+            except Exception:
+                pass
 
-        # Load active excel file if exists (local only)
+        # Load active excel file if exists (local only) — fast, keep always.
         try:
             active_file = os.path.join(os.path.dirname(__file__), '..', 'uploads', '_active.txt')
             from app.union_data import set_excel_path
