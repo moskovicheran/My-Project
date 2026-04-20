@@ -964,6 +964,54 @@ def get_agent_scope(player_id):
     return all_sa_ids, managed_club_names
 
 
+def get_players_with_current_scope(scope_ids, M=None, exclude_self=None):
+    """Return the set of player_ids whose CURRENT sa_id or agent_id is in
+    scope_ids. "Current" = the sa_id/agent_id from the player's most recent
+    upload row (ignoring Name Entry rows).
+
+    This replaces the per-row sa_id/agent_id check with a player-centric
+    "who owns this player now" check, matching ClubGG's behaviour: when a
+    player is moved between agents, their full history follows them. Zero
+    leakage is preserved — each player's rows still count for exactly ONE
+    SA (the current one).
+
+    `exclude_self`: player_ids to drop from the result — typically the
+    agent being viewed (their own play is "Member Detail" in ClubGG terms,
+    not downline activity)."""
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc, and_
+    if M is None:
+        M = DailyPlayerStats
+
+    # Per-player latest upload_id (among non-Name-Entry rows).
+    latest_uid_subq = M.query.with_entities(
+        M.player_id,
+        sqlfunc.max(M.upload_id).label('max_uid')
+    ).filter(M.role != 'Name Entry').group_by(M.player_id).subquery()
+
+    # The sa_id / agent_id recorded in each player's latest row.
+    rows = M.query.with_entities(
+        M.player_id, M.sa_id, M.agent_id
+    ).join(
+        latest_uid_subq,
+        and_(M.player_id == latest_uid_subq.c.player_id,
+             M.upload_id == latest_uid_subq.c.max_uid)
+    ).all()
+
+    scope_set = {s for s in scope_ids if s}
+    current_pids = set()
+    for pid, sa, ag in rows:
+        if (sa and sa in scope_set) or (ag and ag in scope_set):
+            current_pids.add(pid)
+    if exclude_self:
+        if isinstance(exclude_self, str):
+            current_pids.discard(exclude_self)
+        else:
+            for x in exclude_self:
+                current_pids.discard(x)
+    return current_pids
+
+
 def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
     """Unified-scope totals for an agent.
 
@@ -1043,13 +1091,32 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
             override_in_pids.append(ov.player_id)
 
+    # Current-assignment scope: all rows of players whose LATEST row is in
+    # this agent's hierarchy. This makes a player's full history follow them
+    # when they are re-attached to a new SA (matches ClubGG behaviour).
+    current_scope_pids = get_players_with_current_scope(all_ids, M=M)
+
     # Unified scope predicate: a row is in scope iff ANY of these hold.
-    scope_preds = [M.sa_id.in_(all_ids), M.agent_id.in_(all_ids)]
+    # Note: per-row sa_id/agent_id is NO LONGER the attribution source —
+    # current_scope_pids replaces it. Club (managed clubs) and explicit
+    # override are orthogonal sources that still apply.
+    scope_preds = []
+    if current_scope_pids:
+        scope_preds.append(M.player_id.in_(list(current_scope_pids)))
     if managed_club_names:
         scope_preds.append(M.club.in_(managed_club_names))
     if override_in_pids:
         scope_preds.append(M.player_id.in_(override_in_pids))
-    scope_filters = [or_(*scope_preds), M.role != 'Name Entry'] + time_filters
+    # If nothing in scope, fall back to an always-false predicate so the
+    # query returns zero (instead of SQL error on empty or_()).
+    if not scope_preds:
+        scope_filters = [sqlfunc.coalesce(M.id, 0) < 0] + time_filters
+    else:
+        # Exclude the agent's OWN player rows — these are personal play
+        # ("Member Detail" in ClubGG), not downline activity. Child SAs'
+        # own play still counts.
+        scope_filters = [or_(*scope_preds), M.role != 'Name Entry',
+                         M.player_id != uid] + time_filters
 
     stats = M.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(M.player_id)),
@@ -1063,11 +1130,11 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     total_hands = int(stats[3] or 0)
 
     # Transfer adjustments — only applied for the unfiltered (all-time) view,
-    # since transfers are not dated per upload.
-    if not use_archive and not upload_ids:
+    # since transfers are not dated per upload. Same self-exclusion applied.
+    if not use_archive and not upload_ids and scope_preds:
         pids = [r[0] for r in M.query.with_entities(
             sqlfunc.distinct(M.player_id)
-        ).filter(or_(*scope_preds)).all()]
+        ).filter(or_(*scope_preds), M.player_id != uid).all()]
         if pids:
             xfer = get_transfer_adjustments(pids)
             total_pnl = round(total_pnl + sum(xfer.values()), 2)

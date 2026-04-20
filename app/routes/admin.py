@@ -200,17 +200,24 @@ def agent_view(sa_id):
     child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
     all_sa_ids = known_ids + child_sa_ids
 
-    # Get players from cumulative DB
+    # Get players from cumulative DB — attribution follows the player's
+    # CURRENT sa_id/agent_id (from their most recent upload row). Matches
+    # ClubGG: a player's full history moves with them when they change SA.
+    # exclude_self=sa_id: the viewed agent's own play is Member Detail,
+    # not downline activity — shouldn't appear as "his own direct player".
+    from app.union_data import get_players_with_current_scope
+    current_scope_pids = list(get_players_with_current_scope(
+        all_sa_ids, exclude_self=sa_id))
     my_players_db = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
         sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
         sqlfunc.max(DailyPlayerStats.role),
         sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
         sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(or_(
-        DailyPlayerStats.sa_id.in_(all_sa_ids),
-        DailyPlayerStats.agent_id.in_(all_sa_ids)
-    )).group_by(DailyPlayerStats.player_id).all()
+    ).filter(
+        DailyPlayerStats.player_id.in_(current_scope_pids) if current_scope_pids else DailyPlayerStats.id < 0,
+        DailyPlayerStats.role != 'Name Entry',
+    ).group_by(DailyPlayerStats.player_id).all()
 
     # Get actual sa_id per player (for correct direct player filtering)
     player_sa_lookup = dict(DailyPlayerStats.query.with_entities(
@@ -313,26 +320,10 @@ def agent_view(sa_id):
                 ag['total_rake'] = round(ag['total_rake'] + own_rake, 2)
                 ag['total_hands'] += own_hands
 
-    # Add SA's own game stats as a direct player (if not already there)
-    for sid in known_ids:
-        if sid not in all_my_player_ids:
-            sa_own = DailyPlayerStats.query.with_entities(
-                sqlfunc.max(DailyPlayerStats.nickname),
-                sqlfunc.sum(DailyPlayerStats.pnl),
-                sqlfunc.sum(DailyPlayerStats.rake),
-                sqlfunc.sum(DailyPlayerStats.hands),
-            ).filter(
-                DailyPlayerStats.player_id == sid,
-                DailyPlayerStats.role != 'Name Entry'
-            ).first()
-            if sa_own and (float(sa_own[1] or 0) != 0 or float(sa_own[2] or 0) != 0):
-                sa_pnl = round(float(sa_own[1] or 0) + xfer_adj.get(sid, 0), 2)
-                sa_member = {'player_id': sid, 'nickname': sa_own[0] or sid, 'role': 'Player',
-                             'pnl': sa_pnl,
-                             'rake': round(float(sa_own[2] or 0), 2),
-                             'hands': int(sa_own[3] or 0)}
-                direct_players.insert(0, sa_member)
-                all_my_player_ids.add(sid)
+    # NOTE: the SA's own personal play is intentionally NOT added to
+    # direct_players. It is "Member Detail" in ClubGG terms (their hands
+    # as a player), not downline activity. Matches get_agent_totals()
+    # which excludes M.player_id == sa_id from the SA scope.
 
     # Agent nicknames from Excel + DB
     all_nicks_db = dict(DailyPlayerStats.query.with_entities(
@@ -998,6 +989,27 @@ def agents():
                 flash('הגדרת רייק נמחקה.', 'success')
 
         # Player override management (manual player → SA/agent assignment)
+        elif action == 'add_player_override':
+            pid = (request.form.get('player_id') or '').strip()
+            sa_id_val = (request.form.get('assigned_sa_id') or '').strip()
+            ag_id_val = (request.form.get('assigned_agent_id') or '').strip()
+            note = (request.form.get('note') or '').strip()
+            if not pid:
+                flash('חסר מזהה שחקן.', 'danger')
+            elif not sa_id_val and not ag_id_val:
+                flash('חובה להזין לפחות SA ID אחד או Agent ID אחד.', 'warning')
+            else:
+                existing = PlayerAssignment.query.filter_by(player_id=pid).first()
+                if not existing:
+                    existing = PlayerAssignment(player_id=pid)
+                    db.session.add(existing)
+                existing.assigned_sa_id = sa_id_val
+                existing.assigned_agent_id = ag_id_val
+                existing.assigned_by_user_id = current_user.id
+                existing.note = note[:200]
+                db.session.commit()
+                flash(f'שיוך ידני נשמר עבור {pid}.', 'success')
+
         elif action == 'delete_player_override':
             pid = (request.form.get('player_id') or '').strip()
             row = PlayerAssignment.query.filter_by(player_id=pid).first()

@@ -220,10 +220,36 @@
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">🔗 שיוכים ידניים של שחקנים</h2>
     <p class="muted" style="margin-bottom:1rem;">
-        שחקנים ששויכו ידנית ל-Super Agent או לסוכן דרך
-        <a href="{{ url_for('admin.lost_players') }}" style="color:#4361ee;">דף שחקנים אבודים</a>.
-        השיוך דורס את מה שמופיע בקובץ ה-PPPoker ושורד העלאות עתידיות. מחיקה כאן מחזירה לאמת-הקובץ.
+        שיוך ידני דורס את ה-sa_id/agent_id שמופיעים בקובץ ה-PPPoker ושורד העלאות עתידיות.
+        הוא גורם לכל פעילות השחקן להופיע תחת ה-SA/Agent שנבחר (גם שורות שבמקור היו תחת מועדון מנוהל של SA אחר).
+        מחיקה כאן מחזירה לאמת-הקובץ.
     </p>
+
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.8rem; flex-wrap:wrap; margin-bottom:1.2rem; padding:0.8rem; background:#f8f9fc; border-radius:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="action" value="add_player_override">
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">ID שחקן</label>
+            <input type="text" name="player_id" required placeholder="למשל 8443-5876"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">SA ID (אופציונלי)</label>
+            <input type="text" name="assigned_sa_id" placeholder="למשל 3106-0170"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">Agent ID (אופציונלי)</label>
+            <input type="text" name="assigned_agent_id" placeholder="Agent ID"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+        <div style="flex:1.5; min-width:160px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">הערה (אופציונלי)</label>
+            <input type="text" name="note" maxlength="200" placeholder="סיבת השיוך"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+        <button type="submit" class="btn btn-primary">שייך</button>
+    </form>
 
     {% if player_overrides %}
     <table class="table table-sm">

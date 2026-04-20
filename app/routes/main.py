@@ -403,34 +403,23 @@ def dashboard():
         from app.union_data import get_player_overrides
         overrides_map = get_player_overrides()
 
-        # Get ALL players that ever belonged to this SA/Agent
-        # Step 1: Find all player_ids that belong to this SA
-        _pid_filters = [or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids)), SM.role != 'Name Entry']
-        if use_archive and archive_period_id:
-            _pid_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
-        elif upload_ids_filter:
-            _pid_filters.append(SM.upload_id.in_(upload_ids_filter))
-        my_player_ids_query = SM.query.with_entities(SM.player_id).filter(*_pid_filters).distinct()
-        my_player_id_list = [r[0] for r in my_player_ids_query.all()]
-        # Union with override-assigned players (they may not belong naturally)
-        if override_player_ids:
-            my_player_id_list = list(set(my_player_id_list) | override_player_ids)
+        # Get ALL players that currently belong to this SA/Agent.
+        # Step 1: "Currently belong" = their most recent upload row has
+        # sa_id or agent_id in this SA's hierarchy. This makes each
+        # player's full history follow them when they're re-attached
+        # to a new SA (matches ClubGG behaviour).
+        # exclude_self=sa_id: the viewed agent's own play is Member Detail,
+        # not downline activity — shouldn't appear as "his own direct player".
+        from app.union_data import get_players_with_current_scope
+        current_scope_pids = get_players_with_current_scope(
+            all_sa_ids, M=SM, exclude_self=sa_id)
+        my_player_id_list = list(current_scope_pids | override_player_ids)
 
-        # Step 2: Get cumulative stats — hier channel ONLY.
-        # Row-level scope:
-        #  - sa_id OR agent_id in hierarchy (keeps only this agent's channel)
-        #  - club NOT IN managed_clubs (clubs bucket handles those)
-        # Override players (manually attached via PlayerAssignment) are
-        # exempt — include their rows even if they don't match the scope,
-        # because that's the whole point of an override.
-        _hier_row_pred = or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids))
-        if override_player_ids:
-            _row_scope = or_(_hier_row_pred, SM.player_id.in_(list(override_player_ids)))
-        else:
-            _row_scope = _hier_row_pred
+        # Step 2: Sum ALL rows of those players — no per-row sa_id/agent_id
+        # restriction any more. managed_clubs rows are still excluded from
+        # the hier bucket (clubs bucket handles them).
         base_agent_filters = [SM.player_id.in_(my_player_id_list),
-                              SM.role != 'Name Entry',
-                              _row_scope]
+                              SM.role != 'Name Entry']
         if managed_club_names_list:
             base_agent_filters.append(SM.club.notin_(managed_club_names_list))
         if use_archive and archive_period_id:
@@ -581,30 +570,10 @@ def dashboard():
                     ag['total_rake'] = round(ag['total_rake'] + own_rake, 2)
                     ag['total_hands'] += own_hands
 
-        # Add SA's own game stats as a direct player (if not already there)
-        for sid in known_ids:
-            if sid not in all_my_player_ids:
-                _sa_filters = [SM.player_id == sid, SM.role != 'Name Entry']
-                if managed_club_names_list:
-                    _sa_filters.append(SM.club.notin_(managed_club_names_list))
-                if use_archive and archive_period_id:
-                    _sa_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
-                elif upload_ids_filter:
-                    _sa_filters.append(SM.upload_id.in_(upload_ids_filter))
-                sa_own = SM.query.with_entities(
-                    sqlfunc.max(SM.nickname),
-                    sqlfunc.sum(SM.pnl),
-                    sqlfunc.sum(SM.rake),
-                    sqlfunc.sum(SM.hands),
-                ).filter(*_sa_filters).first()
-                if sa_own and (float(sa_own[1] or 0) != 0 or float(sa_own[2] or 0) != 0):
-                    sa_pnl = round(float(sa_own[1] or 0) + xfer_adj.get(sid, 0), 2)
-                    sa_member = {'player_id': sid, 'nickname': sa_own[0] or sid, 'role': 'Player',
-                                 'pnl': sa_pnl,
-                                 'rake': round(float(sa_own[2] or 0), 2),
-                                 'hands': int(sa_own[3] or 0)}
-                    direct_players.insert(0, sa_member)
-                    all_my_player_ids.add(sid)
+        # NOTE: the SA's own personal play is intentionally NOT added to
+        # direct_players. It is "Member Detail" in ClubGG terms (their hands
+        # as a player), not downline activity. Matches get_agent_totals()
+        # which excludes M.player_id == uid from the SA scope.
 
         # Fetch missing agents and players for child_sas from DB
         for cs in child_sas:
