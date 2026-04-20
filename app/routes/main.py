@@ -892,7 +892,10 @@ def dashboard():
             club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
 
             for cfg in rake_cfgs:
-                club_name = club_id_to_name.get(cfg.managed_club_id, '')
+                # Resolve club name: either via registered club_id, or use
+                # the managed_club_id value itself as a literal club name
+                # (e.g. "Spc o" has no club_id in the hierarchy).
+                club_name = club_id_to_name.get(cfg.managed_club_id) or cfg.managed_club_id
                 if not club_name:
                     continue
 
