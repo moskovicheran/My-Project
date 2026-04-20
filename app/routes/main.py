@@ -2344,6 +2344,7 @@ def export_agent_full_box():
     players = SM.query.with_entities(
         SM.player_id, sqlfunc.max(SM.nickname),
         sqlfunc.max(SM.club), sqlfunc.max(SM.agent_id),
+        sqlfunc.max(SM.sa_id),
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands),
     ).filter(
@@ -2358,15 +2359,18 @@ def export_agent_full_box():
     for p in players:
         ag_id = p[3] if p[3] and p[3] != '-' else None
         ag_name = all_nicks.get(ag_id, ag_id) if ag_id else ''
-        raw_pnl = round(float(p[4] or 0), 2)
+        sa_pid = p[4] if p[4] and p[4] != '-' else None
+        sa_name = all_nicks.get(sa_pid, sa_pid) if sa_pid else ''
+        raw_pnl = round(float(p[5] or 0), 2)
         row = {
             'שחקן': p[1],
             'ID': p[0],
             'קלאב': p[2] or '',
+            'Super Agent': sa_name,
             'סוכן': ag_name,
             'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
-            'Rake': round(float(p[5] or 0), 2),
-            'ידיים': int(p[6] or 0),
+            'Rake': round(float(p[6] or 0), 2),
+            'ידיים': int(p[7] or 0),
         }
         clubs.setdefault(row['קלאב'], []).append(row)
 
@@ -2384,7 +2388,7 @@ def export_agent_full_box():
         # Club subtotal — visually separates each group
         rows.append({
             'שחקן': f'סה"כ {club_name}' if club_name else 'סה"כ',
-            'ID': '', 'קלאב': club_name, 'סוכן': '',
+            'ID': '', 'קלאב': club_name, 'Super Agent': '', 'סוכן': '',
             'P&L': round(sum(r['P&L'] for r in club_rows), 2),
             'Rake': round(sum(r['Rake'] for r in club_rows), 2),
             'ידיים': sum(r['ידיים'] for r in club_rows),
@@ -2395,7 +2399,7 @@ def export_agent_full_box():
         # _make_excel applies its bold-total formatting to it.
         data_rows = [r for r in rows if not str(r['שחקן']).startswith('סה"כ')]
         rows.append({
-            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'סוכן': '',
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'Super Agent': '', 'סוכן': '',
             'P&L': round(sum(r['P&L'] for r in data_rows), 2),
             'Rake': round(sum(r['Rake'] for r in data_rows), 2),
             'ידיים': sum(r['ידיים'] for r in data_rows),
