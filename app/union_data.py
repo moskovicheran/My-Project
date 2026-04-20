@@ -47,19 +47,35 @@ def get_all_super_agents():
 
 
 def get_all_clubs():
-    """Returns list of all clubs: [{club_id, name}]."""
-    sheets = _read_sheets()
-    if 'Union Member Statistics' not in sheets:
-        return []
-    df = sheets['Union Member Statistics']
+    """Returns list of all clubs: [{club_id, name}].
+
+    Includes clubs from the Excel Union Member Statistics sheet (with real
+    club_id), plus clubs that appear only in DailyPlayerStats rows but have
+    no Excel entry (e.g. "Spc o"). For DB-only clubs, club_id equals the
+    club name — SARakeConfig handles this via literal-name fallback.
+    """
     clubs = []
-    for i in range(6, len(df)):
-        cell = str(df.iloc[i, 0])
-        if '(ID:' in cell:
-            clubs.append({
-                'club_id': cell.split('(ID:')[1].rstrip(')'),
-                'name': cell.split(' (ID:')[0],
-            })
+    seen_names = set()
+    sheets = _read_sheets()
+    if 'Union Member Statistics' in sheets:
+        df = sheets['Union Member Statistics']
+        for i in range(6, len(df)):
+            cell = str(df.iloc[i, 0])
+            if '(ID:' in cell:
+                name = cell.split(' (ID:')[0]
+                clubs.append({
+                    'club_id': cell.split('(ID:')[1].rstrip(')'),
+                    'name': name,
+                })
+                seen_names.add(name)
+    # Append DB-only clubs (not in Excel) — use name as club_id
+    from app.models import DailyPlayerStats
+    db_clubs = {r[0] for r in DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.club
+    ).filter(DailyPlayerStats.club.isnot(None),
+             DailyPlayerStats.club != '').distinct().all() if r[0]}
+    for c in sorted(db_clubs - seen_names):
+        clubs.append({'club_id': c, 'name': c})
     return clubs
 
 
