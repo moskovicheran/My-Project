@@ -604,8 +604,10 @@ def _build_hierarchy_chain(player_id):
              DailyPlayerStats.role != 'Name Entry').scalar() or ''
 
     if is_sa:
-        # Player themselves IS an SA — no upward chain displayed.
-        cur = ''
+        # Player themselves IS an SA — walk UPWARD from their parent in
+        # SAHierarchy (self isn't shown; the chain displays who manages them).
+        link = SAHierarchy.query.filter_by(child_sa_id=player_id).first()
+        cur = link.parent_sa_id if link else ''
     elif is_agent_role:
         # Player is an Agent — walk from the SA they typically operate under.
         sa_of_agent = DailyPlayerStats.query.with_entities(
