@@ -1023,7 +1023,7 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     Returns dict with total_rake, total_pnl, total_hands, player_count.
     """
     from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, PlayerAssignment
-    from sqlalchemy import func as sqlfunc, or_
+    from sqlalchemy import func as sqlfunc, or_, and_, not_
 
     use_archive = bool(archive_period_id and archive_upload_ids)
     M = ArchivedPlayerStats if use_archive else DailyPlayerStats
@@ -1096,13 +1096,45 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     # when they are re-attached to a new SA (matches ClubGG behaviour).
     current_scope_pids = get_players_with_current_scope(all_ids, M=M)
 
+    # Rows that belong to OTHER cards — excluded from this agent's
+    # current-scope predicate to prevent double-count. A row is "owned"
+    # elsewhere if its club is:
+    #   - managed by another SA (SARakeConfig), or
+    #   - an admin-tracked club on the overview (OVERVIEW_CLUBS).
+    # In both cases it will be counted in that other card; current-scope
+    # here must not also claim it.
+    other_managed_names = set()
+    clubs_data_all, _ = get_members_hierarchy()
+    cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data_all}
+    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+        if c.sa_id == uid:
+            continue
+        nm = cid_to_name_all.get(c.managed_club_id) or c.managed_club_id
+        other_managed_names.add(nm)
+    try:
+        from app.routes.admin import OVERVIEW_CLUBS
+        for _, cid in OVERVIEW_CLUBS:
+            nm = cid_to_name_all.get(cid)
+            if not nm and M.query.filter(M.club == cid).first():
+                nm = cid
+            if nm:
+                other_managed_names.add(nm)
+    except Exception:
+        pass
+
     # Unified scope predicate: a row is in scope iff ANY of these hold.
     # Note: per-row sa_id/agent_id is NO LONGER the attribution source —
     # current_scope_pids replaces it. Club (managed clubs) and explicit
     # override are orthogonal sources that still apply.
     scope_preds = []
     if current_scope_pids:
-        scope_preds.append(M.player_id.in_(list(current_scope_pids)))
+        if other_managed_names:
+            scope_preds.append(and_(
+                M.player_id.in_(list(current_scope_pids)),
+                not_(M.club.in_(list(other_managed_names))),
+            ))
+        else:
+            scope_preds.append(M.player_id.in_(list(current_scope_pids)))
     if managed_club_names:
         scope_preds.append(M.club.in_(managed_club_names))
     if override_in_pids:
@@ -1112,11 +1144,9 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     if not scope_preds:
         scope_filters = [sqlfunc.coalesce(M.id, 0) < 0] + time_filters
     else:
-        # Exclude the agent's OWN player rows — these are personal play
-        # ("Member Detail" in ClubGG), not downline activity. Child SAs'
-        # own play still counts.
-        scope_filters = [or_(*scope_preds), M.role != 'Name Entry',
-                         M.player_id != uid] + time_filters
+        # Include the agent's own personal play in their totals so the
+        # admin-overview cards reconcile with the top-box (no delta).
+        scope_filters = [or_(*scope_preds), M.role != 'Name Entry'] + time_filters
 
     stats = M.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(M.player_id)),
@@ -1130,11 +1160,11 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     total_hands = int(stats[3] or 0)
 
     # Transfer adjustments — only applied for the unfiltered (all-time) view,
-    # since transfers are not dated per upload. Same self-exclusion applied.
+    # since transfers are not dated per upload.
     if not use_archive and not upload_ids and scope_preds:
         pids = [r[0] for r in M.query.with_entities(
             sqlfunc.distinct(M.player_id)
-        ).filter(or_(*scope_preds), M.player_id != uid).all()]
+        ).filter(or_(*scope_preds)).all()]
         if pids:
             xfer = get_transfer_adjustments(pids)
             total_pnl = round(total_pnl + sum(xfer.values()), 2)

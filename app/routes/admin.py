@@ -109,7 +109,9 @@ def build_overview_context():
 
     # Agent stats — use the fixed whitelist above (not all agent users).
     # Uses the same get_agent_totals() as the agent dashboard so numbers match
-    # what each manager sees when they log in themselves.
+    # what each manager sees when they log in themselves. get_agent_totals
+    # internally carves out OVERVIEW_CLUBS rows so tracked clubs don't
+    # double-count with SA current-scope.
     agents_data = []
     for username, pid in OVERVIEW_MANAGERS:
         totals = get_agent_totals(
