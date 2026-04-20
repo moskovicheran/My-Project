@@ -2391,10 +2391,11 @@ def export_agent_full_box():
         })
 
     if rows:
-        # Grand total (exclude per-club subtotal rows — they start with 'סה"כ ')
+        # Grand total row — label matches the exact 'סה"כ' string so
+        # _make_excel applies its bold-total formatting to it.
         data_rows = [r for r in rows if not str(r['שחקן']).startswith('סה"כ')]
         rows.append({
-            'שחקן': 'סה"כ הכל', 'ID': '', 'קלאב': '', 'סוכן': '',
+            'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'סוכן': '',
             'P&L': round(sum(r['P&L'] for r in data_rows), 2),
             'Rake': round(sum(r['Rake'] for r in data_rows), 2),
             'ידיים': sum(r['ידיים'] for r in data_rows),
