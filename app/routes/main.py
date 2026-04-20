@@ -2292,6 +2292,121 @@ def export_agent_players():
                        period_label=period_label)
 
 
+@main_bp.route('/export/agent/full_box')
+@login_required
+def export_agent_full_box():
+    """Full-box report — every player under this agent's scope in ONE flat sheet.
+
+    No per-agent / per-SA grouping. Honors ?dates= like the other agent
+    exports, and uses the same scope predicate to avoid cross-channel leakage.
+    """
+    if current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import DailyPlayerStats, ArchivedPlayerStats
+    from app.union_data import get_agent_scope, get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_ as _or
+
+    sa_id = current_user.player_id
+
+    # Date filter (same logic as export_agent_players)
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    had_date_filter = bool(requested_dates)
+    selected_dates = requested_dates
+    upload_ids_filter = []
+    archive_period_id = None
+    archive_upload_ids = []
+    use_archive = False
+    if selected_dates:
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        use_archive = bool(archive_upload_ids)
+
+    if use_archive and archive_period_id:
+        SM = ArchivedPlayerStats
+        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+    else:
+        SM = DailyPlayerStats
+        scope = []
+        if upload_ids_filter:
+            scope.append(SM.upload_id.in_(upload_ids_filter))
+
+    # Agent scope — zero-leakage rule
+    _scope_sa_ids, _mc_names = get_agent_scope(sa_id)
+    _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
+    if _mc_names:
+        _scope_preds.append(SM.club.in_(_mc_names))
+
+    # Nickname lookup (from active data — names are stable across archives)
+    all_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+
+    players = SM.query.with_entities(
+        SM.player_id, sqlfunc.max(SM.nickname),
+        sqlfunc.max(SM.club), sqlfunc.max(SM.agent_id),
+        sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
+        sqlfunc.sum(SM.hands),
+    ).filter(
+        _or(*_scope_preds), SM.role != 'Name Entry', *scope,
+    ).group_by(SM.player_id).all()
+
+    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
+
+    # Group players by club so the sheet isn't interleaved
+    # (spc t block, then spc o block, then rafi ginat block, etc.)
+    clubs = {}  # club_name -> [row dicts]
+    for p in players:
+        ag_id = p[3] if p[3] and p[3] != '-' else None
+        ag_name = all_nicks.get(ag_id, ag_id) if ag_id else ''
+        raw_pnl = round(float(p[4] or 0), 2)
+        row = {
+            'שחקן': p[1],
+            'ID': p[0],
+            'קלאב': p[2] or '',
+            'סוכן': ag_name,
+            'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
+            'Rake': round(float(p[5] or 0), 2),
+            'ידיים': int(p[6] or 0),
+        }
+        clubs.setdefault(row['קלאב'], []).append(row)
+
+    # Sort clubs by total rake desc; within each club sort players by rake desc.
+    club_order = sorted(
+        clubs.items(),
+        key=lambda kv: sum(r['Rake'] for r in kv[1]),
+        reverse=True,
+    )
+
+    rows = []
+    for club_name, club_rows in club_order:
+        club_rows.sort(key=lambda r: r['Rake'], reverse=True)
+        rows.extend(club_rows)
+        # Club subtotal — visually separates each group
+        rows.append({
+            'שחקן': f'סה"כ {club_name}' if club_name else 'סה"כ',
+            'ID': '', 'קלאב': club_name, 'סוכן': '',
+            'P&L': round(sum(r['P&L'] for r in club_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in club_rows), 2),
+            'ידיים': sum(r['ידיים'] for r in club_rows),
+        })
+
+    if rows:
+        # Grand total (exclude per-club subtotal rows — they start with 'סה"כ ')
+        data_rows = [r for r in rows if not str(r['שחקן']).startswith('סה"כ')]
+        rows.append({
+            'שחקן': 'סה"כ הכל', 'ID': '', 'קלאב': '', 'סוכן': '',
+            'P&L': round(sum(r['P&L'] for r in data_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in data_rows), 2),
+            'ידיים': sum(r['ידיים'] for r in data_rows),
+        })
+
+    suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
+    period_label = _format_period_label(selected_dates)
+    return _make_excel({'קופסא מלאה': rows},
+                       f'{current_user.username}{suffix}_full_box.xlsx',
+                       period_label=period_label)
+
+
 @main_bp.route('/export/agent/club/<club_id>')
 @login_required
 def export_agent_club(club_id):
