@@ -1017,6 +1017,15 @@ def dashboard():
         total_hands = _unified['total_hands']
         player_count = _unified['player_count']
 
+        # Sync personal_rake (hier-only bucket) with the unified total so
+        # dashboard "רייק אישי" matches the admin overview card. personal_rake
+        # = total_rake − clubs_total_rake. This replaces the Excel-derived
+        # value (which may double-count agent self-rows via Union Member
+        # Statistics). clubs_total_rake stays from managed-club iteration.
+        personal_rake = round(total_rake - clubs_total_rake, 2)
+        sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
+        net_rake = round(sa_net_rake + club_net_rake, 2)
+
         # My own rake percentage (if configured as sub_agent or agent)
         my_rake_rc = RakeConfig.query.filter(
             RakeConfig.entity_type.in_(['sub_agent', 'agent']),
