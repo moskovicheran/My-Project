@@ -2255,12 +2255,8 @@ def export_agent_club(club_id):
     from sqlalchemy import func as sqlfunc
     import re
 
-    clubs_data, _ = get_members_hierarchy()
-    club_name = None
-    for c in clubs_data:
-        if c['club_id'] == club_id:
-            club_name = c['name']
-            break
+    from app.union_data import resolve_club_name
+    club_name = resolve_club_name(club_id)
     if not club_name:
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
@@ -2511,12 +2507,8 @@ def export_club_report():
     from sqlalchemy import func as sqlfunc
 
     club_id = current_user.player_id
-    clubs_data, _ = get_members_hierarchy()
-    club_name = None
-    for c in clubs_data:
-        if c['club_id'] == club_id:
-            club_name = c['name']
-            break
+    from app.union_data import resolve_club_name
+    club_name = resolve_club_name(club_id)
     if not club_name:
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
@@ -2639,12 +2631,8 @@ def club_reports():
     from sqlalchemy import func as sqlfunc
 
     club_id = current_user.player_id
-    clubs_data, _ = get_members_hierarchy()
-    club_name = None
-    for c in clubs_data:
-        if c['club_id'] == club_id:
-            club_name = c['name']
-            break
+    from app.union_data import resolve_club_name
+    club_name = resolve_club_name(club_id)
     if not club_name:
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))
@@ -2686,12 +2674,8 @@ def export_club_period():
     td = datetime.strptime(to_date, '%Y-%m-%d').date()
 
     club_id = current_user.player_id
-    clubs_data, _ = get_members_hierarchy()
-    club_name = None
-    for c in clubs_data:
-        if c['club_id'] == club_id:
-            club_name = c['name']
-            break
+    from app.union_data import resolve_club_name
+    club_name = resolve_club_name(club_id)
     if not club_name:
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.club_reports'))
@@ -2756,12 +2740,8 @@ def club_transfers():
     from sqlalchemy import func as sqlfunc
 
     club_id = current_user.player_id
-    clubs_data, _ = get_members_hierarchy()
-    club_name = None
-    for c in clubs_data:
-        if c['club_id'] == club_id:
-            club_name = c['name']
-            break
+    from app.union_data import resolve_club_name
+    club_name = resolve_club_name(club_id)
     if not club_name:
         flash('מועדון לא נמצא.', 'danger')
         return redirect(url_for('main.dashboard'))

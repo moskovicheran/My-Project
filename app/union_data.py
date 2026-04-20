@@ -46,6 +46,28 @@ def get_all_super_agents():
     return sorted(sa_map.values(), key=lambda x: x['nick'].lower())
 
 
+def resolve_club_name(club_id):
+    """Return the club display name for a given club_id.
+
+    Matches the Excel Union Member Statistics first, then falls back to
+    treating club_id as a literal club name if rows exist in
+    DailyPlayerStats with club == club_id. Returns None if no such club
+    is known. Used by report/export routes that need to accept either
+    numeric Excel club_ids or DB-only names (e.g. "Spc o").
+    """
+    if not club_id:
+        return None
+    clubs_data, _ = get_members_hierarchy()
+    for c in clubs_data:
+        if c['club_id'] == club_id:
+            return c['name']
+    # Fall back to DB — is there any row with this exact club name?
+    from app.models import DailyPlayerStats
+    has_rows = DailyPlayerStats.query.filter(
+        DailyPlayerStats.club == club_id).first() is not None
+    return club_id if has_rows else None
+
+
 def get_all_clubs():
     """Returns list of all clubs: [{club_id, name}].
 
