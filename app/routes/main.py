@@ -383,6 +383,38 @@ def dashboard():
                         existing['agents'][ag_id] = ag
                 existing['club'] += ', ' + cs.get('club', '')
         child_sas = deduped
+
+        # Backfill child SAs that are linked via SAHierarchy but don't have a
+        # Super-Agent sheet in the Excel (DB-only assignments made through the
+        # admin control panel). Without this they silently vanish from the
+        # dashboard's SA list — the subsequent enrichment loops only operate
+        # on entries already in child_sas.
+        existing_child_sa_ids = {cs.get('sa_id') for cs in child_sas}
+        missing_csa_ids = [cid for cid in child_sa_ids
+                           if cid and cid not in existing_child_sa_ids]
+        if missing_csa_ids:
+            _nick_rows = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id,
+                sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.club),
+            ).filter(DailyPlayerStats.player_id.in_(missing_csa_ids)
+                     ).group_by(DailyPlayerStats.player_id).all()
+            _nick_map = {pid: (nick, club) for pid, nick, club in _nick_rows}
+            for cid in missing_csa_ids:
+                nick, club = _nick_map.get(cid, (cid, ''))
+                # Skip if this DB-only SA actually lives only in a managed
+                # club — those rows belong in the clubs bucket, not personal.
+                if club and club in managed_club_names:
+                    continue
+                child_sas.append({
+                    'sa_id': cid,
+                    'sa_nick': nick or cid,
+                    'club': club or '',
+                    'agents': {},
+                    'direct': [],
+                    'total_pnl': 0, 'total_rake': 0, 'total_hands': 0,
+                })
+
         all_sa_ids = list(known_ids) + child_sa_ids
 
         # Determine which stats model to use (active or archived)
