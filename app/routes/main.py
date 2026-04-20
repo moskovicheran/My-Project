@@ -242,6 +242,23 @@ def dashboard():
             rake_pct = club_rc.rake_percent if club_rc else 100
             net_rake = round(total_rake * rake_pct / 100, 2)
 
+            # Sort all player lists by PnL for the club dashboard:
+            # positives first (largest win), negatives next (biggest loss first), zeros last.
+            def _sort_by_pnl_club(lst, attr='pnl_total'):
+                if not lst:
+                    return
+                def key(m):
+                    v = m.get(attr, 0) or 0
+                    if v > 0: return (0, -v)
+                    if v < 0: return (1, v)
+                    return (2, 0)
+                lst.sort(key=key)
+            for _sa in managed_club.get('super_agents', {}).values():
+                _sort_by_pnl_club(_sa.get('direct_members'))
+                for _ag in _sa.get('agents', {}).values():
+                    _sort_by_pnl_club(_ag.get('members'))
+            _sort_by_pnl_club(managed_club.get('no_sa_members'))
+
             return render_template('main/club_dashboard.html',
                                    managed_club=managed_club,
                                    total_rake=round(total_rake, 2),
@@ -1028,6 +1045,40 @@ def dashboard():
         personal_rake = round(total_rake - clubs_total_rake, 2)
         sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
+
+        # Sort players by PnL:
+        #   1. Positives first  (biggest win at top)
+        #   2. Negatives second (biggest loss first)
+        #   3. Zeros last
+        # Members use either 'pnl' (hierarchy path) or 'pnl_total' (managed-club path).
+        def _pnl_key(m):
+            v = m.get('pnl')
+            if v is None:
+                v = m.get('pnl_total', 0)
+            v = v or 0
+            if v > 0:
+                return (0, -v)   # positives first, largest first
+            if v < 0:
+                return (1, v)    # negatives second, most-negative first
+            return (2, 0)         # zeros last
+
+        def _sort_by_pnl(lst):
+            if lst:
+                lst.sort(key=_pnl_key)
+
+        _sort_by_pnl(my_sa_combined.get('direct'))
+        for _ag in my_sa_combined.get('agents', {}).values():
+            _sort_by_pnl(_ag.get('members'))
+        for _cs in child_sas:
+            _sort_by_pnl(_cs.get('direct'))
+            for _ag in _cs.get('agents', {}).values():
+                _sort_by_pnl(_ag.get('members'))
+        for _mc in managed_clubs:
+            for _sa in _mc.get('super_agents', {}).values():
+                _sort_by_pnl(_sa.get('direct_members'))
+                for _ag in _sa.get('agents', {}).values():
+                    _sort_by_pnl(_ag.get('members'))
+            _sort_by_pnl(_mc.get('no_sa_members'))
 
         # My own rake percentage (if configured as sub_agent or agent)
         my_rake_rc = RakeConfig.query.filter(

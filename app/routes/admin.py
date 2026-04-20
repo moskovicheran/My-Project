@@ -560,6 +560,36 @@ def agent_view(sa_id):
                                   'total_rake': round(cr, 2), 'total_pnl': round(cp_pnl, 2),
                                   'super_agents': club_sas, 'no_sa_members': no_sa})
 
+    # Sort all player lists by PnL: positives first (biggest win),
+    # negatives next (biggest loss first), zeros last. Applies across
+    # direct members, agent buckets, child SAs, and managed clubs.
+    def _pnl_key(m):
+        v = m.get('pnl')
+        if v is None:
+            v = m.get('pnl_total', 0)
+        v = v or 0
+        if v > 0: return (0, -v)
+        if v < 0: return (1, v)
+        return (2, 0)
+    def _ssort(lst):
+        if lst:
+            lst.sort(key=_pnl_key)
+
+    if my_sa:
+        _ssort(my_sa.get('direct'))
+        for _ag in (my_sa.get('agents') or {}).values():
+            _ssort(_ag.get('members'))
+    for _cs in child_sas:
+        _ssort(_cs.get('direct'))
+        for _ag in (_cs.get('agents') or {}).values():
+            _ssort(_ag.get('members'))
+    for _mc in managed_clubs:
+        for _sa in (_mc.get('super_agents') or {}).values():
+            _ssort(_sa.get('direct_members'))
+            for _ag in (_sa.get('agents') or {}).values():
+                _ssort(_ag.get('members'))
+        _ssort(_mc.get('no_sa_members'))
+
     return render_template('admin/agent_view.html',
                            sa_nick=sa_nick, sa_id=sa_id,
                            my_sa=my_sa, child_sas=child_sas,
@@ -697,6 +727,23 @@ def clubs():
             club['total_pnl'] = ct_club['pnl']
             club['total_hands'] = ct_club['total_hands']
             club['active_players'] = ct_club['active_players']
+    # Sort all player lists in each club's hierarchy by PnL:
+    # positives first (biggest win), negatives next (biggest loss first), zeros last.
+    def _pnl_key(m):
+        v = m.get('pnl_total', 0) or 0
+        if v > 0: return (0, -v)
+        if v < 0: return (1, v)
+        return (2, 0)
+    for club in clubs:
+        for sa in (club.get('super_agents') or {}).values():
+            if sa.get('direct_members'):
+                sa['direct_members'].sort(key=_pnl_key)
+            for ag in (sa.get('agents') or {}).values():
+                if ag.get('members'):
+                    ag['members'].sort(key=_pnl_key)
+        if club.get('no_sa_members'):
+            club['no_sa_members'].sort(key=_pnl_key)
+
     return render_template('admin/clubs.html', clubs=clubs, grand=grand,
                            total_hands=ct.get('total_hands', 0),
                            total_players=ct.get('total_players', 0),
