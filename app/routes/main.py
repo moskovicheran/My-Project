@@ -281,7 +281,7 @@ def dashboard():
     # Admin viewing agent dashboard via ?view_as or agent's own dashboard
     view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
     if (current_user.role == 'agent' and current_user.player_id) or view_as_id:
-        from app.union_data import get_super_agent_tables, get_members_hierarchy
+        from app.union_data import get_super_agent_tables, get_members_hierarchy, get_child_sa_entries
         from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload, MoneyTransfer, User
         from sqlalchemy import func as sqlfunc
         from datetime import datetime as dt
@@ -339,15 +339,15 @@ def dashboard():
         known_ids.discard('')
         known_ids.discard('-')
 
-        # Get SA structure from Excel (for hierarchy display)
+        # Get SA structure from Excel (for hierarchy display of THIS agent)
         sa_tables = get_super_agent_tables()
         my_sas = []
         for kid in known_ids:
             my_sas.extend([sa for sa in sa_tables if sa['sa_id'] == kid])
-        child_sa_ids = []
-        for kid in known_ids:
-            child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
-        # Get managed club names to exclude child SAs that belong to managed clubs
+
+        # Managed club names — used both to skip overlapping child SAs and
+        # to exclude managed-club rows from the hier-tree aggregations
+        # below (avoids double-counting overlap players).
         managed_club_names = set()
         rake_cfgs_early = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
         if rake_cfgs_early:
@@ -356,64 +356,13 @@ def dashboard():
                 for c in clubs_data_early:
                     if c['club_id'] == cfg.managed_club_id:
                         managed_club_names.add(c['name'])
-        # List form for use in .notin_() filters — ensures hier-tree aggregations
-        # exclude rows where the player is actually playing in one of our
-        # managed clubs (those rows belong to the clubs bucket, not personal).
-        # Without this, an overlap player's managed-club activity would be
-        # counted in both personal and clubs → double-count / leakage.
         managed_club_names_list = list(managed_club_names)
-        child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids
-                     and sa.get('club', '') not in managed_club_names]
-        # Deduplicate child_sas by sa_id (same SA may appear in multiple clubs)
-        seen_sa_ids = set()
-        deduped = []
-        for cs in child_sas:
-            if cs['sa_id'] not in seen_sa_ids:
-                seen_sa_ids.add(cs['sa_id'])
-                deduped.append(cs)
-            else:
-                # Merge members into existing entry
-                existing = next(x for x in deduped if x['sa_id'] == cs['sa_id'])
-                for m in cs.get('direct', []):
-                    existing['direct'].append(m)
-                for ag_id, ag in cs.get('agents', {}).items():
-                    if ag_id in existing['agents']:
-                        existing['agents'][ag_id]['members'].extend(ag.get('members', []))
-                    else:
-                        existing['agents'][ag_id] = ag
-                existing['club'] += ', ' + cs.get('club', '')
-        child_sas = deduped
 
-        # Backfill child SAs that are linked via SAHierarchy but don't have a
-        # Super-Agent sheet in the Excel (DB-only assignments made through the
-        # admin control panel). Without this they silently vanish from the
-        # dashboard's SA list — the subsequent enrichment loops only operate
-        # on entries already in child_sas.
-        existing_child_sa_ids = {cs.get('sa_id') for cs in child_sas}
-        missing_csa_ids = [cid for cid in child_sa_ids
-                           if cid and cid not in existing_child_sa_ids]
-        if missing_csa_ids:
-            _nick_rows = DailyPlayerStats.query.with_entities(
-                DailyPlayerStats.player_id,
-                sqlfunc.max(DailyPlayerStats.nickname),
-                sqlfunc.max(DailyPlayerStats.club),
-            ).filter(DailyPlayerStats.player_id.in_(missing_csa_ids)
-                     ).group_by(DailyPlayerStats.player_id).all()
-            _nick_map = {pid: (nick, club) for pid, nick, club in _nick_rows}
-            for cid in missing_csa_ids:
-                nick, club = _nick_map.get(cid, (cid, ''))
-                # Skip if this DB-only SA actually lives only in a managed
-                # club — those rows belong in the clubs bucket, not personal.
-                if club and club in managed_club_names:
-                    continue
-                child_sas.append({
-                    'sa_id': cid,
-                    'sa_nick': nick or cid,
-                    'club': club or '',
-                    'agents': {},
-                    'direct': [],
-                    'total_pnl': 0, 'total_rake': 0, 'total_hands': 0,
-                })
+        # Child SAs — DB-first (SAHierarchy), Excel-enriched. The helper
+        # handles dedup + DB-only backfill so this dashboard can't silently
+        # drop an SA assigned only via the admin control panel.
+        child_sas = get_child_sa_entries(list(known_ids), managed_club_names)
+        child_sa_ids = [cs['sa_id'] for cs in child_sas]
 
         all_sa_ids = list(known_ids) + child_sa_ids
 

@@ -590,6 +590,116 @@ def get_super_agent_tables():
     return [sa_map[k] for k in order]
 
 
+def get_child_sa_entries(parent_sa_ids, managed_club_names=None):
+    """Resolve the list of child Super Agents under one or more parent SAs,
+    DB-first with Excel enrichment.
+
+    This is the canonical way to enumerate child SAs for dashboards,
+    reports, and audits. It guarantees DB-only children (e.g. added via
+    the admin control panel without appearing in the Excel workbook yet)
+    are never dropped — preventing the recurring "SA assigned in control
+    panel but invisible in the dashboard" bug class.
+
+    Each returned entry has the same shape used by the agent-dashboard
+    template:
+        sa_id, sa_nick, club, agents, direct, total_pnl, total_rake,
+        total_hands, _source ('excel' | 'db_only')
+
+    Parameters
+    ----------
+    parent_sa_ids : iterable of str
+        Player ids of the parent SA(s). The function queries SAHierarchy
+        for each and collects every child_sa_id.
+    managed_club_names : iterable of str, optional
+        Club names that belong to the parent's managed-club bucket. Any
+        Excel entry whose only club matches these is skipped so personal
+        (SA-hierarchy) and clubs buckets never overlap.
+
+    Returns
+    -------
+    list of dicts, deduplicated by sa_id. Excel entries with the same
+    sa_id in multiple clubs are merged — their `agents` dicts combined
+    and their `club` strings joined with ", ".
+    """
+    from app.models import SAHierarchy, DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+
+    managed_set = set(managed_club_names or [])
+
+    # DB = source of truth for "which SAs are my children"
+    child_ids = []
+    seen_ids = set()
+    for pid in parent_sa_ids:
+        if not pid:
+            continue
+        for h in SAHierarchy.query.filter_by(parent_sa_id=pid).all():
+            cid = h.child_sa_id
+            if cid and cid not in seen_ids:
+                seen_ids.add(cid)
+                child_ids.append(cid)
+
+    if not child_ids:
+        return []
+
+    # Excel = optional enrichment. Only call it when there are children
+    # to resolve (keeps cheap paths cheap).
+    excel_by_sa = {}
+    for sa in get_super_agent_tables():
+        if sa.get('sa_id') in seen_ids and sa.get('club', '') not in managed_set:
+            excel_by_sa.setdefault(sa['sa_id'], []).append(sa)
+
+    # Nickname/club fallback for DB-only children not represented in Excel
+    missing_ids = [cid for cid in child_ids if cid not in excel_by_sa]
+    fallback = {}
+    if missing_ids:
+        rows = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id,
+            sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.max(DailyPlayerStats.club),
+        ).filter(DailyPlayerStats.player_id.in_(missing_ids)
+                 ).group_by(DailyPlayerStats.player_id).all()
+        fallback = {pid: (nick, club) for pid, nick, club in rows}
+
+    result = []
+    for cid in child_ids:
+        entries = excel_by_sa.get(cid)
+        if entries:
+            # Merge multiple Excel sheets for the same SA (different clubs)
+            merged = dict(entries[0])
+            merged.setdefault('agents', {})
+            merged.setdefault('direct', [])
+            merged['_source'] = 'excel'
+            for extra in entries[1:]:
+                for m in extra.get('direct', []) or []:
+                    merged['direct'].append(m)
+                for ag_id, ag in (extra.get('agents') or {}).items():
+                    if ag_id in merged['agents']:
+                        merged['agents'][ag_id]['members'].extend(
+                            ag.get('members', []) or [])
+                    else:
+                        merged['agents'][ag_id] = ag
+                if extra.get('club'):
+                    merged['club'] = (merged.get('club', '') + ', '
+                                      + extra['club']).strip(', ')
+            result.append(merged)
+        else:
+            nick, club = fallback.get(cid, (cid, ''))
+            # Skip if this DB-only SA's only activity is in a managed
+            # club — keeps the personal / clubs buckets disjoint.
+            if club and club in managed_set:
+                continue
+            result.append({
+                'sa_id': cid,
+                'sa_nick': nick or cid,
+                'club': club or '',
+                'agents': {},
+                'direct': [],
+                'total_pnl': 0, 'total_rake': 0, 'total_hands': 0,
+                '_source': 'db_only',
+            })
+    return result
+
+
 def get_player_detail(player_id):
     """Returns all club entries + ring game sessions for a given player_id."""
     sheets = _read_sheets()
