@@ -684,7 +684,10 @@ def dashboard():
                             'hands': int(sa_own[3] or 0),
                         })
 
-        # Override ALL child_sas data with cumulative DB data (after missing players added)
+        # Override ALL child_sas data with cumulative DB data (after missing players added).
+        # Attribution uses CURRENT-assignment scope: only players whose latest
+        # upload row points at this child SA are counted here, and then we
+        # sum ALL of each player's rows (full history follows them).
         from app.union_data import get_cumulative_stats
         all_child_player_ids = set()
         for cs in child_sas:
@@ -694,18 +697,27 @@ def dashboard():
                 for m in ag.get('members', []):
                     all_child_player_ids.add(m['player_id'])
         for cs in child_sas:
-            # Get cumulative stats filtered by THIS SA only (not all SAs a player belongs to)
             cs_sa = cs.get('sa_id')
+            # Current-assignment scope: players whose LATEST sa_id/agent_id
+            # is this child SA. Excludes the child SA's own play.
+            cs_current_pids = get_players_with_current_scope(
+                [cs_sa], M=SM, exclude_self=cs_sa) if cs_sa else set()
+            # Union with Excel-discovered / previously-known pids so nothing
+            # silently vanishes, but drop anyone whose current SA is no
+            # longer this one (they've been moved elsewhere).
             cs_player_ids = set()
             for m in cs.get('direct', []):
                 cs_player_ids.add(m['player_id'])
             for ag in cs.get('agents', {}).values():
                 for m in ag.get('members', []):
                     cs_player_ids.add(m['player_id'])
-            # Query cumulative filtered by sa_id
+            cs_player_ids = (cs_player_ids | cs_current_pids) & (
+                cs_current_pids if cs_current_pids else cs_player_ids)
+            # Sum ALL rows per player (no per-row sa_id restriction).
             cumul_cs = {}
             if cs_player_ids and cs_sa:
-                _cumul_filters = [or_(SM.sa_id == cs_sa, SM.player_id == cs_sa), SM.player_id.in_(list(cs_player_ids)), SM.role != 'Name Entry']
+                _cumul_filters = [SM.player_id.in_(list(cs_player_ids)),
+                                  SM.role != 'Name Entry']
                 if managed_club_names_list:
                     _cumul_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
@@ -723,12 +735,37 @@ def dashboard():
                                      'rake': round(float(rake or 0), 2),
                                      'hands': int(hands or 0)}
 
-            # When a date filter is active, players without data in the filtered
-            # range are dropped from the display — they didn't play in that window,
-            # so they shouldn't appear under the SA at all.
+            # Ensure any player in current scope but not yet in cs['direct']
+            # or cs['agents'] is added as a direct member so they appear in
+            # the display and in the totals.
+            _displayed_pids = set(m['player_id'] for m in cs.get('direct', []))
+            for ag in cs.get('agents', {}).values():
+                for m in ag.get('members', []):
+                    _displayed_pids.add(m['player_id'])
+            _missing_from_display = cs_player_ids - _displayed_pids
+            if _missing_from_display:
+                _nicks_map = dict(SM.query.with_entities(
+                    SM.player_id, sqlfunc.max(SM.nickname)
+                ).filter(SM.player_id.in_(list(_missing_from_display))
+                ).group_by(SM.player_id).all())
+                for _mpid in _missing_from_display:
+                    cs.setdefault('direct', []).append({
+                        'player_id': _mpid,
+                        'nickname': _nicks_map.get(_mpid, _mpid),
+                        'role': 'Player',
+                        'pnl': 0, 'rake': 0, 'hands': 0,
+                    })
+
+            # Drop players whose current SA is no longer this child SA from
+            # cs['direct'] and cs['agents'] (they've been moved elsewhere).
+            # Then fill actual numbers from cumul_cs. When a date filter is
+            # active, players without data in the filtered range are dropped
+            # from the display.
             cs_rake = cs_pnl = cs_hands = 0
             direct_kept = []
             for m in cs.get('direct', []):
+                if cs_current_pids and m['player_id'] not in cs_player_ids:
+                    continue  # moved to another SA
                 c = cumul_cs.get(m['player_id'])
                 if c:
                     m['pnl'] = c['pnl']
