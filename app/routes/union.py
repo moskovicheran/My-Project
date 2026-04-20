@@ -289,6 +289,77 @@ def players():
         grand_pnl += pnl
         grand_rake += c['rake']
 
+    # Also include SAs/Agents referenced in DB rows but missing from the
+    # Excel hierarchy (e.g. Redflag 3106-0170 — appears only as sa_id of
+    # other players, no own row in Union Member Statistics). Aggregate their
+    # activity via their sa_id/agent_id hierarchy so the search can find
+    # them. Rendered with role="Super Agent"/"Agent" so they're clearly
+    # distinguishable from regular players.
+    from sqlalchemy import or_ as _or
+    ref_sa_ids = {r[0] for r in DailyPlayerStats.query.with_entities(
+        sqlfunc.distinct(DailyPlayerStats.sa_id)
+    ).filter(DailyPlayerStats.sa_id.isnot(None),
+             DailyPlayerStats.sa_id != '',
+             DailyPlayerStats.sa_id != '-').all() if r[0]}
+    ref_ag_ids = {r[0] for r in DailyPlayerStats.query.with_entities(
+        sqlfunc.distinct(DailyPlayerStats.agent_id)
+    ).filter(DailyPlayerStats.agent_id.isnot(None),
+             DailyPlayerStats.agent_id != '',
+             DailyPlayerStats.agent_id != '-').all() if r[0]}
+    referenced_ids = ref_sa_ids | ref_ag_ids
+    # Skip those already on the page (Excel or player-role path)
+    seen = set(excel_pids)
+    for club in clubs:
+        for sa in club.get('super_agents', {}).values():
+            seen.add(sa.get('id'))
+            for ag in sa.get('agents', {}).values():
+                seen.add(ag.get('id'))
+        for m in club.get('no_sa_members', []):
+            seen.add(m.get('player_id'))
+    missing = [pid for pid in referenced_ids if pid not in seen]
+
+    for pid in missing:
+        # Aggregate activity where this pid acts as SA or Agent
+        agg = DailyPlayerStats.query.with_entities(
+            sqlfunc.max(DailyPlayerStats.club),
+            sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(
+            _or(DailyPlayerStats.sa_id == pid, DailyPlayerStats.agent_id == pid),
+            DailyPlayerStats.role != 'Name Entry',
+        ).first()
+        if not agg:
+            continue
+        club_name, rake_sum, pnl_sum, hands_sum = agg
+        rake_sum = round(float(rake_sum or 0), 2)
+        pnl_sum = round(float(pnl_sum or 0), 2)
+        hands_sum = int(hands_sum or 0)
+        if rake_sum == 0 and pnl_sum == 0 and hands_sum == 0:
+            continue
+        # Nickname from own row if exists (e.g. Name Entry with nickname)
+        own = DailyPlayerStats.query.with_entities(
+            sqlfunc.max(DailyPlayerStats.nickname)
+        ).filter(DailyPlayerStats.player_id == pid).scalar()
+        role = 'Super Agent' if pid in ref_sa_ids else 'Agent'
+        member = {
+            'player_id': pid, 'nickname': own or pid,
+            'role': role, 'country': '-',
+            'sa_id': '-', 'sa_nick': '-',
+            'agent_id': '-', 'agent_nick': '-',
+            'pnl_total': pnl_sum, 'rake_total': rake_sum, 'hands_total': hands_sum,
+        }
+        if club_name and club_name in club_map:
+            club_map[club_name]['no_sa_members'].append(member)
+        elif club_name:
+            new_club = {'name': club_name, 'club_id': '', 'super_agents': {},
+                        'no_sa_members': [member], 'total_pnl': 0, 'total_rake': 0}
+            clubs.append(new_club)
+            club_map[club_name] = new_club
+        # Note: NOT added to club/grand totals — the activity is already
+        # reflected in the player rows aggregated above. This is purely a
+        # search/visibility entry.
+
     grand = {'pnl': round(grand_pnl, 2), 'rake': round(grand_rake, 2)}
 
     # Get available game types and per-player game types for filters
