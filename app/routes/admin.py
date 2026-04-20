@@ -322,10 +322,44 @@ def agent_view(sa_id):
                 ag['total_rake'] = round(ag['total_rake'] + own_rake, 2)
                 ag['total_hands'] += own_hands
 
-    # NOTE: the SA's own personal play is intentionally NOT added to
-    # direct_players. It is "Member Detail" in ClubGG terms (their hands
-    # as a player), not downline activity. Matches get_agent_totals()
-    # which excludes M.player_id == sa_id from the SA scope.
+    # Add the SA's own personal play to direct_players so the admin
+    # agent-view list matches the card total (which includes their own
+    # rows now that get_agent_totals no longer excludes player_id == sa_id).
+    # Apply the same club-level carve-out as get_agent_totals.
+    _self_existing_pids = set(m['player_id'] for m in direct_players)
+    _self_existing_pids |= {m['player_id'] for ag in agents_map.values() for m in ag['members']}
+    if sa_id not in _self_existing_pids:
+        _self_other_clubs = set()
+        _clubs_ov, _ = get_members_hierarchy()
+        _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
+        for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+            if _c.sa_id == sa_id:
+                continue
+            _self_other_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
+        for _, _cid in OVERVIEW_CLUBS:
+            _nm = _c2n_ov.get(_cid)
+            if not _nm and DailyPlayerStats.query.filter(DailyPlayerStats.club == _cid).first():
+                _nm = _cid
+            if _nm:
+                _self_other_clubs.add(_nm)
+        _self_filters = [DailyPlayerStats.player_id == sa_id, DailyPlayerStats.role != 'Name Entry']
+        if _self_other_clubs:
+            _self_filters.append(DailyPlayerStats.club.notin_(list(_self_other_clubs)))
+        _self_row = DailyPlayerStats.query.with_entities(
+            sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.sum(DailyPlayerStats.hands),
+        ).filter(*_self_filters).first()
+        if _self_row and (float(_self_row[1] or 0) != 0 or float(_self_row[2] or 0) != 0):
+            _own_pnl = round(float(_self_row[1] or 0) + xfer_adj.get(sa_id, 0), 2)
+            _own_rake = round(float(_self_row[2] or 0), 2)
+            _own_hands = int(_self_row[3] or 0)
+            direct_players.insert(0, {
+                'player_id': sa_id, 'nickname': _self_row[0] or sa_id,
+                'role': 'Super Agent', 'pnl': _own_pnl, 'rake': _own_rake,
+                'hands': _own_hands,
+            })
 
     # Agent nicknames from Excel + DB
     all_nicks_db = dict(DailyPlayerStats.query.with_entities(
