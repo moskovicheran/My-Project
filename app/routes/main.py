@@ -91,14 +91,19 @@ def dashboard():
         from app.routes.admin import build_overview_context
         return render_template('main/admin_dashboard.html', **build_overview_context())
 
-    # Admin may view any club's dashboard via ?view_as=<club_id> (numeric id).
-    # Distinguished from agent view_as by format: clubs have no '-' in id.
+    # Admin may view any club's dashboard via ?view_as=<club_id>.
+    # Ambiguity: some club IDs contain a '-' (e.g. 5481-5364), which used to
+    # collide with the agent view_as format. Resolve by checking User table:
+    # if view_as matches a known user's player_id → agent view, otherwise → club.
     _admin_view_as_club = None
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and request.args.get('view_as')):
         _va = request.args.get('view_as')
-        if _va and '-' not in _va:
-            _admin_view_as_club = _va
+        if _va:
+            from app.models import User as _User
+            _matches_user = _User.query.filter_by(player_id=_va).first() is not None
+            if not _matches_user:
+                _admin_view_as_club = _va
 
     if (hasattr(current_user, 'role') and current_user.role == 'club' and current_user.player_id) \
             or _admin_view_as_club:
@@ -266,11 +271,8 @@ def dashboard():
 
         if view_as_id:
             agent_user = User.query.filter_by(player_id=view_as_id).first()
-            if not agent_user:
-                flash('סוכן לא נמצא.', 'danger')
-                return redirect(url_for('admin.overview'))
-            sa_id = agent_user.player_id
-            view_as_username = agent_user.username
+            sa_id = view_as_id
+            view_as_username = agent_user.username if agent_user else view_as_id
         else:
             sa_id = current_user.player_id
             view_as_username = None
@@ -3314,9 +3316,10 @@ def report_api():
                 from app.union_data import get_members_hierarchy
                 _clubs_data, _ = get_members_hierarchy()
                 _cid_to_name = {c['club_id']: c['name'] for c in _clubs_data}
-                agent_club_names = [_cid_to_name[c.managed_club_id]
-                                    for c in _rake_cfgs
-                                    if _cid_to_name.get(c.managed_club_id)]
+                # Fall back to raw managed_club_id as literal club name when
+                # not registered in clubs_data (e.g. "Spc o").
+                agent_club_names = [_cid_to_name.get(c.managed_club_id) or c.managed_club_id
+                                    for c in _rake_cfgs]
 
     def _hierarchy_row_filter(M):
         """Row-level filter: keep only rows whose sa_id/agent_id is in our

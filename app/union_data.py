@@ -807,8 +807,12 @@ def get_agent_scope(player_id):
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
-        managed_club_names = [cid_to_name[c.managed_club_id]
-                              for c in rake_cfgs if cid_to_name.get(c.managed_club_id)]
+        # Resolve managed_club_id → club name. If the id isn't registered in
+        # clubs_data (e.g. "Spc o" which has no club_id in the Excel hierarchy),
+        # fall back to using the managed_club_id value itself as a literal
+        # club name — matches rows where DailyPlayerStats.club == that value.
+        managed_club_names = [cid_to_name.get(c.managed_club_id) or c.managed_club_id
+                              for c in rake_cfgs]
     return all_sa_ids, managed_club_names
 
 
@@ -865,8 +869,10 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
-        managed_club_names = [cid_to_name[c.managed_club_id]
-                              for c in rake_cfgs if cid_to_name.get(c.managed_club_id)]
+        # Fall back to raw managed_club_id as club name when it's not
+        # a registered club_id (e.g. "Spc o" with no Excel entry).
+        managed_club_names = [cid_to_name.get(c.managed_club_id) or c.managed_club_id
+                              for c in rake_cfgs]
 
     # Manual overrides from PlayerAssignment (/admin/lost-players) — assign a
     # player explicitly to an SA/agent regardless of their raw Excel values.
