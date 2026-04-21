@@ -317,8 +317,12 @@ def health():
                 d = unknown_clubs[r.club]
                 d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
                 d['players'].add(r.player_id)
-            # Track as "unknown SA" if the row's sa_id isn't in any card's hierarchy.
-            if r.sa_id and r.sa_id not in ('', '-') and r.sa_id not in all_carded_sa_ids:
+            # Track as "unknown SA" only for activity in the clubs we actively
+            # manage (SPC T / SPC C). External SAs playing in clubs we don't
+            # own are out of scope and shouldn't clutter the alert.
+            if (r.sa_id and r.sa_id not in ('', '-')
+                    and r.sa_id not in all_carded_sa_ids
+                    and r.club in orphan_clubs):
                 d = unknown_sas[r.sa_id]
                 d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
                 d['players'].add(r.player_id)
