@@ -2520,9 +2520,10 @@ def export_agent_full_box():
         for ag_name, ag_rows in ag_order:
             ag_rows.sort(key=lambda r: r['Rake'], reverse=True)
             rows.extend(ag_rows)
-            # Agent subtotal (skipped when agent group is empty-name —
-            # those rows go straight into the SA subtotal below)
-            if ag_name:
+            # Agent subtotal — skipped when the group has no name, or when
+            # it's a single row (the subtotal would just duplicate the row
+            # and make the sheet noisy).
+            if ag_name and len(ag_rows) > 1:
                 rows.append({
                     'שחקן': f'סה"כ {ag_name}', 'ID': '', 'קלאב': '',
                     'Super Agent': sa_name, 'סוכן': ag_name,
@@ -2663,7 +2664,7 @@ def export_agent_club(club_id):
             for ag_name, ag_rows in ag_order:
                 ag_rows.sort(key=lambda r: r['Rake'], reverse=True)
                 grouped_rows.extend(ag_rows)
-                if ag_name:
+                if ag_name and len(ag_rows) > 1:
                     grouped_rows.append({
                         'שחקן': f'סה"כ {ag_name}', 'ID': '',
                         'Super Agent': sa_name, 'סוכן': ag_name,
