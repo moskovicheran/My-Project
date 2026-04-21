@@ -356,10 +356,11 @@ def dashboard():
         rake_cfgs_early = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
         if rake_cfgs_early:
             clubs_data_early, _ = get_members_hierarchy()
+            _cid2name_early = {c['club_id']: c['name'] for c in clubs_data_early}
             for cfg in rake_cfgs_early:
-                for c in clubs_data_early:
-                    if c['club_id'] == cfg.managed_club_id:
-                        managed_club_names.add(c['name'])
+                # Fallback: if managed_club_id isn't a registered Excel club_id,
+                # treat it as a literal club name (e.g. 'SPC Un', 'Spc o').
+                managed_club_names.add(_cid2name_early.get(cfg.managed_club_id) or cfg.managed_club_id)
         managed_club_names_list = list(managed_club_names)
 
         # Child SAs — DB-first (SAHierarchy), Excel-enriched. The helper
