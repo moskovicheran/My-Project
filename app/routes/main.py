@@ -2014,7 +2014,62 @@ def export_agent_account():
                 'רייק מועדונים (נטו)': total_club_rake, 'הוצאות משותפות': total_expenses,
                 'P&L': personal_pnl}]
 
+    # Per-SA summary — one row per child Super Agent under this agent.
+    # Uses the same scope as personal rake (excludes managed-club rows so
+    # they aren't double-counted with the 'מועדונים' sheet).
+    nick_map = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).group_by(DailyPlayerStats.player_id).all())
+    sa_summary_rows = []
+    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
+    for csa_id in child_sa_ids:
+        csa_filters = [SM.sa_id == csa_id, SM.role != 'Name Entry']
+        if _mc_names:
+            csa_filters.append(SM.club.notin_(_mc_names))
+        csa = SM.query.with_entities(
+            sqlfunc.sum(SM.rake), sqlfunc.sum(SM.pnl),
+            sqlfunc.count(sqlfunc.distinct(SM.player_id)),
+        ).filter(*csa_filters, *scope).first()
+        rake = round(float(csa[0] or 0), 2)
+        pnl = round(float(csa[1] or 0), 2)
+        if rake or pnl or (csa[2] or 0):
+            sa_summary_rows.append({
+                'Super Agent': nick_map.get(csa_id, csa_id),
+                'ID': csa_id,
+                'שחקנים': int(csa[2] or 0),
+                'Rake': rake, 'P&L': pnl,
+            })
+    sa_summary_rows.sort(key=lambda r: r['Rake'], reverse=True)
+
+    # Per-Agent summary — regular agents (sa_id in scope, agent_id present).
+    agent_filters = [
+        SM.sa_id.in_(_scope_sa_ids), SM.role != 'Name Entry',
+        SM.agent_id != '', SM.agent_id != '-', SM.agent_id.isnot(None),
+    ]
+    if _mc_names:
+        agent_filters.append(SM.club.notin_(_mc_names))
+    agent_stats = SM.query.with_entities(
+        SM.agent_id,
+        sqlfunc.sum(SM.rake), sqlfunc.sum(SM.pnl),
+        sqlfunc.count(sqlfunc.distinct(SM.player_id)),
+    ).filter(*agent_filters, *scope).group_by(SM.agent_id).all()
+    agent_summary_rows = []
+    for ag in agent_stats:
+        rake = round(float(ag[1] or 0), 2)
+        pnl = round(float(ag[2] or 0), 2)
+        agent_summary_rows.append({
+            'סוכן': nick_map.get(ag[0], ag[0]),
+            'ID': ag[0],
+            'שחקנים': int(ag[3] or 0),
+            'Rake': rake, 'P&L': pnl,
+        })
+    agent_summary_rows.sort(key=lambda r: r['Rake'], reverse=True)
+
     sheets = {'סיכום חשבון': summary}
+    if sa_summary_rows:
+        sheets['סיכום Super Agents'] = sa_summary_rows
+    if agent_summary_rows:
+        sheets['סיכום סוכנים'] = agent_summary_rows
     if club_rows:
         sheets['מועדונים'] = club_rows
     if expense_rows:
