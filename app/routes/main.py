@@ -416,13 +416,34 @@ def dashboard():
             all_sa_ids, M=SM, exclude_self=sa_id)
         my_player_id_list = list(current_scope_pids | override_player_ids)
 
-        # Step 2: Sum ALL rows of those players — no per-row sa_id/agent_id
-        # restriction any more. managed_clubs rows are still excluded from
-        # the hier bucket (clubs bucket handles them).
+        # Step 2: Sum rows of those players — excluding rows whose club is
+        # owned by ANOTHER card on the admin overview. A row in another SA's
+        # managed_club, or in an admin-tracked club (OVERVIEW_CLUBS), belongs
+        # to that card's totals, not to this SA. Without this carve-out,
+        # eliasaf111's POKER GARDEN play (Riko's managed club) would show
+        # up on niroha's / Dolar 10's dashboard too.
         base_agent_filters = [SM.player_id.in_(my_player_id_list),
                               SM.role != 'Name Entry']
-        if managed_club_names_list:
-            base_agent_filters.append(SM.club.notin_(managed_club_names_list))
+        # Clubs shown in their own cards (OTHER SAs' managed + OVERVIEW_CLUBS).
+        _other_owned_clubs = set(managed_club_names_list)  # start with own (already excluded)
+        _clubs_data_co, _ = get_members_hierarchy()
+        _c2n_co = {c['club_id']: c['name'] for c in _clubs_data_co}
+        for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+            if _c.sa_id == sa_id:
+                continue
+            _other_owned_clubs.add(_c2n_co.get(_c.managed_club_id) or _c.managed_club_id)
+        try:
+            from app.routes.admin import OVERVIEW_CLUBS as _OV_CO
+            for _, _cid in _OV_CO:
+                _nm = _c2n_co.get(_cid)
+                if not _nm and SM.query.filter(SM.club == _cid).first():
+                    _nm = _cid
+                if _nm:
+                    _other_owned_clubs.add(_nm)
+        except Exception:
+            pass
+        if _other_owned_clubs:
+            base_agent_filters.append(SM.club.notin_(list(_other_owned_clubs)))
         if use_archive and archive_period_id:
             base_agent_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
         elif upload_ids_filter:
