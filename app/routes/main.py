@@ -2040,6 +2040,13 @@ def export_agent_account():
                 'Rake': rake, 'P&L': pnl,
             })
     sa_summary_rows.sort(key=lambda r: r['Rake'], reverse=True)
+    if sa_summary_rows:
+        sa_summary_rows.append({
+            'Super Agent': 'סה"כ', 'ID': '',
+            'שחקנים': sum(r['שחקנים'] for r in sa_summary_rows),
+            'Rake': round(sum(r['Rake'] for r in sa_summary_rows), 2),
+            'P&L': round(sum(r['P&L'] for r in sa_summary_rows), 2),
+        })
 
     # Per-Agent summary — regular agents (sa_id in scope, agent_id present).
     agent_filters = [
@@ -2064,6 +2071,29 @@ def export_agent_account():
             'Rake': rake, 'P&L': pnl,
         })
     agent_summary_rows.sort(key=lambda r: r['Rake'], reverse=True)
+    if agent_summary_rows:
+        agent_summary_rows.append({
+            'סוכן': 'סה"כ', 'ID': '',
+            'שחקנים': sum(r['שחקנים'] for r in agent_summary_rows),
+            'Rake': round(sum(r['Rake'] for r in agent_summary_rows), 2),
+            'P&L': round(sum(r['P&L'] for r in agent_summary_rows), 2),
+        })
+
+    # Totals for clubs & expenses sheets
+    if club_rows:
+        club_rows.append({
+            'מועדון': 'סה"כ',
+            'Rake': round(sum(r['Rake'] for r in club_rows), 2),
+            'P&L': round(sum(r['P&L'] for r in club_rows), 2),
+            'מועדון מקבל %': '',
+            'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
+        })
+    if expense_rows:
+        expense_rows.append({
+            'הוצאה': 'סה"כ',
+            'סכום': round(sum(r['סכום'] for r in expense_rows), 2),
+            'תאריך': '',
+        })
 
     sheets = {'סיכום חשבון': summary}
     if sa_summary_rows:
