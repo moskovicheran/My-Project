@@ -345,7 +345,7 @@ function toggleExpenseDetails() {
                                         </td>
                                         <td class="player-actions">
                                             <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
-                                            <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                                            <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None, club=managed_club.name) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -370,7 +370,7 @@ function toggleExpenseDetails() {
                                     </td>
                                     <td class="player-actions">
                                         <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
-                                        <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                                        <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None, club=managed_club.name) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -414,7 +414,7 @@ function toggleExpenseDetails() {
                                 </td>
                                 <td class="player-actions">
                                     <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
-                                    <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
+                                    <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None, club=managed_club.name) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                                 </td>
                             </tr>
                             {% endfor %}

@@ -1832,6 +1832,15 @@ def export_player(player_id):
         upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
+    # Optional ?club=<name> — when a player row is clicked from a managed-club
+    # section (e.g. SPC Un = 'תוספת') we want the XLS to show only that club's
+    # rake/pnl, not the combined total across every club the same player_id
+    # appears in. Sessions are joined to the upload_ids where (player_id, club)
+    # exists; on days the player was in >1 club the sessions can't be cleanly
+    # split so they'll appear under each club's XLS for those days (the
+    # summary sheet stays accurate per club).
+    club_filter = request.args.get('club', '').strip()
+
     if use_archive and archive_period_id:
         StatsModel = ArchivedPlayerStats
         SessionModel = ArchivedPlayerSession
@@ -1841,6 +1850,14 @@ def export_player(player_id):
         sess_filters = [ArchivedPlayerSession.player_id == player_id,
                         ArchivedPlayerSession.period_id == archive_period_id,
                         ArchivedPlayerSession.upload_id.in_(archive_upload_ids)]
+        if club_filter:
+            stat_filters.append(ArchivedPlayerStats.club == club_filter)
+            club_upload_ids = [r[0] for r in ArchivedPlayerStats.query.with_entities(
+                ArchivedPlayerStats.upload_id
+            ).filter(ArchivedPlayerStats.player_id == player_id,
+                     ArchivedPlayerStats.club == club_filter,
+                     ArchivedPlayerStats.period_id == archive_period_id).distinct().all()]
+            sess_filters.append(ArchivedPlayerSession.upload_id.in_(club_upload_ids or [-1]))
     else:
         StatsModel = DailyPlayerStats
         SessionModel = PlayerSession
@@ -1853,6 +1870,13 @@ def export_player(player_id):
             # Dates requested but didn't resolve → return empty instead of silent all-time fallback
             stat_filters.append(DailyPlayerStats.upload_id == -1)
             sess_filters.append(PlayerSession.upload_id == -1)
+        if club_filter:
+            stat_filters.append(DailyPlayerStats.club == club_filter)
+            club_upload_ids = [r[0] for r in DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.upload_id
+            ).filter(DailyPlayerStats.player_id == player_id,
+                     DailyPlayerStats.club == club_filter).distinct().all()]
+            sess_filters.append(PlayerSession.upload_id.in_(club_upload_ids or [-1]))
 
     agg = StatsModel.query.with_entities(
         sqlfunc.sum(StatsModel.pnl), sqlfunc.sum(StatsModel.rake),
@@ -1873,7 +1897,9 @@ def export_player(player_id):
     }
 
     # Transfers aren't date-bound; apply them only when exporting the full cumulative view
-    if not selected_dates:
+    # Transfers are player-level (not club-level) — skip them when a club
+    # filter is active so a per-club XLS doesn't double-count transfers.
+    if not selected_dates and not club_filter:
         xfer_adj = get_transfer_adjustments([player_id])
         cs['pnl'] = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
 
@@ -1881,8 +1907,8 @@ def export_player(player_id):
     session_rows = [{'משחק': s.table_name, 'סוג': s.game_type,
                      'בליינדס': s.blinds or '', 'P&L': round(s.pnl, 2)} for s in sessions]
 
-    # Transfer rows — only in the all-time export
-    if not selected_dates:
+    # Transfer rows — only in the all-time export, and only when not filtering to a specific club
+    if not selected_dates and not club_filter:
         from app.models import MoneyTransfer
         transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
         transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
