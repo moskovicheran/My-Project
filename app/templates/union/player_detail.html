@@ -70,7 +70,6 @@
                 <th>קלאב</th>
                 <th>SA</th>
                 <th>Agent</th>
-                <th>Hands</th>
                 <th>Rake</th>
                 <th>רווח/הפסד</th>
             </tr>
@@ -81,7 +80,6 @@
                 <td><strong>{{ c.club }}</strong></td>
                 <td class="muted">{{ c.sa_nick if c.sa_nick != '-' else '' }}</td>
                 <td class="muted">{{ c.agent_nick if c.agent_nick != '-' else '' }}</td>
-                <td>{{ "{:,}".format(c.hands_total|int) }}</td>
                 <td class="amount income">{{ c.rake_total|comma }}</td>
                 <td class="amount {% if c.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                     {% if c.pnl_total > 0 %}+{% endif %}{{ c.pnl_total|comma }}
@@ -92,7 +90,6 @@
         <tfoot>
             <tr class="total-row">
                 <td colspan="3"><strong>סה"כ כל הקלאבים</strong></td>
-                <td><strong>{{ "{:,}".format(club_entries | sum(attribute='hands_total') | int) }}</strong></td>
                 <td class="amount income"><strong>{{ club_entries | sum(attribute='rake_total')|comma }}</strong></td>
                 <td class="amount {% if club_entries | sum(attribute='pnl_total') >= 0 %}income{% else %}expense{% endif %}">
                     <strong>{% if club_entries | sum(attribute='pnl_total') > 0 %}+{% endif %}{{ club_entries | sum(attribute='pnl_total')|comma }}</strong>
