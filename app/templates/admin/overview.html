@@ -53,7 +53,18 @@
     <span class="range-chip">{{ _sorted[0][8:] }}/{{ _sorted[0][5:7] }}{% if _sorted|length > 1 %} — {{ _sorted[-1][8:] }}/{{ _sorted[-1][5:7] }}{% endif %}</span>
     <a href="{{ url_for('admin.overview') }}" class="dp-reset">✕ הצג הכל</a>
     {% endif %}
+
+    <a href="{{ url_for('admin.health') }}" class="health-btn" title="בדיקה שכל הנתונים מסתדרים">
+        <span>✅</span><span>בדיקת תקינות</span>
+    </a>
 </div>
+
+<style>
+.health-btn { display:inline-flex; align-items:center; gap:0.35rem; padding:0.45rem 0.85rem; background:#e7f5ec; color:#1d7a3c; border:1px solid #bde0c9; border-radius:8px; font-weight:600; font-size:0.85rem; text-decoration:none; margin-right:auto; transition:background 0.15s; }
+.health-btn:hover { background:#d4ebd9; }
+body.dark .health-btn { background:#1e3a2a; color:#8fd4a2; border-color:#2a5440; }
+body.dark .health-btn:hover { background:#244a35; }
+</style>
 
 <script>
 /* ── Overview date picker ── */
