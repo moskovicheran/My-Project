@@ -240,6 +240,7 @@ def health():
     # Per-row attribution scan: orphans + double-counts
     cd, _ = get_members_hierarchy()
     cid_to_name = {c['club_id']: c['name'] for c in cd}
+    all_overrides = PlayerAssignment.query.all()
     sa_info = []
     for _, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
         child = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=pid).all()]
@@ -247,8 +248,16 @@ def health():
         cur = get_players_with_current_scope(all_ids, M=DailyPlayerStats) or set()
         rake_cfgs_h = SARakeConfig.query.filter_by(sa_id=pid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
         managed = set([cid_to_name.get(c.managed_club_id) or c.managed_club_id for c in rake_cfgs_h])
-        ov_pids = {ov.player_id for ov in PlayerAssignment.query.all()
-                    if (ov.assigned_sa_id in all_ids) or (ov.assigned_agent_id in all_ids)}
+        # Match get_agent_totals override logic: target_set = hierarchy SAs + known agent_ids under them.
+        known_agent_ids = {r[0] for r in DailyPlayerStats.query.with_entities(DailyPlayerStats.agent_id).filter(
+            DailyPlayerStats.sa_id.in_(all_ids),
+            DailyPlayerStats.agent_id.isnot(None),
+            DailyPlayerStats.agent_id != '',
+            DailyPlayerStats.agent_id != '-',
+        ).distinct().all() if r[0]}
+        override_target = set(all_ids) | known_agent_ids
+        ov_pids = {ov.player_id for ov in all_overrides
+                    if (ov.assigned_sa_id in override_target) or (ov.assigned_agent_id in override_target)}
         sa_info.append({'pid': pid, 'cur': cur, 'managed': managed, 'ov': ov_pids})
 
     # Build same other_managed/tracked exclusion as get_agent_totals

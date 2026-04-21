@@ -53,9 +53,6 @@
             &nbsp;&nbsp;
             <span class="{% if delta_pnl > 0 %}delta-pos{% elif delta_pnl < 0 %}delta-neg{% else %}delta-zero{% endif %}">PnL = {{ '{:+,.2f}'.format(delta_pnl) }}</span>
         </dd>
-
-        <dt>פער מוסבר (Freerolls + Overlay)</dt>
-        <dd class="muted">{{ '{:,.2f}'.format(expected_gap) }} (לא חלק מ-DELTA — נתון להתייחסות)</dd>
     </dl>
 </div>
 
@@ -128,6 +125,12 @@
             </tr>
         {% endfor %}
         </tbody>
+        <tfoot>
+            <tr style="background:#fff3cd; font-weight:700;">
+                <td colspan="6" style="text-align:right;">סה"כ Freerolls + Overlay (מסביר את ה-Bal ב-TOP BOX)</td>
+                <td><strong style="font-size:1.05rem;">{{ '{:+,.2f}'.format(expected_gap) }}</strong></td>
+            </tr>
+        </tfoot>
     </table>
     {% else %}
     <div class="muted">אין freerolls / overlay בנתונים הנוכחיים</div>
