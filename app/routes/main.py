@@ -2507,9 +2507,30 @@ def export_agent_full_box():
 
     rows = []
     for sa_name, sa_rows in sa_order:
-        sa_rows.sort(key=lambda r: r['Rake'], reverse=True)
-        rows.extend(sa_rows)
-        # SA subtotal — visually separates each group
+        # Within each SA, sub-group by Agent (סוכן). Named agents first by
+        # total rake desc; the "no-agent" bucket (direct-under-SA players)
+        # lands last.
+        ag_groups = {}  # agent_name -> [row dicts]
+        for r in sa_rows:
+            ag_groups.setdefault(r['סוכן'], []).append(r)
+        ag_order = sorted(
+            ag_groups.items(),
+            key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
+        )
+        for ag_name, ag_rows in ag_order:
+            ag_rows.sort(key=lambda r: r['Rake'], reverse=True)
+            rows.extend(ag_rows)
+            # Agent subtotal (skipped when agent group is empty-name —
+            # those rows go straight into the SA subtotal below)
+            if ag_name:
+                rows.append({
+                    'שחקן': f'סה"כ {ag_name}', 'ID': '', 'קלאב': '',
+                    'Super Agent': sa_name, 'סוכן': ag_name,
+                    'P&L': round(sum(r['P&L'] for r in ag_rows), 2),
+                    'Rake': round(sum(r['Rake'] for r in ag_rows), 2),
+                    'ידיים': sum(r['ידיים'] for r in ag_rows),
+                })
+        # SA subtotal — visually separates each SA block
         rows.append({
             'שחקן': f'סה"כ {sa_name}' if sa_name else 'סה"כ ללא Super Agent',
             'ID': '', 'קלאב': '', 'Super Agent': sa_name, 'סוכן': '',
@@ -2631,8 +2652,24 @@ def export_agent_club(club_id):
             key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
         )
         for sa_name, sa_rows in sa_order:
-            sa_rows.sort(key=lambda r: r['Rake'], reverse=True)
-            grouped_rows.extend(sa_rows)
+            # Sub-group by Agent within each SA.
+            ag_groups = {}
+            for r in sa_rows:
+                ag_groups.setdefault(r['סוכן'], []).append(r)
+            ag_order = sorted(
+                ag_groups.items(),
+                key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
+            )
+            for ag_name, ag_rows in ag_order:
+                ag_rows.sort(key=lambda r: r['Rake'], reverse=True)
+                grouped_rows.extend(ag_rows)
+                if ag_name:
+                    grouped_rows.append({
+                        'שחקן': f'סה"כ {ag_name}', 'ID': '',
+                        'Super Agent': sa_name, 'סוכן': ag_name,
+                        'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in ag_rows), 2),
+                        'Rake': round(sum(r['Rake'] for r in ag_rows), 2),
+                    })
             grouped_rows.append({
                 'שחקן': f'סה"כ {sa_name}' if sa_name else 'סה"כ ללא Super Agent',
                 'ID': '', 'Super Agent': sa_name, 'סוכן': '',
