@@ -11,7 +11,61 @@ INCOME_CATEGORIES = ['משכורת', 'פרילנס', 'השקעות', 'מתנה',
 
 # Agents whose dashboard should hide the "רייק אישי" total and the
 # percentage badge next to "הרייק שלי" — they only see their own earning.
+# Same set also controls Excel exports: Rake column is replaced with
+# "הרייק שלי (X%)" and net/percentage helper columns/rows are stripped.
 AGENTS_HIDE_PERSONAL_BREAKDOWN = {'9319-6677'}  # Shlomi (sarbuvx)
+
+
+def _hide_breakdown_pct(sa_id):
+    """Return the agent's own rakeback % when their Excel exports should
+    show only that earning (no total Rake, no 'נטו סוכן' footer rows).
+    Otherwise return None and callers leave the sheets untouched."""
+    if sa_id not in AGENTS_HIDE_PERSONAL_BREAKDOWN:
+        return None
+    from app.models import RakeConfig
+    rc = RakeConfig.query.filter(
+        RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+        RakeConfig.entity_id == sa_id).first()
+    return rc.rake_percent if rc else None
+
+
+def _apply_hide_breakdown(sheets, pct):
+    """Transform Excel sheets for agents who should only see their own
+    rakeback percentage.
+
+    - 'Rake' and 'רייק אישי' columns → 'הרייק שלי (X%)' with value * pct/100
+    - drops helper columns: 'נטו שלי', 'מועדון מקבל %', 'אחוז רייק %',
+      'רייק מועדונים (נטו)'
+    - drops footer rows whose first value starts with 'נטו סוכן'
+    """
+    if pct is None:
+        return sheets
+    new_col = f'הרייק שלי ({pct}%)'
+    factor = pct / 100.0
+    HIDE_COLS = {'נטו שלי', 'מועדון מקבל %', 'אחוז רייק %',
+                 'רייק מועדונים (נטו)'}
+    out = {}
+    for sheet_name, rows in sheets.items():
+        new_rows = []
+        for row in rows:
+            first_val = str(next(iter(row.values()), '') or '')
+            if first_val.startswith('נטו סוכן'):
+                continue
+            new_row = {}
+            for k, v in row.items():
+                if k in HIDE_COLS:
+                    continue
+                if k in ('Rake', 'רייק אישי'):
+                    if isinstance(v, (int, float)):
+                        new_row[new_col] = round(v * factor, 2)
+                    else:
+                        new_row[new_col] = v
+                else:
+                    new_row[k] = v
+            new_rows.append(new_row)
+        if new_rows:
+            out[sheet_name] = new_rows
+    return out
 
 
 def _resolve_date_uploads(selected_dates):
@@ -1968,6 +2022,7 @@ def export_agent_account():
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
+    sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{current_user.username}{suffix}_account.xlsx',
                        period_label=period_label)
 
@@ -2356,6 +2411,7 @@ def export_agent_players():
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
+    sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{current_user.username}{suffix}_players.xlsx',
                        period_label=period_label)
 
@@ -2475,7 +2531,8 @@ def export_agent_full_box():
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
-    return _make_excel({'קופסא מלאה': rows},
+    sheets = _apply_hide_breakdown({'קופסא מלאה': rows}, _hide_breakdown_pct(sa_id))
+    return _make_excel(sheets,
                        f'{current_user.username}{suffix}_full_box.xlsx',
                        period_label=period_label)
 
@@ -2600,6 +2657,8 @@ def export_agent_club(club_id):
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
+    if current_user.role == 'agent' and current_user.player_id:
+        sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(current_user.player_id))
     return _make_excel(sheets, f'{club_name}{suffix}_report.xlsx',
                        period_label=period_label)
 
@@ -2728,6 +2787,7 @@ def export_agent_period():
             sheets['משחקים'] = sess_rows
 
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else current_user.username
+    sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
 
 
