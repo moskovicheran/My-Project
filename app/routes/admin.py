@@ -284,7 +284,10 @@ def health():
         for sa in sa_info:
             in_cur = (r.player_id in sa['cur']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
             in_managed = r.club in sa['managed']
-            in_ov = r.player_id in sa['ov']
+            # Override applies the SAME carve-out as current_scope: a row in
+            # another card's managed or tracked club belongs to THAT card,
+            # not to us — mirrors get_agent_totals' override predicate.
+            in_ov = (r.player_id in sa['ov']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
             if in_cur or in_managed or in_ov:
                 cards_hit.append(sa['pid'])
         rk = float(r.rake or 0); pl = float(r.pnl or 0)
