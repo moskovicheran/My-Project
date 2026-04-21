@@ -523,6 +523,13 @@ def dashboard():
                     SM.player_id.notin_(list(all_my_player_ids)),
                     SM.role != 'Name Entry'
                 ]
+                # Exclude rows whose sa is under a child SA — those are
+                # rendered by the child_sas section below. Without this,
+                # an agent who also has rows under a child SA (e.g.
+                # Notorius1 under niroha02) gets counted BOTH here in
+                # the direct-agents card AND under the child SA's card.
+                if child_sa_ids:
+                    _miss_filters.append(SM.sa_id.notin_(child_sa_ids))
                 if managed_club_names_list:
                     _miss_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:

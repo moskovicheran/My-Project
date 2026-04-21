@@ -407,6 +407,17 @@ def agent_view(sa_id):
         direct_agent_ids = [ag_id for ag_id in agents_map.keys()
                             if player_sa_lookup.get(ag_id, '') in known_ids]
         if direct_agent_ids:
+            _miss_filters = [
+                or_(DailyPlayerStats.agent_id.in_(direct_agent_ids),
+                    DailyPlayerStats.sa_id.in_(direct_agent_ids)),
+                DailyPlayerStats.player_id.notin_(list(all_my_player_ids)),
+                DailyPlayerStats.role != 'Name Entry'
+            ]
+            # Exclude rows under child SAs — they're rendered by the
+            # child_sas section; without this, an agent like Notorius1
+            # under niroha02 gets double-rendered on niroha27's view.
+            if child_sa_ids:
+                _miss_filters.append(DailyPlayerStats.sa_id.notin_(child_sa_ids))
             missing_players = DailyPlayerStats.query.with_entities(
                 DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
                 sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
@@ -414,12 +425,7 @@ def agent_view(sa_id):
                 sqlfunc.max(DailyPlayerStats.role),
                 sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
                 sqlfunc.sum(DailyPlayerStats.hands),
-            ).filter(
-                or_(DailyPlayerStats.agent_id.in_(direct_agent_ids),
-                    DailyPlayerStats.sa_id.in_(direct_agent_ids)),
-                DailyPlayerStats.player_id.notin_(list(all_my_player_ids)),
-                DailyPlayerStats.role != 'Name Entry'
-            ).group_by(DailyPlayerStats.player_id).all()
+            ).filter(*_miss_filters).group_by(DailyPlayerStats.player_id).all()
             for pid, nick, club, ag_id, sa_id_val, role, pnl, rake, hands in missing_players:
                 pnl = round(float(pnl or 0), 2)
                 rake = round(float(rake or 0), 2)
