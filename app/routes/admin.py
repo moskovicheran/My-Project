@@ -312,6 +312,13 @@ def health():
         key=lambda x: abs(x['rake']), reverse=True)
 
     aligned = abs(delta_rake) < 0.01 and abs(delta_pnl) < 0.01
+
+    # Assignment targets for the inline "שייך לכרטיס" form. Overview cards
+    # only — assigning to a random SA outside the overview wouldn't help the
+    # delta. Each option is (sa_id, display_label).
+    assign_targets = [(pid, f'{nick} ({pid})')
+                      for nick, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS]
+
     return render_template('admin/health.html',
                            last_upload=last_upload,
                            top_rake=top_rake, top_pnl=top_pnl,
@@ -321,7 +328,8 @@ def health():
                            expected_gap=round(expected_gap, 2),
                            overlay_rows=overlay_rows,
                            orphans=orphans_list,
-                           overlaps=overlaps_list)
+                           overlaps=overlaps_list,
+                           assign_targets=assign_targets)
 
 
 @admin_bp.route('/agent-view/<sa_id>')
@@ -955,7 +963,13 @@ def lost_players():
                 db.session.delete(row)
                 db.session.commit()
                 flash('השיוך הידני בוטל.', 'success')
-        return redirect(url_for('admin.lost_players'))
+        # Allow callers (e.g. /admin/health) to redirect back to themselves
+        # so the user doesn't lose their place after assigning.
+        return_to = (request.form.get('return_to') or 'admin.lost_players').strip()
+        try:
+            return redirect(url_for(return_to))
+        except Exception:
+            return redirect(url_for('admin.lost_players'))
 
     # List players in active uploads with no sa_id AND no agent_id and some activity.
     # Scope: only players who played in the MANAGED_LOST_CLUBS (others are out of scope).
