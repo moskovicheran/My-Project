@@ -276,6 +276,21 @@ def health():
     orphan_clubs = set(MANAGED_LOST_CLUBS)
     orphans = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'nick': '', 'club': ''})
     overlaps = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'nick': '', 'club': '', 'cards': set()})
+    # "New" entities discovered on this upload: clubs/SAs appearing in
+    # un-caught rows that aren't registered anywhere. These surface as a
+    # "please register / assign" alert at the top of the health page.
+    unknown_clubs = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'players': set()})
+    unknown_sas = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'players': set(), 'clubs': set()})
+    all_carded_sa_ids = set()
+    for si in sa_info:
+        all_carded_sa_ids.add(si['pid'])
+        # Children via SAHierarchy — mirror the child_sa_ids used by dashboards
+        for h in SAHierarchy.query.filter_by(parent_sa_id=si['pid']).all():
+            all_carded_sa_ids.add(h.child_sa_id)
+    all_registered_clubs = set()
+    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+        all_registered_clubs.add(cid_to_name.get(c.managed_club_id) or c.managed_club_id)
+    all_registered_clubs |= tracked_clubs
     for r in DailyPlayerStats.query.yield_per(5000):
         if (r.role or '') == 'Name Entry': continue
         cards_hit = []
@@ -292,11 +307,22 @@ def health():
                 cards_hit.append(sa['pid'])
         rk = float(r.rake or 0); pl = float(r.pnl or 0)
         if not cards_hit:
-            # Only flag as orphan if it's in a managed club (SPC T/SPC C).
+            # Only flag as orphan (per-player) if it's in a managed club (SPC T/SPC C).
             if r.club in orphan_clubs:
                 d = orphans[r.player_id]
                 d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
                 d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
+            # Track as "unknown club" if the club isn't registered anywhere.
+            if r.club and r.club not in all_registered_clubs and r.club not in orphan_clubs:
+                d = unknown_clubs[r.club]
+                d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
+                d['players'].add(r.player_id)
+            # Track as "unknown SA" if the row's sa_id isn't in any card's hierarchy.
+            if r.sa_id and r.sa_id not in ('', '-') and r.sa_id not in all_carded_sa_ids:
+                d = unknown_sas[r.sa_id]
+                d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
+                d['players'].add(r.player_id)
+                if r.club: d['clubs'].add(r.club)
         elif len(cards_hit) > 1:
             d = overlaps[(r.player_id, r.club)]
             d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
@@ -306,6 +332,26 @@ def health():
     orphans_list = sorted(
         [{'pid': k, **v} for k, v in orphans.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
         key=lambda x: abs(x['pnl']), reverse=True)
+
+    # Resolve nicknames for unknown SAs so the alert is readable
+    _sa_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id.in_(list(unknown_sas.keys()))).group_by(
+        DailyPlayerStats.player_id).all()) if unknown_sas else {}
+    unknown_clubs_list = sorted(
+        [{'club': k, 'rake': round(v['rake'], 2), 'pnl': round(v['pnl'], 2),
+          'rows': v['rows'], 'players': len(v['players'])}
+         for k, v in unknown_clubs.items()
+         if abs(v['rake']) + abs(v['pnl']) > 0.01],
+        key=lambda x: abs(x['rake']) + abs(x['pnl']), reverse=True)
+    unknown_sas_list = sorted(
+        [{'sa_id': k, 'nick': _sa_nicks.get(k, k),
+          'rake': round(v['rake'], 2), 'pnl': round(v['pnl'], 2),
+          'rows': v['rows'], 'players': len(v['players']),
+          'clubs': sorted(v['clubs'])[:5]}
+         for k, v in unknown_sas.items()
+         if abs(v['rake']) + abs(v['pnl']) > 0.01],
+        key=lambda x: abs(x['rake']) + abs(x['pnl']), reverse=True)
     overlaps_list = sorted(
         [{'pid': k[0], 'club_key': k[1], **v, 'cards': sorted(v['cards'])}
          for k, v in overlaps.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
@@ -329,7 +375,9 @@ def health():
                            overlay_rows=overlay_rows,
                            orphans=orphans_list,
                            overlaps=overlaps_list,
-                           assign_targets=assign_targets)
+                           assign_targets=assign_targets,
+                           unknown_clubs=unknown_clubs_list,
+                           unknown_sas=unknown_sas_list)
 
 
 @admin_bp.route('/agent-view/<sa_id>')

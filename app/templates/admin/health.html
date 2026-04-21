@@ -24,7 +24,77 @@
 .badge-overlap { background:#d1ecf1; color:#0c5460; }
 .badge-freeroll { background:#e2e3f3; color:#383d65; }
 .badge-overlay { background:#fce4ec; color:#880e4f; }
+.alert-new { background:linear-gradient(90deg,#fff4e6,#ffe4c4); border:2px solid #ff9800; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1rem; }
+.alert-new h3 { margin:0 0 0.5rem; color:#b35900; font-size:1.1rem; }
+.badge-new { background:#ff9800; color:#fff; font-weight:700; }
 </style>
+
+{% if unknown_clubs or unknown_sas %}
+<div class="alert-new">
+    <h3>⚠️ מידע חדש — נא לשייך</h3>
+    <p class="muted" style="margin:0 0 0.6rem; font-size:0.9rem;">
+        זוהו ישויות חדשות שלא רשומות באף כרטיס. כל עוד הן לא משויכות,
+        הפעילות שלהן תצטבר כדלתא בלתי־מיוחסת.
+    </p>
+
+    {% if unknown_clubs %}
+    <div style="margin-top:0.8rem;">
+        <strong>מועדונים חדשים ({{ unknown_clubs|length }}):</strong>
+        <table class="health-table">
+            <thead><tr><th>מועדון</th><th>שורות</th><th>שחקנים</th><th>Rake</th><th>PnL</th><th>רישום</th></tr></thead>
+            <tbody>
+            {% for c in unknown_clubs %}
+            <tr>
+                <td><strong>{{ c.club }}</strong></td>
+                <td>{{ c.rows }}</td>
+                <td>{{ c.players }}</td>
+                <td>{{ '{:,.2f}'.format(c.rake) }}</td>
+                <td class="{% if c.pnl < 0 %}delta-pos{% else %}delta-zero{% endif %}">{{ '{:+,.2f}'.format(c.pnl) }}</td>
+                <td>
+                    <a href="{{ url_for('admin.agents') }}#managed-clubs"
+                       class="btn btn-primary btn-sm"
+                       style="font-size:0.75rem; padding:0.25rem 0.6rem;">
+                       רשום מועדון
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="muted" style="font-size:0.8rem; margin-top:0.3rem;">
+            💡 CLI: <code>python tools_add_managed_club.py --sa-id &lt;SA&gt; --club &quot;&lt;שם&gt;&quot;</code>
+        </p>
+    </div>
+    {% endif %}
+
+    {% if unknown_sas %}
+    <div style="margin-top:0.8rem;">
+        <strong>Super Agents חדשים ({{ unknown_sas|length }}):</strong>
+        <table class="health-table">
+            <thead><tr><th>SA</th><th>ID</th><th>מועדונים</th><th>שורות</th><th>שחקנים</th><th>Rake</th><th>PnL</th></tr></thead>
+            <tbody>
+            {% for s in unknown_sas %}
+            <tr>
+                <td><strong>{{ s.nick }}</strong></td>
+                <td><code>{{ s.sa_id }}</code></td>
+                <td>{{ s.clubs|join(', ') }}{% if s.clubs|length == 5 %}…{% endif %}</td>
+                <td>{{ s.rows }}</td>
+                <td>{{ s.players }}</td>
+                <td>{{ '{:,.2f}'.format(s.rake) }}</td>
+                <td class="{% if s.pnl < 0 %}delta-pos{% else %}delta-zero{% endif %}">{{ '{:+,.2f}'.format(s.pnl) }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="muted" style="font-size:0.8rem; margin-top:0.3rem;">
+            💡 להוסיף כ‑child SA תחת הורה קיים — <a href="{{ url_for('admin.agents') }}">/admin/agents</a> (היררכיה).
+            או אם רק רוצים לתפוס את השחקנים שלו:
+            <code>python tools_assign_player.py --player-id &lt;pid&gt; --sa-id &lt;parent&gt;</code>.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="health-card">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
