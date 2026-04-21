@@ -384,6 +384,78 @@ def health():
                            unknown_sas=unknown_sas_list)
 
 
+@admin_bp.route('/health/export-overlay.xlsx')
+@admin_required
+def health_export_overlay():
+    """Export the Freerolls + Overlay table (as shown on /admin/health) to XLSX."""
+    import io
+    from flask import send_file
+    from app.models import TournamentStats
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill
+
+    rows = []
+    total_diff = 0.0
+    for t in TournamentStats.query.all():
+        buyin = float(t.buyin or 0); entries = float(t.entries or 0)
+        prize = float(t.prize_pool or 0)
+        diff = prize - buyin * entries
+        if diff > 0.01:
+            total_diff += diff
+            rows.append({
+                'kind': 'Freeroll' if buyin == 0 else 'Overlay',
+                'title': t.title or '-',
+                'gtd': float(t.gtd or 0),
+                'entries': entries,
+                'buyin': buyin,
+                'prize': prize,
+                'diff': round(diff, 2),
+            })
+    rows.sort(key=lambda x: x['diff'], reverse=True)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Freerolls + Overlay'
+    headers = ['סוג', 'שם הטורניר', 'GTD', 'Entries', 'Buyin', 'Prize Pool', 'תוספת מהמועדון']
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='4361EE', end_color='4361EE', fill_type='solid')
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+    for idx, r in enumerate(rows, 2):
+        ws.cell(row=idx, column=1, value=r['kind'])
+        ws.cell(row=idx, column=2, value=r['title'])
+        ws.cell(row=idx, column=3, value=r['gtd']).number_format = '#,##0'
+        ws.cell(row=idx, column=4, value=r['entries']).number_format = '#,##0'
+        ws.cell(row=idx, column=5, value=r['buyin']).number_format = '#,##0.00'
+        ws.cell(row=idx, column=6, value=r['prize']).number_format = '#,##0.00'
+        ws.cell(row=idx, column=7, value=r['diff']).number_format = '+#,##0.00;-#,##0.00'
+    # Total row
+    total_row = len(rows) + 2
+    total_fill = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+    bold = Font(bold=True)
+    ws.cell(row=total_row, column=1, value='סה"כ').font = bold
+    ws.cell(row=total_row, column=1).fill = total_fill
+    for c in range(2, 7):
+        ws.cell(row=total_row, column=c).fill = total_fill
+    tc = ws.cell(row=total_row, column=7, value=round(total_diff, 2))
+    tc.font = bold; tc.fill = total_fill
+    tc.number_format = '+#,##0.00;-#,##0.00'
+    # Auto widths
+    widths = [10, 32, 12, 10, 12, 14, 16]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(output, as_attachment=True,
+                     download_name='freerolls_overlay.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @admin_bp.route('/agent-view/<sa_id>')
 @admin_required
 def agent_view(sa_id):
