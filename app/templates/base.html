@@ -14,7 +14,8 @@
         <button class="nav-hamburger" onclick="toggleNav()">☰</button>
         <div class="nav-links" id="navLinks">
             {% if current_user.role == 'admin' %}
-            <a href="{{ url_for('admin.overview') }}" class="nav-link" style="color:#4cc9f0; font-weight:600;">לוח בקרה</a>
+            <a href="{{ url_for('admin.overview') }}" class="nav-link" style="color:#4cc9f0; font-weight:600; margin-right:0.6rem;">לוח בקרה</a>
+            <a href="{{ url_for('admin.health') }}" class="nav-link {% if request.endpoint == 'admin.health' %}active{% endif %}" style="color:#2ecc71; font-weight:600;">✅ בדיקת תקינות</a>
             {% endif %}
             <a href="{{ url_for('main.dashboard') }}" class="nav-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}">דשבורד</a>
             {% if current_user.role == 'agent' %}
