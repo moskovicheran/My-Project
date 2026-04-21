@@ -27,6 +27,29 @@
 .alert-new { background:linear-gradient(90deg,#fff4e6,#ffe4c4); border:2px solid #ff9800; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1rem; }
 .alert-new h3 { margin:0 0 0.5rem; color:#b35900; font-size:1.1rem; }
 .badge-new { background:#ff9800; color:#fff; font-weight:700; }
+
+/* Horizontal scroll wrapper for wide tables on narrow screens. */
+.table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -0.3rem; }
+.table-scroll > table { min-width:520px; }
+
+@media (max-width: 640px) {
+    .health-card { padding:0.85rem; border-radius:10px; }
+    .section-title { font-size:1rem; }
+    .health-status { font-size:1.1rem; padding:0.5rem 0.8rem; }
+    .health-table th, .health-table td { padding:0.4rem 0.5rem; font-size:0.82rem; }
+    .health-table th { white-space:nowrap; }
+    /* KV grid → stacked (single column, no large gap). */
+    .kv-grid { grid-template-columns:1fr; gap:0.15rem 0; }
+    .kv-grid dd { font-size:1rem; margin-bottom:0.35rem; }
+    /* Inline assign form: stack SA picker + button instead of side by side. */
+    .health-card form[action] { flex-direction:column !important; align-items:stretch !important; gap:0.3rem !important; }
+    .health-card form[action] select { max-width:100% !important; font-size:0.85rem !important; }
+    .health-card form[action] button { width:100%; }
+    /* Alert panel: tighter padding, stacked. */
+    .alert-new { padding:0.8rem 0.9rem; }
+    .alert-new h3 { font-size:1rem; }
+    .muted { font-size:0.78rem; }
+}
 </style>
 
 {% if unknown_clubs or unknown_sas %}
@@ -40,7 +63,7 @@
     {% if unknown_clubs %}
     <div style="margin-top:0.8rem;">
         <strong>מועדונים חדשים ({{ unknown_clubs|length }}):</strong>
-        <table class="health-table">
+        <div class="table-scroll"><table class="health-table">
             <thead><tr><th>מועדון</th><th>שורות</th><th>שחקנים</th><th>Rake</th><th>PnL</th><th>רישום</th></tr></thead>
             <tbody>
             {% for c in unknown_clubs %}
@@ -60,7 +83,7 @@
             </tr>
             {% endfor %}
             </tbody>
-        </table>
+        </table></div>
         <p class="muted" style="font-size:0.8rem; margin-top:0.3rem;">
             💡 CLI: <code>python tools_add_managed_club.py --sa-id &lt;SA&gt; --club &quot;&lt;שם&gt;&quot;</code>
         </p>
@@ -70,7 +93,7 @@
     {% if unknown_sas %}
     <div style="margin-top:0.8rem;">
         <strong>Super Agents חדשים ({{ unknown_sas|length }}):</strong>
-        <table class="health-table">
+        <div class="table-scroll"><table class="health-table">
             <thead><tr><th>SA</th><th>ID</th><th>מועדונים</th><th>שורות</th><th>שחקנים</th><th>Rake</th><th>PnL</th></tr></thead>
             <tbody>
             {% for s in unknown_sas %}
@@ -85,7 +108,7 @@
             </tr>
             {% endfor %}
             </tbody>
-        </table>
+        </table></div>
         <p class="muted" style="font-size:0.8rem; margin-top:0.3rem;">
             💡 להוסיף כ‑child SA תחת הורה קיים — <a href="{{ url_for('admin.agents') }}">/admin/agents</a> (היררכיה).
             או אם רק רוצים לתפוס את השחקנים שלו:
@@ -129,7 +152,7 @@
 <div class="health-card">
     <div class="section-title">שחקנים יתומים <span class="muted">— שורות שלא נכנסות לאף כרטיס</span></div>
     {% if orphans %}
-    <table class="health-table">
+    <div class="table-scroll"><table class="health-table">
         <thead>
             <tr><th>שחקן</th><th>מועדון</th><th>שורות</th><th>Rake</th><th>PnL</th><th>שייך לכרטיס</th></tr>
         </thead>
@@ -161,7 +184,7 @@
             </tr>
         {% endfor %}
         </tbody>
-    </table>
+    </table></div>
     <p class="muted" style="margin-top:0.5rem; font-size:0.85rem;">
         💡 השיוך יוצר <code>PlayerAssignment</code> שנקרא מכל הדשבורדים, הכרטיסים ודפי השחקן — אין צורך לעדכן במקום אחר.
     </p>
@@ -173,7 +196,7 @@
 <div class="health-card">
     <div class="section-title">Double-counts <span class="muted">— שורות שנספרות ביותר מכרטיס אחד</span></div>
     {% if overlaps %}
-    <table class="health-table">
+    <div class="table-scroll"><table class="health-table">
         <thead>
             <tr><th>שחקן</th><th>מועדון</th><th>שורות</th><th>Rake (כפילות)</th><th>PnL (כפילות)</th><th>נספר ב-</th></tr>
         </thead>
@@ -189,7 +212,7 @@
             </tr>
         {% endfor %}
         </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="muted">✅ אין double-counts</div>
     {% endif %}
@@ -198,7 +221,7 @@
 <div class="health-card">
     <div class="section-title">Freerolls + Overlay <span class="muted">— מסביר את ה-Bal של ה-TOP BOX</span></div>
     {% if overlay_rows %}
-    <table class="health-table">
+    <div class="table-scroll"><table class="health-table">
         <thead>
             <tr><th>סוג</th><th>שם הטורניר</th><th>GTD</th><th>Entries</th><th>Buyin</th><th>Prize Pool</th><th>תוספת מהמועדון</th></tr>
         </thead>
@@ -221,7 +244,7 @@
                 <td><strong style="font-size:1.05rem;">{{ '{:+,.2f}'.format(expected_gap) }}</strong></td>
             </tr>
         </tfoot>
-    </table>
+    </table></div>
     {% else %}
     <div class="muted">אין freerolls / overlay בנתונים הנוכחיים</div>
     {% endif %}
