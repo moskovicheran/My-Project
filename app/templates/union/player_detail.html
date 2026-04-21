@@ -55,7 +55,7 @@
         {% endif %}
     </div>
     <div style="display:flex; gap:0.4rem;">
-        <a href="{{ url_for('main.export_player', player_id=member.player_id) }}" class="btn btn-outline btn-sm">📥 הורד דוח</a>
+        <a href="{{ url_for('main.export_player', player_id=member.player_id, club=club_filter if club_filter else None) }}" class="btn btn-outline btn-sm">📥 הורד דוח</a>
         <a href="javascript:history.back()" class="btn btn-outline">← חזור</a>
     </div>
 </div>

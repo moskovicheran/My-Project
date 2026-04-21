@@ -338,13 +338,13 @@ function toggleExpenseDetails() {
                                 <tbody>
                                     {% for m in agent.members %}
                                     <tr>
-                                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id, club=managed_club.name) }}" class="player-link">{{ m.nickname }}</a></td>
                                         <td class="amount income">{{ m.rake_total|comma }}</td>
                                         <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                                             {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                                         </td>
                                         <td class="player-actions">
-                                            <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
+                                            <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id, club=managed_club.name) }}'">רקורד</button>
                                             <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None, club=managed_club.name) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                                         </td>
                                     </tr>
@@ -363,13 +363,13 @@ function toggleExpenseDetails() {
                             <tbody>
                                 {% for m in sa.direct_members %}
                                 <tr>
-                                    <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                    <td><a href="{{ url_for('union.player_detail', player_id=m.player_id, club=managed_club.name) }}" class="player-link">{{ m.nickname }}</a></td>
                                     <td class="amount income">{{ m.rake_total|comma }}</td>
                                     <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                                         {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                                     </td>
                                     <td class="player-actions">
-                                        <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
+                                        <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id, club=managed_club.name) }}'">רקורד</button>
                                         <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None, club=managed_club.name) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                                     </td>
                                 </tr>
@@ -407,13 +407,13 @@ function toggleExpenseDetails() {
                         <tbody>
                             {% for m in managed_club.no_sa_members %}
                             <tr>
-                                <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link">{{ m.nickname }}</a></td>
+                                <td><a href="{{ url_for('union.player_detail', player_id=m.player_id, club=managed_club.name) }}" class="player-link">{{ m.nickname }}</a></td>
                                 <td class="amount income">{{ m.rake_total|comma }}</td>
                                 <td class="amount {% if m.pnl_total >= 0 %}income{% else %}expense{% endif %}">
                                     {% if m.pnl_total > 0 %}+{% endif %}{{ m.pnl_total|comma }}
                                 </td>
                                 <td class="player-actions">
-                                    <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id) }}'">רקורד</button>
+                                    <button class="btn btn-outline btn-sm" onclick="window.location='{{ url_for('union.player_detail', player_id=m.player_id, club=managed_club.name) }}'">רקורד</button>
                                     <a href="{{ url_for('main.export_player', player_id=m.player_id, dates=selected_dates|join(',') if selected_dates else None, club=managed_club.name) }}" class="btn btn-outline btn-sm" style="color:#217346; font-weight:bold; font-size:0.75rem;">XLS</a>
                                 </td>
                             </tr>

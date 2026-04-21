@@ -413,22 +413,32 @@ def player_detail(player_id):
     if scope_sa_id == player_id:
         scope_sa_id = None
     scope_pred = get_agent_scope_predicate(scope_sa_id) if scope_sa_id else None
-    scope_applied = scope_pred is not None
+    # Optional ?club=<name> — when a player is clicked from a managed-club
+    # section, filter to that club only (a player may have rows in multiple
+    # clubs per upload, so the scope predicate alone is not enough).
+    club_filter = request.args.get('club', '').strip()
+    # If a club filter is set we always run the "scoped" branch below so the
+    # totals/sessions slice picks up the club constraint.
+    scope_applied = (scope_pred is not None) or bool(club_filter)
 
     # Scoped-view helpers: rebuild totals/clubs/upload_filter from
-    # DailyPlayerStats restricted to the viewer's scope predicate.
+    # DailyPlayerStats restricted to the viewer's scope predicate / club.
     scope_upload_ids = None  # None = no filter, set = filter sessions
     if scope_applied:
         from app.models import DailyPlayerStats as _DPS
         from sqlalchemy import func as _sf
+        _scope_filters = [
+            _DPS.player_id == player_id,
+            _DPS.role != 'Name Entry',
+        ]
+        if scope_pred is not None:
+            _scope_filters.append(scope_pred)
+        if club_filter:
+            _scope_filters.append(_DPS.club == club_filter)
         scoped_rows = _DPS.query.with_entities(
             _DPS.upload_id, _DPS.club,
             _sf.sum(_DPS.rake), _sf.sum(_DPS.pnl), _sf.sum(_DPS.hands),
-        ).filter(
-            _DPS.player_id == player_id,
-            _DPS.role != 'Name Entry',
-            scope_pred,
-        ).group_by(_DPS.upload_id, _DPS.club).all()
+        ).filter(*_scope_filters).group_by(_DPS.upload_id, _DPS.club).all()
         scope_upload_ids = {uid for uid, _, _, _, _ in scoped_rows}
 
     # Get cumulative data from DB
@@ -638,7 +648,8 @@ def player_detail(player_id):
                            hierarchy_chain=hierarchy_chain,
                            scope_applied=scope_applied,
                            scope_sa_id=scope_sa_id,
-                           scope_sa_nick=scope_sa_nick)
+                           scope_sa_nick=scope_sa_nick,
+                           club_filter=club_filter)
 
 
 def _build_hierarchy_chain(player_id):
