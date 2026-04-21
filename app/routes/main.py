@@ -662,7 +662,13 @@ def dashboard():
         _self_existing_pids = set(m['player_id'] for m in direct_players)
         _self_existing_pids |= {m['player_id'] for ag in agents_map.values() for m in ag['members']}
         if sa_id not in _self_existing_pids:
-            _self_other_clubs = set(managed_club_names_list)  # own managed clubs — shown under managed_clubs section
+            # Own managed clubs are INCLUDED here so the SA's own rows in
+            # them roll into the direct-players card (e.g. Mangisto San's
+            # SPC Un play joins his SPC T play into a single unified row
+            # totalling Rake 3,849.20 / PnL -17,182.37). To avoid double-
+            # counting, the managed_clubs loop below skips the SA himself
+            # when listing the club's players.
+            _self_other_clubs = set()  # only OTHER SAs' managed + OVERVIEW_CLUBS are excluded below
             _clubs_ov, _ = get_members_hierarchy()
             _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
             for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
@@ -1040,8 +1046,13 @@ def dashboard():
                     SM.player_id, sqlfunc.max(SM.nickname)
                 ).group_by(SM.player_id).all())
 
-                # Get ALL players in this club from DB
-                club_filters = [SM.club == club_name, SM.role != 'Name Entry']
+                # Get ALL players in this club from DB — excluding the SA
+                # himself. His own rows here are attributed to the unified
+                # "direct players" card on his dashboard (see _self_other_clubs
+                # block above), so listing him again in the managed-club card
+                # would double-count and clutter the UI.
+                club_filters = [SM.club == club_name, SM.role != 'Name Entry',
+                                SM.player_id != sa_id]
                 if use_archive and archive_period_id:
                     club_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
@@ -1934,8 +1945,40 @@ def export_player(player_id):
         'P&L': round(total_pnl, 2),
     })
 
-    summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
-                'P&L': cs['pnl']}]
+    # Summary: when no club filter is active, break down per club so a
+    # player in multiple clubs (e.g. Mangisto San in SPC T + SPC Un) sees
+    # each club on its own row plus a total. With a club filter there's
+    # only one relevant club — keep the classic single-row layout.
+    if club_filter:
+        summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
+                    'Rake': cs['rake'], 'P&L': cs['pnl']}]
+    else:
+        per_club = StatsModel.query.with_entities(
+            StatsModel.club,
+            sqlfunc.sum(StatsModel.rake),
+            sqlfunc.sum(StatsModel.pnl),
+            sqlfunc.sum(StatsModel.hands),
+        ).filter(*stat_filters,
+                 StatsModel.club != '',
+                 StatsModel.role != 'Name Entry',
+        ).group_by(StatsModel.club).all()
+        if len(per_club) > 1:
+            summary = []
+            for club, r_c, p_c, _h in per_club:
+                summary.append({
+                    'שחקן': cs['nickname'], 'קלאב': club,
+                    'Rake': round(float(r_c or 0), 2),
+                    'P&L': round(float(p_c or 0), 2),
+                })
+            summary.sort(key=lambda row: row['Rake'], reverse=True)
+            summary.append({
+                'שחקן': 'סה"כ', 'קלאב': '',
+                'Rake': round(sum(r['Rake'] for r in summary), 2),
+                'P&L': round(sum(r['P&L'] for r in summary), 2),
+            })
+        else:
+            summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
+                        'Rake': cs['rake'], 'P&L': cs['pnl']}]
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
