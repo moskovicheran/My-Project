@@ -1138,7 +1138,19 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     if managed_club_names:
         scope_preds.append(M.club.in_(managed_club_names))
     if override_in_pids:
-        scope_preds.append(M.player_id.in_(override_in_pids))
+        # Same club carve-out as current_scope: rows whose club is owned by
+        # another card (other SAs' managed_clubs OR admin OVERVIEW_CLUBS)
+        # belong to THAT card, not here — even when an override attaches
+        # the player to us. Without this, e.g. areyoufold's POKER GARDEN
+        # rows (Riko's managed club) would count both in Riko's managed-club
+        # card AND in niroha's total via the override.
+        if other_managed_names:
+            scope_preds.append(and_(
+                M.player_id.in_(override_in_pids),
+                not_(M.club.in_(list(other_managed_names))),
+            ))
+        else:
+            scope_preds.append(M.player_id.in_(override_in_pids))
     # If nothing in scope, fall back to an always-false predicate so the
     # query returns zero (instead of SQL error on empty or_()).
     if not scope_preds:
