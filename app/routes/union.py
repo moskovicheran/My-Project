@@ -511,11 +511,38 @@ def player_detail(player_id):
         total_rake = cs['rake']
         total_pnl = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
         total_hands = cs['hands']
-        club_entries = [{'club': cs.get('club', member_info.get('club', '-')),
-                        'pnl_total': cs['pnl'], 'rake_total': cs['rake'],
-                        'hands_total': cs['hands'],
-                        'sa_nick': member_info.get('sa_nick', '-'),
-                        'agent_nick': member_info.get('agent_nick', '-')}]
+        # Build per-club club_entries from DailyPlayerStats so the page shows
+        # the "פירוט לפי קלאב" breakdown (e.g. SPC T + SPC Un) instead of a
+        # single combined card. Totals stay from cs so they match the agent
+        # dashboard card this page was reached from.
+        from app.models import DailyPlayerStats as _DPS_ce
+        from sqlalchemy import func as _sf_ce
+        _club_rows = _DPS_ce.query.with_entities(
+            _DPS_ce.club,
+            _sf_ce.sum(_DPS_ce.rake),
+            _sf_ce.sum(_DPS_ce.pnl),
+            _sf_ce.sum(_DPS_ce.hands),
+        ).filter(
+            _DPS_ce.player_id == player_id,
+            _DPS_ce.role != 'Name Entry',
+            _DPS_ce.club != '',
+        ).group_by(_DPS_ce.club).all()
+        if _club_rows:
+            club_entries = [{
+                'club': c,
+                'pnl_total': round(float(p or 0), 2),
+                'rake_total': round(float(r or 0), 2),
+                'hands_total': int(h or 0),
+                'sa_nick': member_info.get('sa_nick', '-'),
+                'agent_nick': member_info.get('agent_nick', '-'),
+            } for c, r, p, h in _club_rows]
+            club_entries.sort(key=lambda e: e['rake_total'], reverse=True)
+        else:
+            club_entries = [{'club': cs.get('club', member_info.get('club', '-')),
+                            'pnl_total': cs['pnl'], 'rake_total': cs['rake'],
+                            'hands_total': cs['hands'],
+                            'sa_nick': member_info.get('sa_nick', '-'),
+                            'agent_nick': member_info.get('agent_nick', '-')}]
     else:
         total_rake = sum(s['rake'] for s in sessions)
         total_pnl = sum(s['pnl'] for s in sessions)
