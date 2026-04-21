@@ -2517,28 +2517,9 @@ def export_agent_full_box():
             ag_groups.items(),
             key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
         )
-        for ag_name, ag_rows in ag_order:
+        for _ag_name, ag_rows in ag_order:
             ag_rows.sort(key=lambda r: r['Rake'], reverse=True)
             rows.extend(ag_rows)
-            # Agent subtotal — skipped when the group has no name, or when
-            # it's a single row (the subtotal would just duplicate the row
-            # and make the sheet noisy).
-            if ag_name and len(ag_rows) > 1:
-                rows.append({
-                    'שחקן': f'סה"כ {ag_name}', 'ID': '', 'קלאב': '',
-                    'Super Agent': sa_name, 'סוכן': ag_name,
-                    'P&L': round(sum(r['P&L'] for r in ag_rows), 2),
-                    'Rake': round(sum(r['Rake'] for r in ag_rows), 2),
-                    'ידיים': sum(r['ידיים'] for r in ag_rows),
-                })
-        # SA subtotal — visually separates each SA block
-        rows.append({
-            'שחקן': f'סה"כ {sa_name}' if sa_name else 'סה"כ ללא Super Agent',
-            'ID': '', 'קלאב': '', 'Super Agent': sa_name, 'סוכן': '',
-            'P&L': round(sum(r['P&L'] for r in sa_rows), 2),
-            'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
-            'ידיים': sum(r['ידיים'] for r in sa_rows),
-        })
 
     if rows:
         # Grand total row — label matches the exact 'סה"כ' string so
@@ -2661,22 +2642,9 @@ def export_agent_club(club_id):
                 ag_groups.items(),
                 key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
             )
-            for ag_name, ag_rows in ag_order:
+            for _ag_name, ag_rows in ag_order:
                 ag_rows.sort(key=lambda r: r['Rake'], reverse=True)
                 grouped_rows.extend(ag_rows)
-                if ag_name and len(ag_rows) > 1:
-                    grouped_rows.append({
-                        'שחקן': f'סה"כ {ag_name}', 'ID': '',
-                        'Super Agent': sa_name, 'סוכן': ag_name,
-                        'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in ag_rows), 2),
-                        'Rake': round(sum(r['Rake'] for r in ag_rows), 2),
-                    })
-            grouped_rows.append({
-                'שחקן': f'סה"כ {sa_name}' if sa_name else 'סה"כ ללא Super Agent',
-                'ID': '', 'Super Agent': sa_name, 'סוכן': '',
-                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in sa_rows), 2),
-                'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
-            })
         if grouped_rows:
             data_rows = [r for r in grouped_rows if not str(r['שחקן']).startswith('סה"כ')]
             grouped_rows.append({
