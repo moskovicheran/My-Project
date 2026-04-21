@@ -189,6 +189,122 @@ def overview():
     return render_template('admin/overview.html', **build_overview_context())
 
 
+@admin_bp.route('/health')
+@admin_required
+def health():
+    """Reconciliation health check — verifies that the sum of all overview
+    cards matches the top-box (delta=0), and surfaces any orphan or
+    double-counted rows so issues can be caught before they snowball."""
+    from datetime import timedelta
+    from app.union_data import (get_cumulative_totals, get_agent_totals,
+                                 get_club_totals, get_members_hierarchy,
+                                 get_players_with_current_scope)
+    from app.models import DailyPlayerStats, DailyUpload, TournamentStats
+    from collections import defaultdict
+    from sqlalchemy import func as sqlfunc
+
+    # Last upload (Israel time)
+    last = DailyUpload.query.order_by(DailyUpload.created_at.desc()).first()
+    last_upload = (last.created_at + timedelta(hours=3)).strftime('%d/%m/%Y %H:%M') if last and last.created_at else '-'
+
+    # Top box
+    ct = get_cumulative_totals()
+    top_rake, top_pnl = ct['total_rake'], ct['total_pnl']
+
+    # Sum of all cards
+    sum_rake = sum_pnl = 0.0
+    for _, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
+        t = get_agent_totals(pid)
+        sum_rake += t['total_rake']; sum_pnl += t['total_pnl']
+    for _, cid in OVERVIEW_CLUBS:
+        t = get_club_totals(cid)
+        sum_rake += t['total_rake']; sum_pnl += t['total_pnl']
+
+    delta_rake = round(top_rake - sum_rake, 2)
+    delta_pnl = round(top_pnl - sum_pnl, 2)
+
+    # Expected gap from freerolls + tournament overlay (overlay = prize > buyins*entries)
+    expected_gap = 0.0
+    overlay_rows = []
+    for t in TournamentStats.query.all():
+        buyin = float(t.buyin or 0); entries = float(t.entries or 0)
+        prize = float(t.prize_pool or 0)
+        diff = prize - buyin * entries
+        if diff > 0.01:
+            expected_gap += diff
+            overlay_rows.append({'title': t.title or '-', 'kind': 'Freeroll' if buyin == 0 else 'Overlay',
+                                  'gtd': float(t.gtd or 0), 'entries': entries,
+                                  'buyin': buyin, 'prize': prize, 'diff': round(diff, 2)})
+    overlay_rows.sort(key=lambda x: x['diff'], reverse=True)
+
+    # Per-row attribution scan: orphans + double-counts
+    cd, _ = get_members_hierarchy()
+    cid_to_name = {c['club_id']: c['name'] for c in cd}
+    sa_info = []
+    for _, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
+        child = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=pid).all()]
+        all_ids = list(set([pid] + child))
+        cur = get_players_with_current_scope(all_ids, M=DailyPlayerStats) or set()
+        rake_cfgs_h = SARakeConfig.query.filter_by(sa_id=pid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+        managed = set([cid_to_name.get(c.managed_club_id) or c.managed_club_id for c in rake_cfgs_h])
+        ov_pids = {ov.player_id for ov in PlayerAssignment.query.all()
+                    if (ov.assigned_sa_id in all_ids) or (ov.assigned_agent_id in all_ids)}
+        sa_info.append({'pid': pid, 'cur': cur, 'managed': managed, 'ov': ov_pids})
+
+    # Build same other_managed/tracked exclusion as get_agent_totals
+    all_managed = set()
+    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+        all_managed.add(cid_to_name.get(c.managed_club_id) or c.managed_club_id)
+    tracked_clubs = set()
+    for _, cid in OVERVIEW_CLUBS:
+        nm = cid_to_name.get(cid) or (cid if DailyPlayerStats.query.filter(DailyPlayerStats.club == cid).first() else None)
+        if nm: tracked_clubs.add(nm)
+
+    orphans = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'nick': '', 'club': ''})
+    overlaps = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'nick': '', 'club': '', 'cards': set()})
+    for r in DailyPlayerStats.query.yield_per(5000):
+        if (r.role or '') == 'Name Entry': continue
+        cards_hit = []
+        if r.club in tracked_clubs:
+            cards_hit.append('CLUB:' + (r.club or ''))
+        for sa in sa_info:
+            in_cur = (r.player_id in sa['cur']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
+            in_managed = r.club in sa['managed']
+            in_ov = r.player_id in sa['ov']
+            if in_cur or in_managed or in_ov:
+                cards_hit.append(sa['pid'])
+        rk = float(r.rake or 0); pl = float(r.pnl or 0)
+        if not cards_hit:
+            d = orphans[r.player_id]
+            d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
+            d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
+        elif len(cards_hit) > 1:
+            d = overlaps[(r.player_id, r.club)]
+            d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
+            d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
+            d['cards'].update(cards_hit)
+
+    orphans_list = sorted(
+        [{'pid': k, **v} for k, v in orphans.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
+        key=lambda x: abs(x['pnl']), reverse=True)
+    overlaps_list = sorted(
+        [{'pid': k[0], 'club_key': k[1], **v, 'cards': sorted(v['cards'])}
+         for k, v in overlaps.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
+        key=lambda x: abs(x['rake']), reverse=True)
+
+    aligned = abs(delta_rake) < 0.01 and abs(delta_pnl) < 0.01
+    return render_template('admin/health.html',
+                           last_upload=last_upload,
+                           top_rake=top_rake, top_pnl=top_pnl,
+                           sum_rake=round(sum_rake, 2), sum_pnl=round(sum_pnl, 2),
+                           delta_rake=delta_rake, delta_pnl=delta_pnl,
+                           aligned=aligned,
+                           expected_gap=round(expected_gap, 2),
+                           overlay_rows=overlay_rows,
+                           orphans=orphans_list,
+                           overlaps=overlaps_list)
+
+
 @admin_bp.route('/agent-view/<sa_id>')
 @admin_required
 def agent_view(sa_id):

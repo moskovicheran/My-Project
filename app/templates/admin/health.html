@@ -1,0 +1,136 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}בדיקת תקינות{% endblock %}
+
+{% block content %}
+<style>
+.health-card { background:#fff; border-radius:12px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.health-status { font-size:1.4rem; font-weight:700; padding:0.6rem 1rem; border-radius:8px; display:inline-block; }
+.status-ok { background:#d4edda; color:#155724; }
+.status-bad { background:#f8d7da; color:#721c24; }
+.kv-grid { display:grid; grid-template-columns:auto 1fr; gap:0.4rem 1.5rem; align-items:center; }
+.kv-grid dt { color:#666; font-weight:500; }
+.kv-grid dd { font-weight:700; font-size:1.1rem; margin:0; font-variant-numeric:tabular-nums; }
+.delta-pos { color:#dc3545; }
+.delta-neg { color:#fd7e14; }
+.delta-zero { color:#28a745; }
+.health-table { width:100%; border-collapse:collapse; margin-top:0.5rem; }
+.health-table th, .health-table td { padding:0.5rem 0.7rem; text-align:right; border-bottom:1px solid #eee; font-variant-numeric:tabular-nums; }
+.health-table th { background:#f7f7f7; font-weight:600; color:#555; }
+.health-table tbody tr:hover { background:#f9f9f9; }
+.muted { color:#999; font-size:0.85rem; }
+.section-title { font-size:1.15rem; font-weight:700; margin:0 0 0.6rem 0; }
+.badge { display:inline-block; padding:0.2rem 0.55rem; border-radius:999px; font-size:0.8rem; font-weight:600; }
+.badge-orphan { background:#fff3cd; color:#856404; }
+.badge-overlap { background:#d1ecf1; color:#0c5460; }
+.badge-freeroll { background:#e2e3f3; color:#383d65; }
+.badge-overlay { background:#fce4ec; color:#880e4f; }
+</style>
+
+<div class="health-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <h1 style="margin:0 0 0.3rem 0;">בדיקת תקינות</h1>
+            <div class="muted">העלאה אחרונה ב-{{ last_upload }}</div>
+        </div>
+        <div class="health-status {% if aligned %}status-ok{% else %}status-bad{% endif %}">
+            {% if aligned %}✅ DELTA = 0 — תקין{% else %}⚠️ יש פער ב-DELTA{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="health-card">
+    <div class="section-title">סיכום הסכמה</div>
+    <dl class="kv-grid">
+        <dt>TOP BOX (סכום הכללי)</dt>
+        <dd>Rake = {{ '{:,.2f}'.format(top_rake) }} &nbsp;&nbsp; PnL = {{ '{:,.2f}'.format(top_pnl) }}</dd>
+
+        <dt>סכום כל הכרטיסים</dt>
+        <dd>Rake = {{ '{:,.2f}'.format(sum_rake) }} &nbsp;&nbsp; PnL = {{ '{:,.2f}'.format(sum_pnl) }}</dd>
+
+        <dt>DELTA (TOP − Cards)</dt>
+        <dd>
+            <span class="{% if delta_rake > 0 %}delta-pos{% elif delta_rake < 0 %}delta-neg{% else %}delta-zero{% endif %}">Rake = {{ '{:+,.2f}'.format(delta_rake) }}</span>
+            &nbsp;&nbsp;
+            <span class="{% if delta_pnl > 0 %}delta-pos{% elif delta_pnl < 0 %}delta-neg{% else %}delta-zero{% endif %}">PnL = {{ '{:+,.2f}'.format(delta_pnl) }}</span>
+        </dd>
+
+        <dt>פער מוסבר (Freerolls + Overlay)</dt>
+        <dd class="muted">{{ '{:,.2f}'.format(expected_gap) }} (לא חלק מ-DELTA — נתון להתייחסות)</dd>
+    </dl>
+</div>
+
+<div class="health-card">
+    <div class="section-title">שחקנים יתומים <span class="muted">— שורות שלא נכנסות לאף כרטיס</span></div>
+    {% if orphans %}
+    <table class="health-table">
+        <thead>
+            <tr><th>שחקן</th><th>מועדון</th><th>שורות</th><th>Rake</th><th>PnL</th></tr>
+        </thead>
+        <tbody>
+        {% for o in orphans %}
+            <tr>
+                <td><strong>{{ o.nick or o.pid }}</strong> <span class="muted">({{ o.pid }})</span></td>
+                <td>{{ o.club or '-' }}</td>
+                <td>{{ o.rows }}</td>
+                <td>{{ '{:,.2f}'.format(o.rake) }}</td>
+                <td class="{% if o.pnl < 0 %}delta-pos{% else %}delta-zero{% endif %}">{{ '{:+,.2f}'.format(o.pnl) }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="muted">✅ אין יתומים</div>
+    {% endif %}
+</div>
+
+<div class="health-card">
+    <div class="section-title">Double-counts <span class="muted">— שורות שנספרות ביותר מכרטיס אחד</span></div>
+    {% if overlaps %}
+    <table class="health-table">
+        <thead>
+            <tr><th>שחקן</th><th>מועדון</th><th>שורות</th><th>Rake (כפילות)</th><th>PnL (כפילות)</th><th>נספר ב-</th></tr>
+        </thead>
+        <tbody>
+        {% for o in overlaps %}
+            <tr>
+                <td><strong>{{ o.nick or o.pid }}</strong> <span class="muted">({{ o.pid }})</span></td>
+                <td>{{ o.club or '-' }}</td>
+                <td>{{ o.rows }}</td>
+                <td>{{ '{:,.2f}'.format(o.rake) }}</td>
+                <td class="{% if o.pnl < 0 %}delta-pos{% else %}delta-zero{% endif %}">{{ '{:+,.2f}'.format(o.pnl) }}</td>
+                <td><span class="muted">{{ o.cards|join(', ') }}</span></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="muted">✅ אין double-counts</div>
+    {% endif %}
+</div>
+
+<div class="health-card">
+    <div class="section-title">Freerolls + Overlay <span class="muted">— מסביר את ה-Bal של ה-TOP BOX</span></div>
+    {% if overlay_rows %}
+    <table class="health-table">
+        <thead>
+            <tr><th>סוג</th><th>שם הטורניר</th><th>GTD</th><th>Entries</th><th>Buyin</th><th>Prize Pool</th><th>תוספת מהמועדון</th></tr>
+        </thead>
+        <tbody>
+        {% for r in overlay_rows %}
+            <tr>
+                <td><span class="badge {% if r.kind == 'Freeroll' %}badge-freeroll{% else %}badge-overlay{% endif %}">{{ r.kind }}</span></td>
+                <td>{{ r.title }}</td>
+                <td>{{ '{:,.0f}'.format(r.gtd) }}</td>
+                <td>{{ '{:,.0f}'.format(r.entries) }}</td>
+                <td>{{ '{:,.2f}'.format(r.buyin) }}</td>
+                <td>{{ '{:,.2f}'.format(r.prize) }}</td>
+                <td><strong>{{ '{:+,.2f}'.format(r.diff) }}</strong></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="muted">אין freerolls / overlay בנתונים הנוכחיים</div>
+    {% endif %}
+</div>
+{% endblock %}
