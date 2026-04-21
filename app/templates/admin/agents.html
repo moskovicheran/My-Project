@@ -86,10 +86,21 @@
         <thead><tr><th>Super Agent</th><th>מועדון</th><th></th></tr></thead>
         <tbody>
             {% for cfg in configs %}
-            {% if cfg.managed_club_name %}
+            {# Show every SARakeConfig, including ones whose managed_club_id
+               is a literal name (e.g. 'MANG0', 'Marmalades', 'SPC Un',
+               'Spc o') rather than an Excel-registered club_id. Previously
+               the row was hidden when managed_club_name was empty, so
+               admins couldn't delete literal entries from the UI. #}
             <tr>
                 <td><strong>{{ cfg.sa_nick }}</strong> <span class="muted small">{{ cfg.sa_id }}</span></td>
-                <td><strong>{{ cfg.managed_club_name }}</strong></td>
+                <td>
+                    <strong>{{ cfg.managed_club_name or cfg.managed_club_id }}</strong>
+                    {% if not cfg.managed_club_name %}
+                    <span class="muted small" style="margin-inline-start:0.3rem;">(שם ליטרלי)</span>
+                    {% else %}
+                    <span class="muted small" style="margin-inline-start:0.3rem;">id={{ cfg.managed_club_id }}</span>
+                    {% endif %}
+                </td>
                 <td>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק שיוך?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -99,7 +110,6 @@
                     </form>
                 </td>
             </tr>
-            {% endif %}
             {% endfor %}
         </tbody>
     </table>
