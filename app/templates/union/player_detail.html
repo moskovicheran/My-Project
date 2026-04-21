@@ -17,6 +17,14 @@
             &nbsp;{{ member.player_id }}
             {% if member.country != '-' and member.country != 'nan' %}&nbsp;| {{ member.country }}{% endif %}
         </p>
+        {% if scope_applied %}
+        <p class="subtitle" style="margin-top:0.3rem;">
+            <span style="display:inline-block; padding:0.2rem 0.6rem; background:#fff4d6; color:#8a5f00; border-radius:6px; font-size:0.8rem; font-weight:600;">
+                🎯 חלק רלוונטי אליך ({{ scope_sa_nick }})
+            </span>
+            <a href="?full=1" style="margin-inline-start:0.5rem; font-size:0.8rem;">הצג תמונה מלאה</a>
+        </p>
+        {% endif %}
         {% if hierarchy_chain %}
         <p class="subtitle hier-chain">
             <span class="muted">מנוהל תחת:</span>

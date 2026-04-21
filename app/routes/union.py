@@ -395,8 +395,41 @@ def player_detail(player_id):
             flash('אין לך הרשאה לצפות בשחקן זה.', 'danger')
             return redirect(url_for('main.dashboard'))
 
-    from app.union_data import get_cumulative_stats
+    from app.union_data import get_cumulative_stats, get_agent_scope_predicate
     member_info, sessions, club_entries = get_player_detail(player_id)
+
+    # Determine viewer scope: when an agent (or admin acting as agent via
+    # ?view_as=) looks at a player who plays in multiple places, show only
+    # the rows attributed to THAT agent's card. `?full=1` opts out.
+    # Admin without view_as → global view (backwards-compatible).
+    scope_sa_id = None
+    if request.args.get('full') != '1':
+        if current_user.role == 'admin':
+            scope_sa_id = request.args.get('view_as')
+        elif current_user.role == 'agent':
+            scope_sa_id = current_user.player_id
+    # Self-view never scoped: a player is their own player_id — the scope
+    # would filter them out of their own card.
+    if scope_sa_id == player_id:
+        scope_sa_id = None
+    scope_pred = get_agent_scope_predicate(scope_sa_id) if scope_sa_id else None
+    scope_applied = scope_pred is not None
+
+    # Scoped-view helpers: rebuild totals/clubs/upload_filter from
+    # DailyPlayerStats restricted to the viewer's scope predicate.
+    scope_upload_ids = None  # None = no filter, set = filter sessions
+    if scope_applied:
+        from app.models import DailyPlayerStats as _DPS
+        from sqlalchemy import func as _sf
+        scoped_rows = _DPS.query.with_entities(
+            _DPS.upload_id, _DPS.club,
+            _sf.sum(_DPS.rake), _sf.sum(_DPS.pnl), _sf.sum(_DPS.hands),
+        ).filter(
+            _DPS.player_id == player_id,
+            _DPS.role != 'Name Entry',
+            scope_pred,
+        ).group_by(_DPS.upload_id, _DPS.club).all()
+        scope_upload_ids = {uid for uid, _, _, _, _ in scoped_rows}
 
     # Get cumulative data from DB
     cumulative = get_cumulative_stats([player_id])
@@ -435,8 +468,36 @@ def player_detail(player_id):
     from app.union_data import get_transfer_adjustments
     xfer_adj = get_transfer_adjustments([player_id])
 
-    # Use cumulative data
-    if cs:
+    # Use cumulative data — if scope is applied, recompute from the scoped
+    # DailyPlayerStats slice so totals/clubs reflect only this viewer's
+    # card (e.g. areyoufold under niroha shows SPC T only, not POKER GARDEN).
+    if scope_applied:
+        total_rake = 0.0
+        total_pnl = 0.0
+        total_hands = 0
+        _clubs_map = {}
+        for uid, club, r, p, h in scoped_rows:
+            total_rake += float(r or 0)
+            total_pnl += float(p or 0)
+            total_hands += int(h or 0)
+            e = _clubs_map.setdefault(club, {
+                'club': club, 'pnl_total': 0.0, 'rake_total': 0.0,
+                'hands_total': 0,
+                'sa_nick': member_info.get('sa_nick', '-'),
+                'agent_nick': member_info.get('agent_nick', '-'),
+            })
+            e['pnl_total'] += float(p or 0)
+            e['rake_total'] += float(r or 0)
+            e['hands_total'] += int(h or 0)
+        total_rake = round(total_rake, 2)
+        total_pnl = round(total_pnl, 2)
+        for e in _clubs_map.values():
+            e['pnl_total'] = round(e['pnl_total'], 2)
+            e['rake_total'] = round(e['rake_total'], 2)
+        club_entries = list(_clubs_map.values())
+        # Skip transfer adjustment in scoped view — transfers aren't tied
+        # to a specific card, so including them would misattribute.
+    elif cs:
         total_rake = cs['rake']
         total_pnl = round(cs['pnl'] + xfer_adj.get(player_id, 0), 2)
         total_hands = cs['hands']
@@ -450,14 +511,20 @@ def player_detail(player_id):
         total_pnl = sum(s['pnl'] for s in sessions)
         total_hands = sum(s['hands'] for s in sessions)
 
-    # Load sessions from DB (cumulative, all uploads)
+    # Load sessions from DB (cumulative, all uploads).
+    # In scoped view, restrict to uploads where the player had in-scope rows
+    # (a player has at most one club per upload, so this is a clean filter).
     from app.models import PlayerSession, DailyUpload
-    db_sessions = (PlayerSession.query
-                   .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
-                   .add_columns(DailyUpload.upload_date)
-                   .filter(PlayerSession.player_id == player_id)
-                   .order_by(DailyUpload.upload_date.asc())
-                   .all())
+    _sess_q = (PlayerSession.query
+               .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+               .add_columns(DailyUpload.upload_date)
+               .filter(PlayerSession.player_id == player_id))
+    if scope_applied:
+        if scope_upload_ids:
+            _sess_q = _sess_q.filter(PlayerSession.upload_id.in_(list(scope_upload_ids)))
+        else:
+            _sess_q = _sess_q.filter(PlayerSession.id < 0)  # force empty
+    db_sessions = _sess_q.order_by(DailyUpload.upload_date.asc()).all()
     if db_sessions:
         sessions = []
         for s, upload_date in db_sessions:
@@ -472,11 +539,13 @@ def player_detail(player_id):
                 'pnl': round(s.pnl, 2),
             })
 
-    # Add money transfers as special session entries
+    # Add money transfers as special session entries — only in full view
+    # (transfers aren't tied to a specific card, so in scoped view we
+    # suppress them to avoid misattribution).
     from app.models import MoneyTransfer
     from datetime import timedelta
-    transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
-    transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
+    transfers_out = [] if scope_applied else MoneyTransfer.query.filter_by(from_player_id=player_id).all()
+    transfers_in = [] if scope_applied else MoneyTransfer.query.filter_by(to_player_id=player_id).all()
     for t in transfers_out:
         il_time = t.created_at + timedelta(hours=3) if t.created_at else None
         sessions.append({
@@ -545,6 +614,16 @@ def player_detail(player_id):
     # this player. Renders as "מנוהל תחת: X → Y → Z" on the detail page.
     hierarchy_chain = _build_hierarchy_chain(player_id)
 
+    # Resolve the scope SA's display name for the badge in the template
+    scope_sa_nick = None
+    if scope_applied:
+        from app.models import DailyPlayerStats as _DPS
+        from sqlalchemy import func as _sf
+        scope_sa_nick = _DPS.query.with_entities(_sf.max(_DPS.nickname)).filter(
+            _DPS.player_id == scope_sa_id,
+            _DPS.nickname.isnot(None), _DPS.nickname != ''
+        ).scalar() or scope_sa_id
+
     return render_template('union/player_detail.html',
                            member=member_info,
                            sessions=sessions,
@@ -556,7 +635,10 @@ def player_detail(player_id):
                            total_sessions=total_sessions,
                            total_wins=total_wins,
                            total_losses=total_losses,
-                           hierarchy_chain=hierarchy_chain)
+                           hierarchy_chain=hierarchy_chain,
+                           scope_applied=scope_applied,
+                           scope_sa_id=scope_sa_id,
+                           scope_sa_nick=scope_sa_nick)
 
 
 def _build_hierarchy_chain(player_id):

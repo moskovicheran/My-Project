@@ -1187,6 +1187,114 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     }
 
 
+def get_agent_scope_predicate(sa_id, M=None):
+    """Return a SQLAlchemy OR-predicate expressing which DailyPlayerStats
+    rows fall into `sa_id`'s scope.
+
+    Same logic as get_agent_totals (current-scope ∪ managed-clubs ∪
+    override) with identical carve-outs for other cards' managed clubs.
+    Returns None if the scope is empty (so callers can short-circuit).
+
+    Useful anywhere we need "only this agent's share of a player's rows":
+    the player-detail page, per-scope exports, etc.
+    """
+    from app.models import (DailyPlayerStats, SAHierarchy, SARakeConfig,
+                             PlayerAssignment)
+    from sqlalchemy import or_, and_, not_
+    if M is None:
+        M = DailyPlayerStats
+
+    uid = sa_id
+    known_ids = {uid}
+
+    is_sa = M.query.filter(M.sa_id == uid).first() is not None
+    is_ag = M.query.filter(M.agent_id == uid).first() is not None
+    if not is_sa and not is_ag:
+        own_row = M.query.filter(M.player_id == uid).first()
+        if own_row:
+            role_lower = (own_row.role or '').lower()
+            if 'super' in role_lower or role_lower in ('sa',):
+                if own_row.sa_id and own_row.sa_id != '-':
+                    known_ids.add(own_row.sa_id)
+            elif 'agent' in role_lower:
+                if own_row.agent_id and own_row.agent_id != '-':
+                    known_ids.add(own_row.agent_id)
+    known_ids.discard(''); known_ids.discard('-')
+
+    child_sa_ids = []
+    for kid in list(known_ids):
+        child_sa_ids.extend([h.child_sa_id for h in
+                             SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+    all_ids = list(set(list(known_ids) + child_sa_ids))
+
+    rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(
+        SARakeConfig.managed_club_id.isnot(None)).all()
+    managed_club_names = []
+    if rake_cfgs:
+        clubs_data, _ = get_members_hierarchy()
+        cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        managed_club_names = [cid_to_name.get(c.managed_club_id) or c.managed_club_id
+                              for c in rake_cfgs]
+
+    known_agent_ids_rows = M.query.with_entities(M.agent_id).filter(
+        M.sa_id.in_(all_ids),
+        M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-',
+    ).distinct().all()
+    known_agent_ids = {r[0] for r in known_agent_ids_rows if r[0]}
+    override_target_set = set(all_ids) | known_agent_ids
+    override_in_pids = []
+    for ov in PlayerAssignment.query.all():
+        ov_sa = ov.assigned_sa_id or ''
+        ov_ag = ov.assigned_agent_id or ''
+        if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
+            override_in_pids.append(ov.player_id)
+
+    current_scope_pids = get_players_with_current_scope(all_ids, M=M)
+
+    other_managed_names = set()
+    clubs_data_all, _ = get_members_hierarchy()
+    cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data_all}
+    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+        if c.sa_id == uid:
+            continue
+        nm = cid_to_name_all.get(c.managed_club_id) or c.managed_club_id
+        other_managed_names.add(nm)
+    try:
+        from app.routes.admin import OVERVIEW_CLUBS
+        for _, cid in OVERVIEW_CLUBS:
+            nm = cid_to_name_all.get(cid)
+            if not nm and M.query.filter(M.club == cid).first():
+                nm = cid
+            if nm:
+                other_managed_names.add(nm)
+    except Exception:
+        pass
+
+    scope_preds = []
+    if current_scope_pids:
+        if other_managed_names:
+            scope_preds.append(and_(
+                M.player_id.in_(list(current_scope_pids)),
+                not_(M.club.in_(list(other_managed_names))),
+            ))
+        else:
+            scope_preds.append(M.player_id.in_(list(current_scope_pids)))
+    if managed_club_names:
+        scope_preds.append(M.club.in_(managed_club_names))
+    if override_in_pids:
+        if other_managed_names:
+            scope_preds.append(and_(
+                M.player_id.in_(override_in_pids),
+                not_(M.club.in_(list(other_managed_names))),
+            ))
+        else:
+            scope_preds.append(M.player_id.in_(override_in_pids))
+
+    if not scope_preds:
+        return None
+    return or_(*scope_preds)
+
+
 def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
     """Calculate total rake/pnl/hands/players for a club — filtered by
     DailyPlayerStats.club == <club_name> (not by sa_id/agent_id like agents).
