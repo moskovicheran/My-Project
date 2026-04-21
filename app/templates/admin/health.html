@@ -61,17 +61,13 @@
     {% if orphans %}
     <table class="health-table">
         <thead>
-            <tr><th>שחקן</th><th>מועדון</th><th>סוג</th><th>שורות</th><th>Rake</th><th>PnL</th></tr>
+            <tr><th>שחקן</th><th>מועדון</th><th>שורות</th><th>Rake</th><th>PnL</th></tr>
         </thead>
         <tbody>
         {% for o in orphans %}
             <tr>
                 <td><strong>{{ o.nick or o.pid }}</strong> <span class="muted">({{ o.pid }})</span></td>
                 <td>{{ o.club or '-' }}</td>
-                <td>
-                    {% if o.is_managed %}<span class="badge-orphan">מועדון מנוהל</span>
-                    {% else %}<span class="muted">חיצוני</span>{% endif %}
-                </td>
                 <td>{{ o.rows }}</td>
                 <td>{{ '{:,.2f}'.format(o.rake) }}</td>
                 <td class="{% if o.pnl < 0 %}delta-pos{% else %}delta-zero{% endif %}">{{ '{:+,.2f}'.format(o.pnl) }}</td>

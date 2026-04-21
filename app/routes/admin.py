@@ -269,13 +269,11 @@ def health():
         nm = cid_to_name.get(cid) or (cid if DailyPlayerStats.query.filter(DailyPlayerStats.club == cid).first() else None)
         if nm: tracked_clubs.add(nm)
 
-    # Surface orphans from EVERY club — any row not caught by a card
-    # contributes to the top-box vs. sum-of-cards delta, so it deserves
-    # visibility. The table separates managed-club orphans (SPC T/SPC C,
-    # actionable via PlayerAssignment) from external-club orphans
-    # (usually fine to leave, but worth seeing).
-    orphan_clubs = None  # None = include all clubs
-    managed_orphan_clubs = set(MANAGED_LOST_CLUBS)
+    # Only surface orphans from the clubs we actively manage (SPC T / SPC C).
+    # Rows in other clubs (Marmalades, POKER GARDEN, etc.) are either already
+    # attributed via SARakeConfig.managed_club_id or are external clubs we
+    # don't own — no need to flag them on the health page.
+    orphan_clubs = set(MANAGED_LOST_CLUBS)
     orphans = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'nick': '', 'club': ''})
     overlaps = defaultdict(lambda: {'rake': 0.0, 'pnl': 0.0, 'rows': 0, 'nick': '', 'club': '', 'cards': set()})
     for r in DailyPlayerStats.query.yield_per(5000):
@@ -294,11 +292,11 @@ def health():
                 cards_hit.append(sa['pid'])
         rk = float(r.rake or 0); pl = float(r.pnl or 0)
         if not cards_hit:
-            # Every row not caught by any card is an orphan — it contributes
-            # to the top-box vs. sum-of-cards delta.
-            d = orphans[(r.player_id, r.club)]
-            d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
-            d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
+            # Only flag as orphan if it's in a managed club (SPC T/SPC C).
+            if r.club in orphan_clubs:
+                d = orphans[r.player_id]
+                d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
+                d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
         elif len(cards_hit) > 1:
             d = overlaps[(r.player_id, r.club)]
             d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
@@ -306,10 +304,8 @@ def health():
             d['cards'].update(cards_hit)
 
     orphans_list = sorted(
-        [{'pid': k[0], 'club_key': k[1],
-          'is_managed': (k[1] in managed_orphan_clubs), **v}
-         for k, v in orphans.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
-        key=lambda x: abs(x['rake']) + abs(x['pnl']), reverse=True)
+        [{'pid': k, **v} for k, v in orphans.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
+        key=lambda x: abs(x['pnl']), reverse=True)
     overlaps_list = sorted(
         [{'pid': k[0], 'club_key': k[1], **v, 'cards': sorted(v['cards'])}
          for k, v in overlaps.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
