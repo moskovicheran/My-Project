@@ -2477,9 +2477,9 @@ def export_agent_full_box():
 
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
 
-    # Group players by club so the sheet isn't interleaved
-    # (spc t block, then spc o block, then rafi ginat block, etc.)
-    clubs = {}  # club_name -> [row dicts]
+    # Group players by Super Agent so the sheet reads as an organized list:
+    # one SA's players in a block, then the next SA's, etc.
+    sa_groups = {}  # sa_name -> [row dicts]
     for p in players:
         ag_id = p[3] if p[3] and p[3] != '-' else None
         ag_name = all_nicks.get(ag_id, ag_id) if ag_id else ''
@@ -2496,26 +2496,26 @@ def export_agent_full_box():
             'Rake': round(float(p[6] or 0), 2),
             'ידיים': int(p[7] or 0),
         }
-        clubs.setdefault(row['קלאב'], []).append(row)
+        sa_groups.setdefault(row['Super Agent'], []).append(row)
 
-    # Sort clubs by total rake desc; within each club sort players by rake desc.
-    club_order = sorted(
-        clubs.items(),
-        key=lambda kv: sum(r['Rake'] for r in kv[1]),
-        reverse=True,
+    # Sort SAs by total rake desc; within each SA sort players by rake desc.
+    # Empty-SA bucket is forced to the end so named SAs read as a list first.
+    sa_order = sorted(
+        sa_groups.items(),
+        key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
     )
 
     rows = []
-    for club_name, club_rows in club_order:
-        club_rows.sort(key=lambda r: r['Rake'], reverse=True)
-        rows.extend(club_rows)
-        # Club subtotal — visually separates each group
+    for sa_name, sa_rows in sa_order:
+        sa_rows.sort(key=lambda r: r['Rake'], reverse=True)
+        rows.extend(sa_rows)
+        # SA subtotal — visually separates each group
         rows.append({
-            'שחקן': f'סה"כ {club_name}' if club_name else 'סה"כ',
-            'ID': '', 'קלאב': club_name, 'Super Agent': '', 'סוכן': '',
-            'P&L': round(sum(r['P&L'] for r in club_rows), 2),
-            'Rake': round(sum(r['Rake'] for r in club_rows), 2),
-            'ידיים': sum(r['ידיים'] for r in club_rows),
+            'שחקן': f'סה"כ {sa_name}' if sa_name else 'סה"כ ללא Super Agent',
+            'ID': '', 'קלאב': '', 'Super Agent': sa_name, 'סוכן': '',
+            'P&L': round(sum(r['P&L'] for r in sa_rows), 2),
+            'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
+            'ידיים': sum(r['ידיים'] for r in sa_rows),
         })
 
     if rows:
@@ -2620,13 +2620,33 @@ def export_agent_club(club_id):
     sheets = {}
 
     if full_mode:
-        all_rows.sort(key=lambda x: x['Rake'], reverse=True)
-        all_rows.append({
-            'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '', 'סוכן': '',
-            'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in all_rows), 2),
-            'Rake': round(sum(r['Rake'] for r in all_rows), 2),
-        })
-        sheets[club_name[:31]] = all_rows
+        # Group by Super Agent so the single sheet reads as an organized list:
+        # all of SA1's players, then SA2's, etc. Empty-SA bucket goes last.
+        grouped_rows = []
+        full_groups = dict(sa_groups)
+        if no_sa_rows:
+            full_groups[''] = no_sa_rows
+        sa_order = sorted(
+            full_groups.items(),
+            key=lambda kv: (kv[0] == '', -sum(r['Rake'] for r in kv[1])),
+        )
+        for sa_name, sa_rows in sa_order:
+            sa_rows.sort(key=lambda r: r['Rake'], reverse=True)
+            grouped_rows.extend(sa_rows)
+            grouped_rows.append({
+                'שחקן': f'סה"כ {sa_name}' if sa_name else 'סה"כ ללא Super Agent',
+                'ID': '', 'Super Agent': sa_name, 'סוכן': '',
+                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in sa_rows), 2),
+                'Rake': round(sum(r['Rake'] for r in sa_rows), 2),
+            })
+        if grouped_rows:
+            data_rows = [r for r in grouped_rows if not str(r['שחקן']).startswith('סה"כ')]
+            grouped_rows.append({
+                'שחקן': 'סה"כ', 'ID': '', 'Super Agent': '', 'סוכן': '',
+                'רווח/הפסד': round(sum(r['רווח/הפסד'] for r in data_rows), 2),
+                'Rake': round(sum(r['Rake'] for r in data_rows), 2),
+            })
+        sheets[club_name[:31]] = grouped_rows
     else:
         # Sheet per SA
         for sa_name, sa_rows in sorted(sa_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
