@@ -144,6 +144,7 @@
                 <td>
                     <form method="post" action="{{ url_for('admin.lost_players') }}"
                           style="display:flex; gap:0.3rem; align-items:center; margin:0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="assign">
                         <input type="hidden" name="player_id" value="{{ o.pid }}">
                         <input type="hidden" name="return_to" value="admin.health">
