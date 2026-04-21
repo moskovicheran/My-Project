@@ -770,9 +770,12 @@ def dashboard():
         for cs in child_sas:
             cs_sa = cs.get('sa_id')
             # Current-assignment scope: players whose LATEST sa_id/agent_id
-            # is this child SA. Excludes the child SA's own play.
+            # is this child SA. The child SA's own play is included — it's
+            # already surfaced as a direct member by the block above, and
+            # keeping it in-scope here ensures the card total matches the
+            # export (otherwise Mamtakk's own -401.98/895.61 is missing).
             cs_current_pids = get_players_with_current_scope(
-                [cs_sa], M=SM, exclude_self=cs_sa) if cs_sa else set()
+                [cs_sa], M=SM) if cs_sa else set()
             # Union with Excel-discovered / previously-known pids so nothing
             # silently vanishes, but drop anyone whose current SA is no
             # longer this one (they've been moved elsewhere).
