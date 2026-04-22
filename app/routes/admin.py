@@ -363,11 +363,31 @@ def health():
 
     aligned = abs(delta_rake) < 0.01 and abs(delta_pnl) < 0.01
 
-    # Assignment targets for the inline "שייך לכרטיס" form. Overview cards
-    # only — assigning to a random SA outside the overview wouldn't help the
-    # delta. Each option is (sa_id, display_label).
+    # Assignment targets for the inline "שייך לכרטיס" form. Start with the
+    # overview-card managers + external agents (these are the priority picks,
+    # pinned at the top), then extend with every SA/agent ID seen in the
+    # managed clubs (SPC T / SPC C) so orphans can also be attached to
+    # non-headline players via the autocomplete combobox.
     assign_targets = [(pid, f'{nick} ({pid})')
                       for nick, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS]
+    pinned_count = len(assign_targets)
+    base_pids = {pid for pid, _ in assign_targets}
+    extra_rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.sa_id, DailyPlayerStats.agent_id
+    ).filter(DailyPlayerStats.club.in_(MANAGED_LOST_CLUBS)).distinct().all()
+    extra_ids = set()
+    for sa_id, ag_id in extra_rows:
+        if sa_id and sa_id not in ('', '-') and sa_id not in base_pids:
+            extra_ids.add(sa_id)
+        if ag_id and ag_id not in ('', '-') and ag_id not in base_pids:
+            extra_ids.add(ag_id)
+    extra_nicks = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id.in_(list(extra_ids))
+    ).group_by(DailyPlayerStats.player_id).all()) if extra_ids else {}
+    extras = [(pid, f'{extra_nicks.get(pid) or pid} ({pid})') for pid in extra_ids]
+    extras.sort(key=lambda x: x[1].lower())
+    assign_targets.extend(extras)
 
     return render_template('admin/health.html',
                            last_upload=last_upload,
@@ -380,6 +400,7 @@ def health():
                            orphans=orphans_list,
                            overlaps=overlaps_list,
                            assign_targets=assign_targets,
+                           pinned_count=pinned_count,
                            unknown_clubs=unknown_clubs_list,
                            unknown_sas=unknown_sas_list)
 

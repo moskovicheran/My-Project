@@ -51,6 +51,27 @@
     .muted { font-size:0.78rem; }
 }
 
+/* Autocomplete combobox for SA/agent picker in orphan rows. */
+.sa-pick-menu {
+    position:absolute; top:100%; right:0; left:0; z-index:20;
+    background:#fff; border:1px solid #ccc; border-radius:6px;
+    max-height:220px; overflow-y:auto; margin-top:2px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.12);
+}
+.sa-pick-opt {
+    padding:0.35rem 0.6rem; font-size:0.82rem; cursor:pointer;
+    border-bottom:1px solid #f0f0f0; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+}
+.sa-pick-opt:last-child { border-bottom:none; }
+.sa-pick-opt:hover, .sa-pick-opt.active { background:#eef3ff; }
+.sa-pick-opt.pinned { background:#fffbe6; }
+.sa-pick-opt.pinned:hover, .sa-pick-opt.pinned.active { background:#fff3cd; }
+body.dark .sa-pick-menu { background:#252535; border-color:#444; }
+body.dark .sa-pick-opt { color:#ddd; border-bottom-color:#333; }
+body.dark .sa-pick-opt:hover, body.dark .sa-pick-opt.active { background:#36365a; }
+body.dark .sa-pick-opt.pinned { background:#3a3520; }
+
 @media (max-width: 420px) {
     .health-card { padding:0.7rem; }
     .section-title { font-size:0.95rem; }
@@ -183,12 +204,13 @@
                         <input type="hidden" name="player_id" value="{{ o.pid }}">
                         <input type="hidden" name="return_to" value="admin.health">
                         <input type="hidden" name="note" value="שויך מ־/admin/health">
-                        <select name="sa_key" class="form-select form-select-sm" style="font-size:0.8rem; padding:0.2rem 0.4rem; max-width:13rem;" required>
-                            <option value="">— בחר SA —</option>
-                            {% for sid, label in assign_targets %}
-                            <option value="{{ sid }}|">{{ label }}</option>
-                            {% endfor %}
-                        </select>
+                        <div class="sa-pick" style="position:relative; max-width:13rem; flex:1;">
+                            <input type="text" class="sa-pick-input form-select form-select-sm"
+                                   autocomplete="off" placeholder="התחל להקליד (2+ תווים)…"
+                                   style="font-size:0.8rem; padding:0.2rem 0.4rem; width:100%;" required>
+                            <input type="hidden" name="sa_key" value="">
+                            <div class="sa-pick-menu" hidden></div>
+                        </div>
                         <button type="submit" class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:0.25rem 0.6rem;">שייך</button>
                     </form>
                 </td>
@@ -269,4 +291,115 @@
     <div class="muted">אין freerolls / overlay בנתונים הנוכחיים</div>
     {% endif %}
 </div>
+
+<script>
+(function() {
+    const OPTIONS = {{ assign_targets | tojson }};
+    const PINNED_COUNT = {{ pinned_count }};
+    const MIN_CHARS = 2;
+    const MAX_RESULTS = 20;
+
+    document.querySelectorAll('.sa-pick').forEach(function(pick) {
+        const textIn = pick.querySelector('.sa-pick-input');
+        const hidden = pick.querySelector('input[name="sa_key"]');
+        const menu = pick.querySelector('.sa-pick-menu');
+        let active = -1;
+        let current = [];
+
+        function render(q) {
+            if (q.length < MIN_CHARS) {
+                menu.hidden = true; menu.innerHTML = '';
+                current = []; active = -1;
+                return;
+            }
+            const needle = q.toLowerCase();
+            const matches = [];
+            for (let i = 0; i < OPTIONS.length; i++) {
+                const label = OPTIONS[i][1];
+                if (label.toLowerCase().indexOf(needle) !== -1) {
+                    matches.push({sid: OPTIONS[i][0], label: label, pinned: i < PINNED_COUNT});
+                    if (matches.length >= MAX_RESULTS) break;
+                }
+            }
+            current = matches; active = -1;
+            if (!matches.length) {
+                menu.hidden = false;
+                menu.innerHTML = '<div class="sa-pick-opt" style="color:#999; cursor:default;">אין תוצאות</div>';
+                return;
+            }
+            menu.innerHTML = matches.map(function(m, idx) {
+                return '<div class="sa-pick-opt' + (m.pinned ? ' pinned' : '') +
+                       '" data-idx="' + idx + '">' +
+                       (m.pinned ? '⭐ ' : '') + escapeHtml(m.label) + '</div>';
+            }).join('');
+            menu.hidden = false;
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/[&<>"']/g, function(c) {
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+            });
+        }
+
+        function pick_opt(idx) {
+            if (idx < 0 || idx >= current.length) return;
+            const m = current[idx];
+            textIn.value = m.label;
+            hidden.value = m.sid + '|';
+            menu.hidden = true;
+        }
+
+        textIn.addEventListener('input', function() {
+            hidden.value = '';
+            render(textIn.value.trim());
+        });
+        textIn.addEventListener('focus', function() {
+            if (textIn.value.trim().length >= MIN_CHARS) render(textIn.value.trim());
+        });
+        textIn.addEventListener('blur', function() {
+            setTimeout(function() { menu.hidden = true; }, 150);
+        });
+        textIn.addEventListener('keydown', function(e) {
+            if (menu.hidden) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                active = Math.min(active + 1, current.length - 1);
+                updateActive();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                active = Math.max(active - 1, 0);
+                updateActive();
+            } else if (e.key === 'Enter' && active >= 0) {
+                e.preventDefault();
+                pick_opt(active);
+            } else if (e.key === 'Escape') {
+                menu.hidden = true;
+            }
+        });
+        function updateActive() {
+            menu.querySelectorAll('.sa-pick-opt').forEach(function(el, i) {
+                el.classList.toggle('active', i === active);
+            });
+            const el = menu.querySelector('.sa-pick-opt.active');
+            if (el) el.scrollIntoView({block: 'nearest'});
+        }
+        menu.addEventListener('mousedown', function(e) {
+            const opt = e.target.closest('.sa-pick-opt[data-idx]');
+            if (!opt) return;
+            e.preventDefault();
+            pick_opt(parseInt(opt.dataset.idx, 10));
+        });
+
+        // Block submit if no sa_key chosen (label without a match)
+        pick.closest('form').addEventListener('submit', function(e) {
+            if (!hidden.value) {
+                e.preventDefault();
+                textIn.focus();
+                textIn.classList.add('is-invalid');
+                setTimeout(function(){ textIn.classList.remove('is-invalid'); }, 1500);
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}
