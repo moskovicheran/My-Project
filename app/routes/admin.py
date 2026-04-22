@@ -37,7 +37,6 @@ OVERVIEW_CLUBS = [
 OVERVIEW_EXTERNAL_AGENTS = [
     ('BlindersT', '7622-3272'),
     ('sarbuvx',   '9319-6677'),
-    ('Doron2',    '4076-8124'),
 ]
 
 # Override the display name of a managed club on the agent's own dashboard.
