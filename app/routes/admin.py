@@ -231,10 +231,19 @@ def health():
         diff = prize - buyin * entries
         if diff > 0.01:
             expected_gap += diff
+            # start column is the tournament's scheduled start (e.g. '2026-04-20 02:00');
+            # fall back to upload_id for a stable chronological key when it's missing.
+            start_str = (t.start or '').strip()
+            sort_key = (start_str or f'zzzz-{t.upload_id:06d}', t.upload_id, t.id)
             overlay_rows.append({'title': t.title or '-', 'kind': 'Freeroll' if buyin == 0 else 'Overlay',
                                   'gtd': float(t.gtd or 0), 'entries': entries,
-                                  'buyin': buyin, 'prize': prize, 'diff': round(diff, 2)})
-    overlay_rows.sort(key=lambda x: x['diff'], reverse=True)
+                                  'buyin': buyin, 'prize': prize, 'diff': round(diff, 2),
+                                  'start': start_str, 'date': start_str[:10],
+                                  '_sort_key': sort_key})
+    # Oldest first, most recent last — matches chronological upload order.
+    overlay_rows.sort(key=lambda x: x['_sort_key'])
+    for r in overlay_rows:
+        r.pop('_sort_key', None)
 
     # Per-row attribution scan: orphans + double-counts
     cd, _ = get_members_hierarchy()
@@ -448,7 +457,9 @@ def health_export_overlay():
         diff = prize - buyin * entries
         if diff > 0.01:
             total_diff += diff
+            start_str = (t.start or '').strip()
             rows.append({
+                'date': start_str[:10],
                 'kind': 'Freeroll' if buyin == 0 else 'Overlay',
                 'title': t.title or '-',
                 'gtd': float(t.gtd or 0),
@@ -456,13 +467,14 @@ def health_export_overlay():
                 'buyin': buyin,
                 'prize': prize,
                 'diff': round(diff, 2),
+                '_sort_key': (start_str or f'zzzz-{t.upload_id:06d}', t.upload_id, t.id),
             })
-    rows.sort(key=lambda x: x['diff'], reverse=True)
+    rows.sort(key=lambda x: x['_sort_key'])
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Freerolls + Overlay'
-    headers = ['סוג', 'שם הטורניר', 'GTD', 'Entries', 'Buyin', 'Prize Pool', 'תוספת מהמועדון']
+    headers = ['תאריך', 'סוג', 'שם הטורניר', 'GTD', 'Entries', 'Buyin', 'Prize Pool', 'תוספת מהמועדון']
     header_font = Font(bold=True, color='FFFFFF')
     header_fill = PatternFill(start_color='4361EE', end_color='4361EE', fill_type='solid')
     for col, h in enumerate(headers, 1):
@@ -471,22 +483,23 @@ def health_export_overlay():
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal='center')
     for idx, r in enumerate(rows, 2):
-        ws.cell(row=idx, column=1, value=r['kind'])
-        ws.cell(row=idx, column=2, value=r['title'])
-        ws.cell(row=idx, column=3, value=r['gtd']).number_format = '#,##0'
-        ws.cell(row=idx, column=4, value=r['entries']).number_format = '#,##0'
-        ws.cell(row=idx, column=5, value=r['buyin']).number_format = '#,##0.00'
-        ws.cell(row=idx, column=6, value=r['prize']).number_format = '#,##0.00'
-        ws.cell(row=idx, column=7, value=r['diff']).number_format = '+#,##0.00;-#,##0.00'
+        ws.cell(row=idx, column=1, value=r['date'] or '-')
+        ws.cell(row=idx, column=2, value=r['kind'])
+        ws.cell(row=idx, column=3, value=r['title'])
+        ws.cell(row=idx, column=4, value=r['gtd']).number_format = '#,##0'
+        ws.cell(row=idx, column=5, value=r['entries']).number_format = '#,##0'
+        ws.cell(row=idx, column=6, value=r['buyin']).number_format = '#,##0.00'
+        ws.cell(row=idx, column=7, value=r['prize']).number_format = '#,##0.00'
+        ws.cell(row=idx, column=8, value=r['diff']).number_format = '+#,##0.00;-#,##0.00'
     # Total row
     total_row = len(rows) + 2
     total_fill = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
     bold = Font(bold=True)
     ws.cell(row=total_row, column=1, value='סה"כ').font = bold
     ws.cell(row=total_row, column=1).fill = total_fill
-    for c in range(2, 7):
+    for c in range(2, 8):
         ws.cell(row=total_row, column=c).fill = total_fill
-    tc = ws.cell(row=total_row, column=7, value=round(total_diff, 2))
+    tc = ws.cell(row=total_row, column=8, value=round(total_diff, 2))
     tc.font = bold; tc.fill = total_fill
     tc.number_format = '+#,##0.00;-#,##0.00'
     # Auto widths

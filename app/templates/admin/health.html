@@ -265,11 +265,12 @@ body.dark .sa-pick-opt.pinned { background:#3a3520; }
     {% if overlay_rows %}
     <div class="table-scroll"><table class="health-table">
         <thead>
-            <tr><th>סוג</th><th>שם הטורניר</th><th>GTD</th><th>Entries</th><th>Buyin</th><th>Prize Pool</th><th>תוספת מהמועדון</th></tr>
+            <tr><th>תאריך</th><th>סוג</th><th>שם הטורניר</th><th>GTD</th><th>Entries</th><th>Buyin</th><th>Prize Pool</th><th>תוספת מהמועדון</th></tr>
         </thead>
         <tbody>
         {% for r in overlay_rows %}
             <tr>
+                <td class="muted">{{ r.date or '-' }}</td>
                 <td><span class="badge {% if r.kind == 'Freeroll' %}badge-freeroll{% else %}badge-overlay{% endif %}">{{ r.kind }}</span></td>
                 <td>{{ r.title }}</td>
                 <td>{{ '{:,.0f}'.format(r.gtd) }}</td>
@@ -282,7 +283,7 @@ body.dark .sa-pick-opt.pinned { background:#3a3520; }
         </tbody>
         <tfoot>
             <tr style="background:#fff3cd; font-weight:700;">
-                <td colspan="6" style="text-align:right;">סה"כ Freerolls + Overlay (מסביר את ה-Bal ב-TOP BOX)</td>
+                <td colspan="7" style="text-align:right;">סה"כ Freerolls + Overlay (מסביר את ה-Bal ב-TOP BOX)</td>
                 <td><strong style="font-size:1.05rem;">{{ '{:+,.2f}'.format(expected_gap) }}</strong></td>
             </tr>
         </tfoot>
