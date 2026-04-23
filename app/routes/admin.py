@@ -1320,16 +1320,35 @@ def agents():
                 pct = float(request.form.get('rake_percent', 0))
             except ValueError:
                 pct = 0
+            # For a player, the admin can choose whether the % is of the
+            # player's gross rake (default) or of the SA's cut. For 'sa_cut'
+            # we convert to the effective % of total before storing, so the
+            # rest of the code path stays unchanged (one semantic everywhere).
+            rake_base = request.form.get('rake_base', 'total')
+            linked_sa_id = request.form.get('linked_sa_id', '').strip()
+            effective_note = ''
+            if entity_type == 'player' and rake_base == 'sa_cut' and linked_sa_id:
+                sa_rc = RakeConfig.query.filter(
+                    RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+                    RakeConfig.entity_id == linked_sa_id).first()
+                sa_pct = float(sa_rc.rake_percent) if sa_rc else 0.0
+                if sa_pct > 0:
+                    effective = round(pct * sa_pct / 100, 2)
+                    effective_note = f' (הומר מ-{pct}% מחלק הסוכן {sa_pct}%)'
+                    pct = effective
+                else:
+                    flash(f'לא נמצא אחוז רייק לסוכן שנבחר — נשמר כ-{pct}% של הטוטאל.',
+                          'warning')
             if entity_type and entity_key and '|' in entity_key:
                 eid, ename = entity_key.split('|', 1)
                 existing = RakeConfig.query.filter_by(entity_type=entity_type, entity_id=eid).first()
                 if existing:
                     existing.rake_percent = pct
-                    flash(f'אחוז רייק ל-{ename} עודכן ל-{pct}%.', 'success')
+                    flash(f'אחוז רייק ל-{ename} עודכן ל-{pct}%{effective_note}.', 'success')
                 else:
                     db.session.add(RakeConfig(entity_type=entity_type, entity_id=eid,
                                              entity_name=ename, rake_percent=pct))
-                    flash(f'רייק {pct}% הוגדר ל-{ename}.', 'success')
+                    flash(f'רייק {pct}% הוגדר ל-{ename}{effective_note}.', 'success')
                 db.session.commit()
             else:
                 flash('יש לבחור ישות ולהזין אחוז.', 'warning')

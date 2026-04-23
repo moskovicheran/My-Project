@@ -169,11 +169,40 @@
 
         <div style="min-width:100px;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק %</label>
-            <input type="number" name="rake_percent" step="0.1" min="0" max="100" required placeholder="50"
+            <input type="number" name="rake_percent" id="rake-percent-input" step="0.1" min="0" max="100" required placeholder="50"
+                   oninput="updateRakeBasePreview()"
                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
         </div>
 
         <button type="submit" class="btn btn-primary">הגדר רייק</button>
+
+        <!-- Player-only: choose the base of the % and the linked SA -->
+        <div id="rake-base-block" style="display:none; flex-basis:100%; margin-top:0.6rem; padding:0.8rem; background:#f7faff; border:1px solid #d9e4ff; border-radius:10px;">
+            <div style="font-size:0.85rem; color:#444; margin-bottom:0.4rem;">
+                ה־% שהזנת מתייחס ל:
+            </div>
+            <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                <label style="display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0.65rem; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; font-size:0.85rem;">
+                    <input type="radio" name="rake_base" value="total" checked onchange="updateRakeBasePreview()">
+                    מהרייק הכולל של השחקן
+                </label>
+                <label style="display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0.65rem; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; font-size:0.85rem;">
+                    <input type="radio" name="rake_base" value="sa_cut" onchange="updateRakeBasePreview()">
+                    מחלק הסוכן (מ־% של ה־SA/Agent)
+                </label>
+            </div>
+            <div id="rake-linked-sa-wrap" style="display:none; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <label style="font-size:0.82rem; color:#555;">הסוכן וחלקו:</label>
+                <select name="linked_sa_id" id="rake-linked-sa" onchange="updateRakeBasePreview()"
+                        style="padding:0.35rem 0.55rem; border:1px solid #ddd; border-radius:7px; font-size:0.85rem; font-family:inherit; min-width:240px;">
+                    <option value="">— בחר סוכן —</option>
+                    {% for rc in rake_configs if rc.entity_type in ['sub_agent', 'agent'] %}
+                    <option value="{{ rc.entity_id }}" data-pct="{{ rc.rake_percent }}">{{ rc.entity_name }} — {{ rc.rake_percent }}%</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div id="rake-base-preview" style="margin-top:0.5rem; padding:0.5rem 0.7rem; background:#fffbe6; border:1px solid #ffd666; border-radius:7px; font-size:0.82rem; color:#6b4e00; display:none;"></div>
+        </div>
     </form>
 
     {% if rake_configs %}
@@ -341,6 +370,54 @@ function switchRakeEntity(type) {
         playerSearch.value = ''; playerVal.value = '';
         document.getElementById('rake-player-dropdown').style.display = 'none';
     }
+    // Show the base-selector block only for 'player' entity type.
+    var baseBlock = document.getElementById('rake-base-block');
+    if (baseBlock) {
+        baseBlock.style.display = (type === 'player') ? 'block' : 'none';
+        if (type !== 'player') {
+            var totalRadio = document.querySelector('input[name="rake_base"][value="total"]');
+            if (totalRadio) totalRadio.checked = true;
+            var linked = document.getElementById('rake-linked-sa');
+            if (linked) linked.value = '';
+        }
+        updateRakeBasePreview();
+    }
+}
+
+function updateRakeBasePreview() {
+    var input = document.getElementById('rake-percent-input');
+    var preview = document.getElementById('rake-base-preview');
+    var linkedWrap = document.getElementById('rake-linked-sa-wrap');
+    var linked = document.getElementById('rake-linked-sa');
+    if (!input || !preview || !linkedWrap) return;
+    var baseRadio = document.querySelector('input[name="rake_base"]:checked');
+    var base = baseRadio ? baseRadio.value : 'total';
+    linkedWrap.style.display = (base === 'sa_cut') ? 'flex' : 'none';
+    if (!linked.required && base === 'sa_cut') linked.setAttribute('required', 'required');
+    if (base !== 'sa_cut') linked.removeAttribute('required');
+    var pct = parseFloat(input.value);
+    if (isNaN(pct) || pct <= 0) { preview.style.display = 'none'; return; }
+    if (base === 'total') {
+        preview.innerHTML = '💡 <strong>יישמר:</strong> ' + pct + '% של הרייק הכולל של השחקן. ' +
+            'על רייק 100 → ' + pct + ' לשחקן.';
+        preview.style.display = 'block';
+        return;
+    }
+    // sa_cut
+    var opt = linked.options[linked.selectedIndex];
+    var saPct = opt ? parseFloat(opt.getAttribute('data-pct') || '0') : 0;
+    if (!saPct || !opt.value) {
+        preview.innerHTML = '💡 בחר סוכן כדי לראות את החישוב הסופי.';
+        preview.style.display = 'block';
+        return;
+    }
+    var effective = Math.round(pct * saPct) / 100;
+    var saName = opt.text.split(' — ')[0];
+    var clubCut = (100 - saPct).toFixed(1);
+    var saNet = (saPct - effective).toFixed(2);
+    preview.innerHTML = '💡 <strong>יומר ויישמר:</strong> ' + pct + '% × ' + saPct + '% = <strong>' + effective + '%</strong> של הרייק הכולל. ' +
+        '<br>על רייק 100 → <strong>' + effective + '</strong> לשחקן, ' + saNet + ' ל־' + saName + ' נטו, ' + clubCut + ' למועדון.';
+    preview.style.display = 'block';
 }
 
 function filterPlayerOptions(query) {
