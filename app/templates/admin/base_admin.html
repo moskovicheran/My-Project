@@ -23,7 +23,7 @@
         <a href="{{ url_for('admin.overview') }}" class="admin-tab {% if request.endpoint == 'admin.overview' %}active{% endif %}">סקירה</a>
         <a href="{{ url_for('admin.transfers') }}" class="admin-tab {% if request.endpoint == 'admin.transfers' %}active{% endif %}">העברת כספים</a>
         <a href="{{ url_for('admin.expenses') }}" class="admin-tab {% if request.endpoint == 'admin.expenses' %}active{% endif %}">הוצאות שוטפות</a>
-        <a href="{{ url_for('admin.notes') }}" class="admin-tab {% if request.endpoint == 'admin.notes' %}active{% endif %}">הערות</a>
+        <a href="{{ url_for('admin.cycle_summary_list') }}" class="admin-tab {% if request.endpoint in ['admin.cycle_summary_list', 'admin.cycle_summary_export', 'admin.cycle_summary_download_archived'] %}active{% endif %}">💰 סיכום גבייה</a>
         <a href="{{ url_for('admin.upload') }}" class="admin-tab">העלאת קובץ יומי</a>
         <a href="{{ url_for('admin.users') }}" class="admin-tab">משתמשים וסיסמאות</a>
         <a href="{{ url_for('admin.agents') }}" class="admin-tab {% if request.endpoint == 'admin.agents' %}active{% endif %}">שיוך סוכנים / הגדרת רייקים</a>

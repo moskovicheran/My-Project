@@ -1,0 +1,82 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}סיכום גבייה — לוח בקרה{% endblock %}
+
+{% block content %}
+<style>
+.cs-card { background:#fff; border-radius:12px; padding:1.1rem 1.2rem; margin-bottom:1rem; box-shadow:0 1px 6px rgba(0,0,0,0.06); }
+.cs-card h2 { margin:0 0 0.8rem; font-size:1.05rem; color:#2c3e8a; border-bottom:2px solid #eef; padding-bottom:0.4rem; }
+.cs-hero { background:linear-gradient(135deg,#eef3ff,#dce7ff); border:1px solid #c8d4ff; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1rem; }
+.cs-hero strong { font-size:1rem; }
+.cs-hero .info { font-size:0.82rem; color:#4a5aa8; margin-top:0.3rem; line-height:1.6; }
+.cs-current-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem; }
+.cs-current-row .period { font-size:0.85rem; color:#555; }
+.cs-btn { display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 0.9rem; border-radius:8px; font-weight:600; font-size:0.88rem; text-decoration:none; border:none; cursor:pointer; font-family:inherit; }
+.cs-btn-primary { background:#4361ee; color:#fff; }
+.cs-btn-primary:hover { background:#3651d4; }
+.cs-btn-download { background:#eaf7ef; color:#1d7a3c; border:1px solid #bde0c9; }
+.cs-btn-download:hover { background:#d4ebd9; }
+.cs-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+.cs-table th, .cs-table td { padding:0.55rem 0.7rem; text-align:right; border-bottom:1px solid #eee; }
+.cs-table th { background:#f8f9fc; font-weight:600; color:#555; font-size:0.82rem; }
+.cs-empty { text-align:center; padding:1.6rem 0; color:#999; font-size:0.9rem; }
+.muted { color:#888; font-size:0.8rem; }
+body.dark .cs-card { background:#252535; }
+body.dark .cs-hero { background:linear-gradient(135deg,#1f2a5a,#28347a); color:#cbd4ff; border-color:#3a4580; }
+body.dark .cs-hero .info, body.dark .cs-current-row .period { color:#a8b8ff; }
+body.dark .cs-table th { background:#1e1e2a; color:#bbb; }
+body.dark .cs-table td { border-bottom-color:#333; }
+body.dark .cs-btn-download { background:#1e3a2a; color:#8fd4a2; border-color:#2a5440; }
+</style>
+
+<div class="cs-hero">
+    <strong>💰 סיכום גבייה</strong>
+    <div class="info">
+        דו"ח Excel המציג Rake ו־PnL לכל מנהל במחזור + פירוט Freerolls/Overlay.<br>
+        הארכיון נוצר <strong>אוטומטית</strong> בכל איפוס מחזור (דרך "איפוס נתונים"), ונשמר 180 יום.
+    </div>
+</div>
+
+<div class="cs-card">
+    <h2>המחזור הנוכחי (חי)</h2>
+    {% if current_period %}
+    <div class="cs-current-row">
+        <div class="period">תקופה: <strong>{{ current_period }}</strong></div>
+        <a href="{{ url_for('admin.cycle_summary_export') }}" class="cs-btn cs-btn-primary">⬇️ הורד Excel</a>
+    </div>
+    {% else %}
+    <div class="cs-empty">אין נתונים פעילים במערכת. העלה קובץ כדי להתחיל מחזור חדש.</div>
+    {% endif %}
+</div>
+
+<div class="cs-card">
+    <h2>ארכיון מחזורים ({{ archived|length }})</h2>
+    <p class="muted" style="margin:0 0 0.7rem;">נוצר אוטומטית באיפוס מחזור. נשמר 180 יום.</p>
+    {% if archived %}
+    <table class="cs-table">
+        <thead>
+            <tr>
+                <th>תקופה</th>
+                <th>נוצר ב-</th>
+                <th>קובץ</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rep in archived %}
+            <tr>
+                <td><strong>{{ rep.period_label or '—' }}</strong></td>
+                <td class="muted">{{ rep.generated_at.strftime('%d/%m/%Y %H:%M') if rep.generated_at else '—' }}</td>
+                <td><code style="font-size:0.78rem;">{{ rep.filename }}</code></td>
+                <td>
+                    <a href="{{ url_for('admin.cycle_summary_download_archived', report_id=rep.id) }}" class="cs-btn cs-btn-download" style="padding:0.3rem 0.65rem; font-size:0.8rem;">⬇️ הורד</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="cs-empty">עדיין לא בוצע איפוס מחזור — הארכיון ריק.</div>
+    {% endif %}
+</div>
+
+{% endblock %}

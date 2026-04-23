@@ -57,6 +57,9 @@
     <a href="{{ url_for('admin.health') }}" class="health-btn" title="בדיקה שכל הנתונים מסתדרים">
         <span>✅</span><span>בדיקת תקינות</span>
     </a>
+    <a href="{{ url_for('admin.cycle_summary_export') }}" class="cycle-btn" title="הורדת Excel עם Rake/PnL לפי מנהל + Freerolls/Overlay">
+        <span>💰</span><span>סיכום גבייה (Excel)</span>
+    </a>
 </div>
 
 <style>
@@ -64,6 +67,10 @@
 .health-btn:hover { background:#d4ebd9; }
 body.dark .health-btn { background:#1e3a2a; color:#8fd4a2; border-color:#2a5440; }
 body.dark .health-btn:hover { background:#244a35; }
+.cycle-btn { display:inline-flex; align-items:center; gap:0.35rem; padding:0.45rem 0.85rem; background:#eef3ff; color:#2c3e8a; border:1px solid #c8d4ff; border-radius:8px; font-weight:600; font-size:0.85rem; text-decoration:none; transition:background 0.15s; }
+.cycle-btn:hover { background:#dde7ff; }
+body.dark .cycle-btn { background:#1f2a5a; color:#a8b8ff; border-color:#3a4580; }
+body.dark .cycle-btn:hover { background:#28347a; }
 </style>
 
 <script>

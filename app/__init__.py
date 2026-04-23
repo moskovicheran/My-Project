@@ -112,6 +112,21 @@ def create_app():
             except Exception:
                 pass
 
+            # Cleanup cycle summary reports older than 180 days. Kept twice
+            # as long as raw archive data so admins can still pull an older
+            # settlement Excel even after the underlying rows are gone.
+            try:
+                from datetime import datetime, timedelta
+                from app.models import CycleSummaryReport
+                cs_cutoff = datetime.utcnow() - timedelta(days=180)
+                CycleSummaryReport.query.filter(
+                    CycleSummaryReport.is_current == False,  # noqa: E712
+                    CycleSummaryReport.generated_at < cs_cutoff,
+                ).delete(synchronize_session=False)
+                db.session.commit()
+            except Exception:
+                pass
+
         # Load active excel file if exists (local only) — fast, keep always.
         try:
             active_file = os.path.join(os.path.dirname(__file__), '..', 'uploads', '_active.txt')

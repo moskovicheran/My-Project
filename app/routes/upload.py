@@ -410,6 +410,27 @@ def _archive_and_clear_active():
         flash('שגיאה בארכוב הנתונים.', 'danger')
         return redirect(url_for('upload.index'))
 
+    # Snapshot the cycle summary Excel before clearing active data — the
+    # report is built from live tables (DailyPlayerStats, TournamentStats),
+    # so this must run BEFORE the delete block. Saved as a historical
+    # (is_current=False) row so /admin/cycle-summary/ can list it; kept
+    # 180 days independent of the 90-day archive retention.
+    if period_label:
+        try:
+            from app.routes.admin import _build_cycle_summary_xlsx
+            from app.models import CycleSummaryReport
+            content, filename, _plabel = _build_cycle_summary_xlsx()
+            db.session.add(CycleSummaryReport(
+                is_current=False, period_label=period_label,
+                filename=filename, content=content,
+            ))
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            import logging
+            logging.getLogger(__name__).error(f'Cycle summary snapshot error: {e}')
+            # Non-fatal — continue with reset.
+
     # Delete active data
     TournamentStats.query.delete()
     PlayerSession.query.delete()

@@ -60,7 +60,18 @@
     <span class="range-chip">{{ _sorted[0][8:] }}/{{ _sorted[0][5:7] }}{% if _sorted|length > 1 %} — {{ _sorted[-1][8:] }}/{{ _sorted[-1][5:7] }}{% endif %}</span>
     <a href="{{ url_for('main.dashboard') }}" class="dp-reset">✕ הצג הכל</a>
     {% endif %}
+
+    <a href="{{ url_for('admin.cycle_summary_export') }}" class="cycle-btn" title="הורדת Excel עם Rake/PnL לפי מנהל + Freerolls/Overlay">
+        <span>💰</span><span>סיכום גבייה (Excel)</span>
+    </a>
 </div>
+
+<style>
+.cycle-btn { display:inline-flex; align-items:center; gap:0.35rem; padding:0.45rem 0.85rem; background:#eef3ff; color:#2c3e8a; border:1px solid #c8d4ff; border-radius:8px; font-weight:600; font-size:0.85rem; text-decoration:none; transition:background 0.15s; margin-right:auto; }
+.cycle-btn:hover { background:#dde7ff; }
+body.dark .cycle-btn { background:#1f2a5a; color:#a8b8ff; border-color:#3a4580; }
+body.dark .cycle-btn:hover { background:#28347a; }
+</style>
 
 <script>
 /* ── Overview date picker ── */

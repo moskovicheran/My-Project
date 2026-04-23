@@ -293,6 +293,27 @@ class ArchivedTournamentStats(db.Model):
     duration = db.Column(db.String(20), default='')
 
 
+class CycleSummaryReport(db.Model):
+    """Persisted Excel snapshot of a cycle summary, created ONLY at cycle
+    reset (in _archive_and_clear_active). Never regenerated or overwritten —
+    this is the historical record of a closed cycle. Retention: 180 days
+    (see app/__init__).
+
+    No FK to ArchivePeriod: archive data is cleaned up at 90 days while
+    cycle summaries live 180 days, so the report must survive its period's
+    deletion. `period_label` carries the display string.
+
+    The "current cycle" is NOT stored here — /admin/cycle-summary.xlsx
+    builds it on demand from live tables."""
+    __tablename__ = 'cycle_summary_reports'
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_label = db.Column(db.String(100), default='')
+    filename = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.LargeBinary, nullable=False)
+    generated_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 class PlayerAssignment(db.Model):
     """Manual override of a player's sa_id / agent_id.
 

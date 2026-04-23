@@ -514,6 +514,233 @@ def health_export_overlay():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+def _build_cycle_summary_xlsx():
+    """Build the cycle summary workbook for the currently-active data in DB.
+    Returns (content_bytes, filename, period_label). Shared by both the
+    on-demand download route and the auto-snapshot taken on cycle reset."""
+    import io
+    from app.models import TournamentStats, DailyUpload
+    from app.union_data import (get_cumulative_totals, get_agent_totals,
+                                 get_club_totals)
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    ct = get_cumulative_totals()
+    top_rake = float(ct['total_rake'] or 0)
+    top_pnl = float(ct['total_pnl'] or 0)
+
+    managers = []
+    for nick, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
+        t = get_agent_totals(pid)
+        managers.append({'nick': nick, 'pid': pid,
+                         'rake': float(t['total_rake'] or 0),
+                         'pnl': float(t['total_pnl'] or 0)})
+    clubs = []
+    for name, cid in OVERVIEW_CLUBS:
+        t = get_club_totals(cid)
+        clubs.append({'nick': name, 'cid': cid,
+                      'rake': float(t['total_rake'] or 0),
+                      'pnl': float(t['total_pnl'] or 0)})
+
+    fr_total = 0.0
+    fr_rows = []
+    for t in TournamentStats.query.all():
+        buyin = float(t.buyin or 0); entries = float(t.entries or 0)
+        prize = float(t.prize_pool or 0)
+        diff = prize - buyin * entries
+        if diff > 0.01:
+            fr_total += diff
+            start_str = (t.start or '').strip()
+            fr_rows.append({
+                'date': start_str[:10],
+                'kind': 'Freeroll' if buyin == 0 else 'Overlay',
+                'title': t.title or '-',
+                'diff': round(diff, 2),
+                '_sort_key': (start_str or f'zzzz-{t.upload_id:06d}', t.upload_id, t.id),
+            })
+    fr_rows.sort(key=lambda x: x['_sort_key'])
+
+    uploads = DailyUpload.query.order_by(DailyUpload.upload_date).all()
+    if uploads:
+        period = f"{uploads[0].upload_date.strftime('%d/%m/%Y')} — {uploads[-1].upload_date.strftime('%d/%m/%Y')}"
+        period_slug = f"{uploads[0].upload_date.strftime('%Y%m%d')}_{uploads[-1].upload_date.strftime('%Y%m%d')}"
+    else:
+        period = '-'
+        period_slug = 'empty'
+
+    sum_card_rake = sum(m['rake'] for m in managers) + sum(c['rake'] for c in clubs)
+    sum_card_pnl = sum(m['pnl'] for m in managers) + sum(c['pnl'] for c in clubs)
+    delta_rake = round(top_rake - sum_card_rake, 2)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'סיכום מחזור'
+    ws.sheet_view.rightToLeft = True
+
+    bold = Font(bold=True)
+    white_bold = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='4361EE', end_color='4361EE', fill_type='solid')
+    total_fill = PatternFill(start_color='FFF3CD', end_color='FFF3CD', fill_type='solid')
+    info_fill = PatternFill(start_color='F0F4FF', end_color='F0F4FF', fill_type='solid')
+    club_fill = PatternFill(start_color='FAFCFF', end_color='FAFCFF', fill_type='solid')
+    center = Alignment(horizontal='center')
+    thin = Side(border_style='thin', color='DDDDDD')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    money_fmt = '#,##0.00;[Red]-#,##0.00'
+    signed_fmt = '+#,##0.00;[Red]-#,##0.00;0.00'
+
+    # Title block
+    ws.cell(row=1, column=1, value='סיכום מחזור').font = Font(bold=True, size=14)
+    ws.cell(row=2, column=1, value=f'תקופה: {period}').font = Font(italic=True, color='666666')
+
+    # Per-manager table
+    start_row = 4
+    headers = ['מנהל / מועדון', 'ID', 'Rake', 'PnL', 'Rake + PnL']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=start_row, column=col, value=h)
+        c.font = white_bold; c.fill = header_fill; c.alignment = center
+        c.border = border
+    row = start_row + 1
+    total_rake_cards = 0.0
+    total_pnl_cards = 0.0
+    for m in managers:
+        bal = m['rake'] + m['pnl']
+        ws.cell(row=row, column=1, value=m['nick']).font = bold
+        ws.cell(row=row, column=2, value=m['pid']).font = Font(color='888888')
+        ws.cell(row=row, column=3, value=m['rake']).number_format = money_fmt
+        ws.cell(row=row, column=4, value=m['pnl']).number_format = signed_fmt
+        c_bal = ws.cell(row=row, column=5, value=bal)
+        c_bal.number_format = signed_fmt; c_bal.font = bold
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).border = border
+        total_rake_cards += m['rake']; total_pnl_cards += m['pnl']
+        row += 1
+    for c in clubs:
+        bal = c['rake'] + c['pnl']
+        ws.cell(row=row, column=1, value=f"{c['nick']} (Club)").font = bold
+        ws.cell(row=row, column=2, value=c['cid']).font = Font(color='888888')
+        for col in range(1, 6):
+            cell = ws.cell(row=row, column=col); cell.fill = club_fill
+            cell.border = border
+        ws.cell(row=row, column=3, value=c['rake']).number_format = money_fmt
+        ws.cell(row=row, column=4, value=c['pnl']).number_format = signed_fmt
+        c_bal = ws.cell(row=row, column=5, value=bal)
+        c_bal.number_format = signed_fmt; c_bal.font = bold
+        total_rake_cards += c['rake']; total_pnl_cards += c['pnl']
+        row += 1
+
+    # Total row
+    ws.cell(row=row, column=1, value='סה"כ').font = bold
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).fill = total_fill
+        ws.cell(row=row, column=col).border = border
+    ws.cell(row=row, column=3, value=total_rake_cards).number_format = money_fmt
+    ws.cell(row=row, column=3).font = bold
+    ws.cell(row=row, column=4, value=total_pnl_cards).number_format = signed_fmt
+    ws.cell(row=row, column=4).font = bold
+    ws.cell(row=row, column=5, value=total_rake_cards + total_pnl_cards).number_format = signed_fmt
+    ws.cell(row=row, column=5).font = bold
+    row += 1
+
+    # Breakdown rows (Freerolls / Delta)
+    ws.cell(row=row, column=1, value='🎲 Freerolls + Overlay (עלויות המועדון)')
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).fill = info_fill; ws.cell(row=row, column=col).border = border
+    ws.cell(row=row, column=5, value=round(fr_total, 2)).number_format = signed_fmt
+    ws.cell(row=row, column=5).font = bold
+    row += 1
+    ws.cell(row=row, column=1, value='⚠️ Delta (יתומים בלתי מיוחסים)')
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).fill = info_fill; ws.cell(row=row, column=col).border = border
+    ws.cell(row=row, column=5, value=-delta_rake).number_format = signed_fmt
+    ws.cell(row=row, column=5).font = bold
+    row += 2  # gap
+
+    # Freerolls + Overlay detail
+    ws.cell(row=row, column=1, value='פירוט Freerolls + Overlay').font = Font(bold=True, size=12)
+    row += 1
+    fr_headers = ['תאריך', 'סוג', 'שם הטורניר', 'תוספת']
+    for col, h in enumerate(fr_headers, 1):
+        c = ws.cell(row=row, column=col, value=h)
+        c.font = white_bold; c.fill = header_fill; c.alignment = center
+        c.border = border
+    row += 1
+    for r in fr_rows:
+        ws.cell(row=row, column=1, value=r['date'] or '-')
+        ws.cell(row=row, column=2, value=r['kind'])
+        ws.cell(row=row, column=3, value=r['title'])
+        ws.cell(row=row, column=4, value=r['diff']).number_format = signed_fmt
+        for col in range(1, 5):
+            ws.cell(row=row, column=col).border = border
+        row += 1
+    # Total
+    ws.cell(row=row, column=1, value='סה"כ').font = bold
+    for col in range(1, 5):
+        ws.cell(row=row, column=col).fill = total_fill
+        ws.cell(row=row, column=col).border = border
+    ws.cell(row=row, column=4, value=round(fr_total, 2)).number_format = signed_fmt
+    ws.cell(row=row, column=4).font = bold
+
+    # Column widths
+    widths = [32, 14, 14, 14, 18]
+    for idx, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = w
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue(), f'cycle_summary_{period_slug}.xlsx', period
+
+
+@admin_bp.route('/cycle-summary.xlsx')
+@admin_required
+def cycle_summary_export():
+    """Build the current-cycle Excel on demand from live tables and serve
+    it. Not persisted — the live view is always fresh, and historical
+    snapshots are created only at cycle reset (see _archive_and_clear_active)."""
+    import io
+    from flask import send_file
+    content, filename, _period_label = _build_cycle_summary_xlsx()
+    return send_file(io.BytesIO(content), as_attachment=True,
+                     download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@admin_bp.route('/cycle-summary/<int:report_id>.xlsx')
+@admin_required
+def cycle_summary_download_archived(report_id):
+    """Serve a previously-generated cycle summary (archived or current)."""
+    import io
+    from flask import send_file, abort
+    from app.models import CycleSummaryReport
+    rep = CycleSummaryReport.query.get(report_id)
+    if not rep:
+        abort(404)
+    return send_file(io.BytesIO(rep.content), as_attachment=True,
+                     download_name=rep.filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@admin_bp.route('/cycle-summary/')
+@admin_required
+def cycle_summary_list():
+    """Read-only page: a 'download current cycle' link on top + the list
+    of historical snapshots (one per past period, auto-saved on reset,
+    kept 180 days)."""
+    from app.models import CycleSummaryReport, DailyUpload
+    # Current-cycle period label (for display only — the file is built on demand)
+    uploads = DailyUpload.query.order_by(DailyUpload.upload_date).all()
+    if uploads:
+        current_period = f"{uploads[0].upload_date.strftime('%d/%m/%Y')} — {uploads[-1].upload_date.strftime('%d/%m/%Y')}"
+    else:
+        current_period = None
+    archived = CycleSummaryReport.query.order_by(
+        CycleSummaryReport.generated_at.desc()).all()
+    return render_template('admin/cycle_summary.html',
+                           current_period=current_period, archived=archived)
+
+
 @admin_bp.route('/agent-view/<sa_id>')
 @admin_required
 def agent_view(sa_id):
