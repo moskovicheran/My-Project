@@ -995,7 +995,7 @@ def dashboard():
                     players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
                                               'total_rake': m['rake'], 'refund': refund})
 
-        # Combined rake refund list (agents + players)
+        # Combined rake refund list (agents + players + child SAs)
         rake_refund_list = []
         for ag in agents_map.values():
             if ag.get('rake_pct'):
@@ -1006,6 +1006,27 @@ def dashboard():
             rake_refund_list.append({'nick': p['nick'], 'rake_pct': p['rake_pct'],
                                      'total_rake': p['total_rake'], 'refund': p['refund'],
                                      'type': 'player'})
+        # Child SAs with their own RakeConfig — also entitled to a cut on the
+        # rake they generate. Without this block they'd show as a separate
+        # card (with correct totals) but wouldn't appear in the refund table,
+        # so the admin wouldn't see the liability.
+        if child_sas:
+            _cs_ids = [cs['sa_id'] for cs in child_sas if cs.get('sa_id')]
+            _cs_rake_cfgs = {rc.entity_id: rc.rake_percent for rc in RakeConfig.query.filter(
+                RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+                RakeConfig.entity_id.in_(_cs_ids)).all()} if _cs_ids else {}
+            for cs in child_sas:
+                pct = _cs_rake_cfgs.get(cs.get('sa_id'), 0)
+                if not pct:
+                    continue
+                cs_rake = float(cs.get('total_rake') or 0)
+                rake_refund_list.append({
+                    'nick': cs.get('sa_nick') or cs.get('sa_id'),
+                    'rake_pct': pct,
+                    'total_rake': cs_rake,
+                    'refund': round(cs_rake * pct / 100, 2),
+                    'type': 'agent',
+                })
         total_rake_refund = round(sum(r['refund'] for r in rake_refund_list), 2)
 
         # Build a single SA structure with cumulative data
