@@ -145,7 +145,9 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
         <div class="stat-value" style="color:#667eea;">{{ total_rake_refund|comma }}</div>
     </div>
     {% endif %}
-    {% if my_rake_pct is defined and my_rake_pct %}
+    {# Show the "הרייק שלי" card only when the SA's % is < 100 — at 100%
+       it just duplicates the "רייק אישי" value (personal_rake × 100 / 100). #}
+    {% if my_rake_pct is defined and my_rake_pct and my_rake_pct < 100 %}
     <div class="stat-card" style="cursor:pointer; border:2px solid #2ec4b6;" onclick="toggleMyRake()">
         <div class="stat-label" style="color:#2ec4b6;">הרייק שלי{% if not hide_personal_breakdown %} ({{ my_rake_pct|int }}%){% endif %}</div>
         <div class="stat-value" style="color:#2ec4b6;">{{ my_rake_earning|comma }}</div>
@@ -170,6 +172,12 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
                 <strong>{{ r.nick }}</strong>
                 <span class="rake-split-badge">{{ r.rake_pct|int }}%</span>
                 {% if r.type == 'player' %}<span class="muted" style="font-size:0.75rem;">שחקן</span>{% endif %}
+                {% if r.get('paid_to_players') and r['paid_to_players'] > 0 %}
+                <span class="muted" style="font-size:0.72rem;"
+                      title="ברוטו {{ r.gross|comma }} פחות {{ r.paid_to_players|comma }} לשחקנים שתחתיו">
+                    (ברוטו {{ r.gross|comma }} − {{ r.paid_to_players|comma }} לשחקנים)
+                </span>
+                {% endif %}
             </div>
             <div style="display:flex; gap:1rem; align-items:center;">
                 <span class="muted">רייק {{ r.total_rake|comma }}</span>
@@ -191,7 +199,7 @@ function toggleRakeRefund() {
 </script>
 {% endif %}
 
-{% if my_rake_pct is defined and my_rake_pct %}
+{% if my_rake_pct is defined and my_rake_pct and my_rake_pct < 100 %}
 <div id="myRakePanel" style="display:none; margin-bottom:1.5rem; border:2px solid #2ec4b6; border-radius:14px; background:linear-gradient(135deg, #f0fdfb, #e8f8f5); overflow:hidden;">
     <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; border-bottom:1px solid #c8ede8;">
         <strong style="color:#2ec4b6;">הרייק שלי</strong>

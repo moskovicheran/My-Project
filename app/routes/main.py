@@ -996,20 +996,42 @@ def dashboard():
                                               'total_rake': m['rake'], 'refund': refund})
 
         # Combined rake refund list (agents + players + child SAs)
+        # For agents / child SAs: refund shown is NET of player refunds that
+        # sit in their hierarchy. Those refunds are paid out of the agent's
+        # own cut (not the parent SA's), so subtracting keeps the displayed
+        # number aligned with what the agent actually pockets — and the sum
+        # still equals the parent SA's total liability (no double-count).
+        def _player_refunds_in(members):
+            s = 0.0
+            for m in (members or []):
+                p = player_rake_configs.get(m.get('player_id'), 0)
+                if not p:
+                    continue
+                r = m.get('rake')
+                if r is None:
+                    r = m.get('rake_total', 0)
+                s += float(r or 0) * p / 100
+            return round(s, 2)
+
         rake_refund_list = []
         for ag in agents_map.values():
             if ag.get('rake_pct'):
-                rake_refund_list.append({'nick': ag['nick'], 'rake_pct': ag['rake_pct'],
-                                         'total_rake': ag['total_rake'], 'refund': ag['agent_net_rake'],
-                                         'type': 'agent'})
+                gross = ag['agent_net_rake']
+                paid_to_players = _player_refunds_in(ag.get('members', []))
+                net = round(gross - paid_to_players, 2)
+                rake_refund_list.append({
+                    'nick': ag['nick'], 'rake_pct': ag['rake_pct'],
+                    'total_rake': ag['total_rake'], 'refund': net,
+                    'gross': gross, 'paid_to_players': paid_to_players,
+                    'type': 'agent',
+                })
         for p in players_with_rake:
             rake_refund_list.append({'nick': p['nick'], 'rake_pct': p['rake_pct'],
                                      'total_rake': p['total_rake'], 'refund': p['refund'],
                                      'type': 'player'})
-        # Child SAs with their own RakeConfig — also entitled to a cut on the
-        # rake they generate. Without this block they'd show as a separate
-        # card (with correct totals) but wouldn't appear in the refund table,
-        # so the admin wouldn't see the liability.
+        # Child SAs with their own RakeConfig — same net-of-downstream-refunds
+        # treatment: collect their direct + agent-member players, deduct any
+        # with a player rake config.
         if child_sas:
             _cs_ids = [cs['sa_id'] for cs in child_sas if cs.get('sa_id')]
             _cs_rake_cfgs = {rc.entity_id: rc.rake_percent for rc in RakeConfig.query.filter(
@@ -1020,11 +1042,18 @@ def dashboard():
                 if not pct:
                     continue
                 cs_rake = float(cs.get('total_rake') or 0)
+                gross = round(cs_rake * pct / 100, 2)
+                cs_members = list(cs.get('direct', []) or [])
+                for ag in (cs.get('agents') or {}).values():
+                    cs_members.extend(ag.get('members', []) or [])
+                paid_to_players = _player_refunds_in(cs_members)
+                net = round(gross - paid_to_players, 2)
                 rake_refund_list.append({
                     'nick': cs.get('sa_nick') or cs.get('sa_id'),
                     'rake_pct': pct,
                     'total_rake': cs_rake,
-                    'refund': round(cs_rake * pct / 100, 2),
+                    'refund': net,
+                    'gross': gross, 'paid_to_players': paid_to_players,
                     'type': 'agent',
                 })
         total_rake_refund = round(sum(r['refund'] for r in rake_refund_list), 2)
