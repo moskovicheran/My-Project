@@ -1033,6 +1033,20 @@ def dashboard():
             clubs_data, _ = get_members_hierarchy()
             club_id_to_name = {c['club_id']: c['name'] for c in clubs_data}
 
+            # Dedup SARakeConfig rows that resolve to the same club name
+            # (e.g. one row with Excel club_id '985102' and a second row
+            # with the literal 'Marmalades' both render as "Marmalades" —
+            # keep the first and drop the rest).
+            _seen_names = set()
+            _deduped_cfgs = []
+            for cfg in rake_cfgs:
+                nm = club_id_to_name.get(cfg.managed_club_id) or cfg.managed_club_id
+                if not nm or nm in _seen_names:
+                    continue
+                _seen_names.add(nm)
+                _deduped_cfgs.append(cfg)
+            rake_cfgs = _deduped_cfgs
+
             for cfg in rake_cfgs:
                 # Resolve club name: either via registered club_id, or use
                 # the managed_club_id value itself as a literal club name
