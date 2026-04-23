@@ -1467,7 +1467,29 @@ def agents():
 
     # Rake configs for clubs/agents/players
     from app.union_data import get_all_members
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func
     all_members = get_all_members()
+    # Backfill with DB-only players — the Excel Union Member Statistics sheet
+    # only reflects the active upload's roster, so players who appeared in an
+    # earlier upload (or whose row was pruned) but still have activity in DB
+    # won't be in `all_members`. Without this merge, /admin/agents can't
+    # configure rake for them.
+    _excel_pids = {m['player_id'] for m in all_members}
+    _db_players = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, func.max(DailyPlayerStats.nickname),
+        func.max(DailyPlayerStats.role), func.max(DailyPlayerStats.club),
+    ).filter(DailyPlayerStats.role != 'Name Entry'
+    ).group_by(DailyPlayerStats.player_id).all()
+    for pid, nick, role, club in _db_players:
+        if pid in _excel_pids or not nick:
+            continue
+        all_members.append({
+            'player_id': pid, 'nickname': nick,
+            'role': role or 'Player', 'club': club or '',
+            'sa_nick': '-', 'agent_nick': '-',
+        })
+    all_members.sort(key=lambda x: x['nickname'].lower())
     rake_configs = RakeConfig.query.order_by(RakeConfig.entity_type).all()
 
     # All agents (non-SA) from DB — get real agent name from their player entry
