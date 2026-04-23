@@ -1012,6 +1012,57 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None):
     return current_pids
 
 
+def _overview_club_names(M, cid_to_name):
+    """Resolve the admin OVERVIEW_CLUBS list to the club-name strings used in
+    DailyPlayerStats rows. Tolerant of clubs that have no Excel club_id."""
+    try:
+        from app.routes.admin import OVERVIEW_CLUBS
+    except Exception:
+        return set()
+    names = set()
+    for _, cid in OVERVIEW_CLUBS:
+        nm = cid_to_name.get(cid)
+        if not nm and M.query.filter(M.club == cid).first():
+            nm = cid
+        if nm:
+            names.add(nm)
+    return names
+
+
+def _sa_hierarchy_ids(sa_id, M=None):
+    """IDs that mean 'in this SA's hierarchy' for per-row attribution:
+    the SA itself, child SAs (SAHierarchy), and regular agents whose own
+    rows sit under any of those SAs. Used to carve rows in shared clubs
+    (SA's managed_club AND an admin OVERVIEW_CLUBS)."""
+    from app.models import DailyPlayerStats, SAHierarchy
+    if M is None:
+        M = DailyPlayerStats
+    ids = {sa_id}
+    for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all():
+        ids.add(h.child_sa_id)
+    agent_rows = M.query.with_entities(M.agent_id).filter(
+        M.sa_id.in_(list(ids)),
+        M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-',
+    ).distinct().all()
+    for r in agent_rows:
+        if r[0]:
+            ids.add(r[0])
+    ids.discard(''); ids.discard('-')
+    return ids
+
+
+def _sas_managing_club(club_name, cid_to_name):
+    """sa_ids whose SARakeConfig.managed_club_id resolves to `club_name`
+    (via Excel club_id or literal match)."""
+    from app.models import SARakeConfig
+    out = set()
+    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+        nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
+        if nm == club_name:
+            out.add(c.sa_id)
+    return out
+
+
 def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
     """Unified-scope totals for an agent.
 
@@ -1062,13 +1113,21 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(
         SARakeConfig.managed_club_id.isnot(None)).all()
     managed_club_names = []
+    managed_club_names_exclusive = []   # clubs only we manage
+    managed_club_names_shared = []      # clubs we manage AND tracked in OVERVIEW_CLUBS
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+        overview_clubs = _overview_club_names(M, cid_to_name)
         # Fall back to raw managed_club_id as club name when it's not
         # a registered club_id (e.g. "Spc o" with no Excel entry).
-        managed_club_names = [cid_to_name.get(c.managed_club_id) or c.managed_club_id
-                              for c in rake_cfgs]
+        for c in rake_cfgs:
+            nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
+            managed_club_names.append(nm)
+            if nm in overview_clubs:
+                managed_club_names_shared.append(nm)
+            else:
+                managed_club_names_exclusive.append(nm)
 
     # Manual overrides from PlayerAssignment (/admin/lost-players) — assign a
     # player explicitly to an SA/agent regardless of their raw Excel values.
@@ -1135,8 +1194,18 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
             ))
         else:
             scope_preds.append(M.player_id.in_(list(current_scope_pids)))
-    if managed_club_names:
-        scope_preds.append(M.club.in_(managed_club_names))
+    if managed_club_names_exclusive:
+        # Clubs only we manage — claim every row there.
+        scope_preds.append(M.club.in_(managed_club_names_exclusive))
+    if managed_club_names_shared:
+        # Clubs we manage that are ALSO tracked as standalone OVERVIEW_CLUBS
+        # cards — per-row attribution: only claim rows whose sa/agent is
+        # in our hierarchy. The rest belong to the CLUB card.
+        _hier_list = list(set(all_ids) | set(known_agent_ids))
+        scope_preds.append(and_(
+            M.club.in_(managed_club_names_shared),
+            or_(M.sa_id.in_(_hier_list), M.agent_id.in_(_hier_list)),
+        ))
     if override_in_pids:
         # Same club carve-out as current_scope: rows whose club is owned by
         # another card (other SAs' managed_clubs OR admin OVERVIEW_CLUBS)
@@ -1230,11 +1299,19 @@ def get_agent_scope_predicate(sa_id, M=None):
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(
         SARakeConfig.managed_club_id.isnot(None)).all()
     managed_club_names = []
+    managed_club_names_exclusive = []
+    managed_club_names_shared = []
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
-        managed_club_names = [cid_to_name.get(c.managed_club_id) or c.managed_club_id
-                              for c in rake_cfgs]
+        overview_clubs = _overview_club_names(M, cid_to_name)
+        for c in rake_cfgs:
+            nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
+            managed_club_names.append(nm)
+            if nm in overview_clubs:
+                managed_club_names_shared.append(nm)
+            else:
+                managed_club_names_exclusive.append(nm)
 
     known_agent_ids_rows = M.query.with_entities(M.agent_id).filter(
         M.sa_id.in_(all_ids),
@@ -1279,8 +1356,14 @@ def get_agent_scope_predicate(sa_id, M=None):
             ))
         else:
             scope_preds.append(M.player_id.in_(list(current_scope_pids)))
-    if managed_club_names:
-        scope_preds.append(M.club.in_(managed_club_names))
+    if managed_club_names_exclusive:
+        scope_preds.append(M.club.in_(managed_club_names_exclusive))
+    if managed_club_names_shared:
+        _hier_list = list(set(all_ids) | set(known_agent_ids))
+        scope_preds.append(and_(
+            M.club.in_(managed_club_names_shared),
+            or_(M.sa_id.in_(_hier_list), M.agent_id.in_(_hier_list)),
+        ))
     if override_in_pids:
         if other_managed_names:
             scope_preds.append(and_(
@@ -1340,6 +1423,20 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_up
                 'total_pnl': 0.0, 'total_hands': 0, 'player_count': 0,
                 'club_name': ''}
 
+    # Per-row attribution: when this club is ALSO an SA's managed_club
+    # (SARakeConfig), rows whose sa_id/agent_id sit in that SA's hierarchy
+    # belong to the SA card — not to this club card. Exclude them to avoid
+    # double-counting vs get_agent_totals' shared-club path.
+    cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data}
+    managing_sas = _sas_managing_club(club_name, cid_to_name_all)
+    hier_exclude = set()
+    for sa_id in managing_sas:
+        hier_exclude |= _sa_hierarchy_ids(sa_id, M=StatsModel)
+    carve_filters = []
+    if hier_exclude:
+        _h = list(hier_exclude)
+        carve_filters = [~StatsModel.sa_id.in_(_h), ~StatsModel.agent_id.in_(_h)]
+
     stats = StatsModel.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
         sqlfunc.sum(StatsModel.rake),
@@ -1347,7 +1444,7 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_up
         sqlfunc.sum(StatsModel.hands),
     ).filter(StatsModel.club == club_name,
              StatsModel.role != 'Name Entry',
-             *scope_filters).first()
+             *scope_filters, *carve_filters).first()
 
     player_count = stats[0] or 0
     total_rake = round(float(stats[1] or 0), 2)

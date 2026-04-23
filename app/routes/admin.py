@@ -257,7 +257,8 @@ def health():
         override_target = set(all_ids) | known_agent_ids
         ov_pids = {ov.player_id for ov in all_overrides
                     if (ov.assigned_sa_id in override_target) or (ov.assigned_agent_id in override_target)}
-        sa_info.append({'pid': pid, 'cur': cur, 'managed': managed, 'ov': ov_pids})
+        sa_info.append({'pid': pid, 'cur': cur, 'managed': managed, 'ov': ov_pids,
+                        'hier': override_target})
 
     # Build same other_managed/tracked exclusion as get_agent_totals
     all_managed = set()
@@ -290,14 +291,39 @@ def health():
     for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
         all_registered_clubs.add(cid_to_name.get(c.managed_club_id) or c.managed_club_id)
     all_registered_clubs |= tracked_clubs
+    # Build a map of "SAs that manage each tracked club" for per-row attribution
+    # on shared clubs — mirrors get_club_totals' carve-out.
+    sas_per_tracked = {club: set() for club in tracked_clubs}
+    for si in sa_info:
+        for mc in si['managed']:
+            if mc in sas_per_tracked:
+                sas_per_tracked[mc].add(si['pid'])
     for r in DailyPlayerStats.query.yield_per(5000):
         if (r.role or '') == 'Name Entry': continue
         cards_hit = []
+        # CLUB card claims the row unless its sa/agent sits in a managing-SA's
+        # hierarchy — in that case the SA's shared-managed predicate takes it.
         if r.club in tracked_clubs:
-            cards_hit.append('CLUB:' + (r.club or ''))
+            claimed_by_sa = False
+            for sa_pid in sas_per_tracked.get(r.club, ()):
+                sa = next((s for s in sa_info if s['pid'] == sa_pid), None)
+                if sa and (r.sa_id in sa['hier'] or r.agent_id in sa['hier']):
+                    claimed_by_sa = True
+                    break
+            if not claimed_by_sa:
+                cards_hit.append('CLUB:' + (r.club or ''))
         for sa in sa_info:
             in_cur = (r.player_id in sa['cur']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
-            in_managed = r.club in sa['managed']
+            # Managed-club claim: if club is in sa's managed AND also tracked
+            # (shared), require explicit sa/agent in hierarchy (per-row). If
+            # it's managed but not tracked, claim unconditionally as before.
+            if r.club in sa['managed']:
+                if r.club in tracked_clubs:
+                    in_managed = (r.sa_id in sa['hier']) or (r.agent_id in sa['hier'])
+                else:
+                    in_managed = True
+            else:
+                in_managed = False
             # Override applies the SAME carve-out as current_scope: a row in
             # another card's managed or tracked club belongs to THAT card,
             # not to us — mirrors get_agent_totals' override predicate.
