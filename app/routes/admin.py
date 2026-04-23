@@ -28,7 +28,6 @@ OVERVIEW_MANAGERS = [
 # falls back to a name match).
 OVERVIEW_CLUBS = [
     ('פוקר בדופק גבוהה', '170653'),
-    ('4PlaySPC',          '4PlaySPC'),
 ]
 
 # External agents tracked alongside managed clubs — agents not in the
