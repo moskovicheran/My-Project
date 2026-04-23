@@ -33,3 +33,20 @@ class Config:
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     TEMPLATES_AUTO_RELOAD = True
+
+    # Connection-pool tuning for Neon / Postgres. Not applied to SQLite
+    # (local dev) because StaticPool doesn't support these kwargs.
+    #   pool_pre_ping — ping the connection before checking it out so dead
+    #                   connections from Neon's scale-to-zero are replaced
+    #                   transparently instead of raising "server closed
+    #                   the connection unexpectedly".
+    #   pool_recycle — force recycling of connections older than 30 min
+    #                  to avoid stale-connection errors.
+    #   pool_timeout=10 — fail fast (10s) when the pool is exhausted
+    #                     instead of hanging for 30s while the user waits.
+    if not database_url.startswith('sqlite'):
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            'pool_pre_ping': True,
+            'pool_recycle': 1800,
+            'pool_timeout': 10,
+        }

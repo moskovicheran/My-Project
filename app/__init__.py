@@ -8,7 +8,31 @@ from app.models import db, User
 csrf = CSRFProtect()
 
 
+def _init_sentry():
+    """Activate Sentry only when SENTRY_DSN is set — keeps local dev silent
+    and optional on prod (won't crash if the package isn't installed)."""
+    dsn = os.environ.get('SENTRY_DSN')
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[FlaskIntegration(), SqlalchemyIntegration()],
+            # Performance monitoring sample rate — 10% of requests traced
+            # is enough signal without bloating the free-tier event budget.
+            traces_sample_rate=float(os.environ.get('SENTRY_TRACES_RATE', '0.1')),
+            send_default_pii=False,  # don't send cookies / auth headers
+            environment=os.environ.get('FLASK_ENV', 'production'),
+        )
+    except ImportError:
+        pass
+
+
 def create_app():
+    _init_sentry()
     app = Flask(__name__)
     app.config.from_object(Config)
 
@@ -94,6 +118,40 @@ def create_app():
                 db.create_all()
             except Exception as e:
                 print(f"DB create_all warning: {e}")
+
+            # Ensure indexes exist on hot columns for tables that were
+            # created BEFORE index=True was added to the model. create_all()
+            # only adds indexes on fresh tables; existing tables keep the
+            # old schema until we explicitly CREATE INDEX. Safe to run on
+            # every boot — CREATE INDEX IF NOT EXISTS is idempotent.
+            try:
+                from sqlalchemy import text
+                hot_indexes = [
+                    ('ix_daily_player_stats_player_id', 'daily_player_stats', 'player_id'),
+                    ('ix_daily_player_stats_club',      'daily_player_stats', 'club'),
+                    ('ix_daily_player_stats_sa_id',     'daily_player_stats', 'sa_id'),
+                    ('ix_daily_player_stats_agent_id',  'daily_player_stats', 'agent_id'),
+                    ('ix_daily_player_stats_upload_id', 'daily_player_stats', 'upload_id'),
+                    ('ix_archived_player_stats_period_id', 'archived_player_stats', 'period_id'),
+                    ('ix_archived_player_stats_player_id', 'archived_player_stats', 'player_id'),
+                    ('ix_archived_player_stats_club',      'archived_player_stats', 'club'),
+                    ('ix_archived_player_stats_sa_id',     'archived_player_stats', 'sa_id'),
+                    ('ix_archived_player_stats_agent_id',  'archived_player_stats', 'agent_id'),
+                    ('ix_tournament_stats_upload_id',      'tournament_stats',      'upload_id'),
+                ]
+                for idx_name, tbl, col in hot_indexes:
+                    try:
+                        db.session.execute(text(
+                            f'CREATE INDEX IF NOT EXISTS {idx_name} ON {tbl} ({col})'
+                        ))
+                    except Exception as _e:
+                        # Per-index failure shouldn't block startup (e.g.
+                        # table doesn't exist yet on a clean install).
+                        pass
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                print(f"Index creation warning: {e}")
 
             # Cleanup archived data older than 90 days (from archive creation date)
             try:

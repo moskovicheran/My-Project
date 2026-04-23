@@ -171,12 +171,12 @@ class DailyPlayerStats(db.Model):
     __tablename__ = 'daily_player_stats'
 
     id = db.Column(db.Integer, primary_key=True)
-    upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False)
-    player_id = db.Column(db.String(20), nullable=False)
+    upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False, index=True)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
     nickname = db.Column(db.String(100), nullable=False)
-    club = db.Column(db.String(100), nullable=False)
-    sa_id = db.Column(db.String(20), default='')
-    agent_id = db.Column(db.String(20), default='')
+    club = db.Column(db.String(100), nullable=False, index=True)
+    sa_id = db.Column(db.String(20), default='', index=True)
+    agent_id = db.Column(db.String(20), default='', index=True)
     role = db.Column(db.String(30), default='')
     pnl = db.Column(db.Float, default=0)
     rake = db.Column(db.Float, default=0)
@@ -187,7 +187,7 @@ class TournamentStats(db.Model):
     __tablename__ = 'tournament_stats'
 
     id = db.Column(db.Integer, primary_key=True)
-    upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False)
+    upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
     game_type = db.Column(db.String(30), default='')
     buyin = db.Column(db.Float, default=0)
@@ -247,13 +247,13 @@ class ArchivedPlayerStats(db.Model):
     __tablename__ = 'archived_player_stats'
 
     id = db.Column(db.Integer, primary_key=True)
-    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False)
+    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False, index=True)
     upload_id = db.Column(db.Integer, nullable=False)
-    player_id = db.Column(db.String(20), nullable=False)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
     nickname = db.Column(db.String(100), nullable=False)
-    club = db.Column(db.String(100), nullable=False)
-    sa_id = db.Column(db.String(20), default='')
-    agent_id = db.Column(db.String(20), default='')
+    club = db.Column(db.String(100), nullable=False, index=True)
+    sa_id = db.Column(db.String(20), default='', index=True)
+    agent_id = db.Column(db.String(20), default='', index=True)
     role = db.Column(db.String(30), default='')
     pnl = db.Column(db.Float, default=0)
     rake = db.Column(db.Float, default=0)
