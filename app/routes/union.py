@@ -576,6 +576,15 @@ def player_detail(player_id):
                 'pnl': round(s.pnl, 2),
             })
 
+    # Masters / SAs whose Member Statistics row carries pnl=0 (their play
+    # isn't aggregated there, only their management data) — derive total_pnl
+    # from actual game sessions so top cards and the record-table total
+    # reflect reality instead of 0.
+    if not scope_applied and total_pnl == 0 and db_sessions:
+        sess_pnl = sum(float(s.pnl or 0) for s, _ in db_sessions)
+        if sess_pnl != 0:
+            total_pnl = round(sess_pnl + xfer_adj.get(player_id, 0), 2)
+
     # Add money transfers as special session entries — only in full view
     # (transfers aren't tied to a specific card, so in scoped view we
     # suppress them to avoid misattribution).
