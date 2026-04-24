@@ -557,18 +557,23 @@ def player_detail(player_id):
     # they have no Member Stats row for this club. Fall back to showing all
     # of the player's sessions so the card reflects reality.
     from app.models import PlayerSession, DailyUpload
+    # Master/SA fallback: in club-scoped view, trigger the fallback when
+    # EITHER (a) scoped Member Stats rows exist but sum to pnl=0, OR
+    # (b) no scoped Member Stats rows at all — both indicate the upload-id
+    # proxy can't represent the player's real play. Show all their
+    # sessions instead of forcing an empty list.
     _master_fallback = False
-    if scope_applied and scope_upload_ids:
-        _master_fallback = all(float(p or 0) == 0 for _, _, _, p, _ in scoped_rows)
+    if scope_applied:
+        if scope_upload_ids:
+            _master_fallback = all(float(p or 0) == 0 for _, _, _, p, _ in scoped_rows)
+        else:
+            _master_fallback = True
     _sess_q = (PlayerSession.query
                .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
                .add_columns(DailyUpload.upload_date)
                .filter(PlayerSession.player_id == player_id))
     if scope_applied and not _master_fallback:
-        if scope_upload_ids:
-            _sess_q = _sess_q.filter(PlayerSession.upload_id.in_(list(scope_upload_ids)))
-        else:
-            _sess_q = _sess_q.filter(PlayerSession.id < 0)  # force empty
+        _sess_q = _sess_q.filter(PlayerSession.upload_id.in_(list(scope_upload_ids)))
     db_sessions = _sess_q.order_by(DailyUpload.upload_date.asc()).all()
     if db_sessions:
         sessions = []
