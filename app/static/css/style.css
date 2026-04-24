@@ -942,11 +942,13 @@ body.dark .admin-header { background: linear-gradient(135deg, #0d0d1a 0%, #11112
     .member-chip { font-size: 0.78rem; padding: 0.2rem 0.5rem; }
 
     /* Action buttons stack on mobile */
-    .player-actions { display: flex; flex-direction: column; gap: 0.2rem; min-width: 45px; }
-    .player-actions .btn { font-size: 0.65rem; padding: 0.15rem 0.3rem; }
+    .player-actions { display: flex; flex-direction: column; gap: 0.2rem; min-width: 40px; padding: 0.2rem !important; white-space: nowrap; }
+    .player-actions .btn { font-size: 0.62rem; padding: 0.12rem 0.3rem; min-width: 0; line-height: 1.25; }
 
-    /* Tables scroll wrapper for mobile */
+    /* Tables scroll wrapper for mobile — also inside accordion bodies
+       where per-player tables live (direct players, per-agent rows). */
     .section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .accordion-body { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-inline: 0.5rem !important; }
     .table { min-width: auto; }
     .table th, .table td { padding: 0.3rem 0.4rem; font-size: 0.8rem; }
 
