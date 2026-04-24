@@ -327,11 +327,13 @@ def get_top_members(limit=20):
     if 'Union Member Statistics' not in sheets:
         return [], []
     df = sheets['Union Member Statistics']
+    # Hands Total is always the last column; layout shifted 152→156 on 2026-04-16
+    hands_col = df.shape[1] - 1
 
     # Col layout (row 5 sub-headers): 0=ClubGroup, 1=No, 2=SuperAgentID,
     # 3=SuperAgentNick, 4=AgentID, 5=AgentNick, 6=Country, 7=Role,
     # 8=MemberID, 9=Nickname, 10=P&L_Ring_NLH, 11=P&L_Ring_PLO,
-    # 12-17=other game P&L, 37=P&L_Total, 64=Rake_Total, 151=Hands_Total
+    # 12-17=other game P&L, 37=P&L_Total, 64=Rake_Total, last=Hands_Total
     members = []
     current_club = ''
     for i in range(6, len(df)):
@@ -351,7 +353,7 @@ def get_top_members(limit=20):
             'country': str(row.iloc[6]),
             'pnl_total': _num(row.iloc[37]),
             'rake_total': _num(row.iloc[64]),
-            'hands_total': _num(row.iloc[151]),
+            'hands_total': _num(row.iloc[hands_col]),
         })
 
     members.sort(key=lambda x: x['pnl_total'], reverse=True)
@@ -364,6 +366,7 @@ def get_members_hierarchy():
     if 'Union Member Statistics' not in sheets:
         return [], {'rake': 0, 'pnl': 0}
     df = sheets['Union Member Statistics']
+    hands_col = df.shape[1] - 1
 
     clubs = []
     current_club = None
@@ -397,7 +400,7 @@ def get_members_hierarchy():
             'agent_nick': str(row.iloc[5]),
             'pnl_total': _num(row.iloc[37]),
             'rake_total': _num(row.iloc[64]),
-            'hands_total': _num(row.iloc[151]),
+            'hands_total': _num(row.iloc[hands_col]),
         }
 
         sa_id = member['sa_id']
@@ -527,6 +530,7 @@ def get_super_agent_tables():
     if 'Union Member Statistics' not in sheets:
         return []
     df = sheets['Union Member Statistics']
+    hands_col = df.shape[1] - 1
 
     sa_map = {}   # (club, sa_id) → sa dict
     order = []    # preserve insertion order
@@ -551,7 +555,7 @@ def get_super_agent_tables():
         role    = str(row.iloc[7])
         pnl     = _num(row.iloc[37])
         rake    = _num(row.iloc[64])
-        hands   = _num(row.iloc[151])
+        hands   = _num(row.iloc[hands_col])
         pid     = str(row.iloc[8])
 
         key = (current_club, sa_id)
@@ -706,6 +710,7 @@ def get_player_detail(player_id):
     if 'Union Member Statistics' not in sheets:
         return {}, [], []
     df = sheets['Union Member Statistics']
+    hands_col = df.shape[1] - 1
 
     # Collect ALL club entries for this player
     club_entries = []
@@ -723,7 +728,7 @@ def get_player_detail(player_id):
                 'agent_nick': str(row.iloc[5]),
                 'pnl_total': _num(row.iloc[37]),
                 'rake_total': _num(row.iloc[64]),
-                'hands_total': _num(row.iloc[151]),
+                'hands_total': _num(row.iloc[hands_col]),
             })
 
     # Build member_info from first entry (for basic info)

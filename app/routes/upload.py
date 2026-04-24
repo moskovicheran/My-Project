@@ -31,6 +31,8 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
         return 0
 
     df = sheets['Union Member Statistics']
+    # Hands Total is the last column; layout shifted from 152→156 cols on 2026-04-16
+    hands_col = df.shape[1] - 1
 
     # Try to extract date from Excel (Union Overview period)
     upload_date = date.today()
@@ -70,7 +72,7 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
         except (ValueError, TypeError):
             rake = 0
         try:
-            hands = float(row.iloc[151]) if str(row.iloc[151]) != 'nan' else 0
+            hands = float(row.iloc[hands_col]) if str(row.iloc[hands_col]) != 'nan' else 0
         except (ValueError, TypeError):
             hands = 0
 
