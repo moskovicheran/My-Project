@@ -2060,15 +2060,18 @@ def export_agent_account():
     Honors ?dates= — limits the personal & club rake to the selected upload
     dates (active or archived). Expenses are all-time because they aren't
     date-bound to uploads. Transfers are applied only in the all-time view."""
-    if current_user.role != 'agent' or not current_user.player_id:
+    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+    if view_as_id:
+        sa_id = view_as_id
+    elif current_user.role == 'agent' and current_user.player_id:
+        sa_id = current_user.player_id
+    else:
         return redirect(url_for('main.dashboard'))
 
     from app.models import (SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge,
                             DailyPlayerStats, ArchivedPlayerStats)
     from app.union_data import get_members_hierarchy, get_transfer_adjustments
     from sqlalchemy import func as sqlfunc, or_
-
-    sa_id = current_user.player_id
 
     # Date filter
     requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
@@ -2382,15 +2385,18 @@ def export_agent_players():
     Honors ?dates= — all stats (players, sub-agents, child SAs, clubs) are
     limited to the selected upload dates. Transfers are only applied in the
     all-time view."""
-    if current_user.role != 'agent' or not current_user.player_id:
+    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+    if view_as_id:
+        sa_id = view_as_id
+    elif current_user.role == 'agent' and current_user.player_id:
+        sa_id = current_user.player_id
+    else:
         return redirect(url_for('main.dashboard'))
 
     from app.models import (SAHierarchy, SARakeConfig, DailyPlayerStats,
                             ArchivedPlayerStats, RakeConfig)
     from app.union_data import get_members_hierarchy, get_transfer_adjustments
     from sqlalchemy import func as sqlfunc
-
-    sa_id = current_user.player_id
     all_sa_ids = [sa_id]
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     all_sa_ids.extend(child_sa_ids)
@@ -2642,14 +2648,17 @@ def export_agent_full_box():
     No per-agent / per-SA grouping. Honors ?dates= like the other agent
     exports, and uses the same scope predicate to avoid cross-channel leakage.
     """
-    if current_user.role != 'agent' or not current_user.player_id:
+    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+    if view_as_id:
+        sa_id = view_as_id
+    elif current_user.role == 'agent' and current_user.player_id:
+        sa_id = current_user.player_id
+    else:
         return redirect(url_for('main.dashboard'))
 
     from app.models import DailyPlayerStats, ArchivedPlayerStats
     from app.union_data import get_agent_scope, get_transfer_adjustments
     from sqlalchemy import func as sqlfunc, or_ as _or
-
-    sa_id = current_user.player_id
 
     # Date filter (same logic as export_agent_players)
     requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]

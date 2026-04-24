@@ -15,9 +15,9 @@
         </p>
     </div>
     <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-        <a href="{{ url_for('main.export_agent_account', dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm">📥 דוח חשבון</a>
-        <a href="{{ url_for('main.export_agent_players', dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm">📥 דוח שחקנים</a>
-        <a href="{{ url_for('main.export_agent_full_box', dates=selected_dates|join(',') if selected_dates else None) }}" class="btn btn-outline btn-sm">📦 דוח קופסא מלאה</a>
+        <a href="{{ url_for('main.export_agent_account', dates=selected_dates|join(',') if selected_dates else None, view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">📥 דוח חשבון</a>
+        <a href="{{ url_for('main.export_agent_players', dates=selected_dates|join(',') if selected_dates else None, view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">📥 דוח שחקנים</a>
+        <a href="{{ url_for('main.export_agent_full_box', dates=selected_dates|join(',') if selected_dates else None, view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">📦 דוח קופסא מלאה</a>
     </div>
 </div>
 
