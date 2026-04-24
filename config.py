@@ -19,8 +19,11 @@ class Config:
     # "CSRF token has expired" on login forms left open for a while.
     WTF_CSRF_TIME_LIMIT = None
 
-    # Keep users logged in for 30 days when session.permanent is set.
-    PERMANENT_SESSION_LIFETIME = timedelta(days=30)
+    # Idle timeout: log the user out after 20 minutes of inactivity.
+    # Flask rolls the cookie expiry forward on every request when
+    # session.permanent=True (SESSION_REFRESH_EACH_REQUEST defaults True),
+    # so this acts as a sliding window — each interaction resets the clock.
+    PERMANENT_SESSION_LIFETIME = timedelta(minutes=20)
 
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB upload limit
 
