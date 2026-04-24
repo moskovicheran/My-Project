@@ -551,12 +551,20 @@ def player_detail(player_id):
     # Load sessions from DB (cumulative, all uploads).
     # In scoped view, restrict to uploads where the player had in-scope rows
     # (a player has at most one club per upload, so this is a clean filter).
+    # Master/SA exception: when Member Statistics shows pnl=0 across all
+    # scoped rows (Member Stats doesn't aggregate their play), the upload-id
+    # proxy breaks — their real play sessions may live in uploads where
+    # they have no Member Stats row for this club. Fall back to showing all
+    # of the player's sessions so the card reflects reality.
     from app.models import PlayerSession, DailyUpload
+    _master_fallback = False
+    if scope_applied and scope_upload_ids:
+        _master_fallback = all(float(p or 0) == 0 for _, _, _, p, _ in scoped_rows)
     _sess_q = (PlayerSession.query
                .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
                .add_columns(DailyUpload.upload_date)
                .filter(PlayerSession.player_id == player_id))
-    if scope_applied:
+    if scope_applied and not _master_fallback:
         if scope_upload_ids:
             _sess_q = _sess_q.filter(PlayerSession.upload_id.in_(list(scope_upload_ids)))
         else:
