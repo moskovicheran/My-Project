@@ -242,11 +242,35 @@ def index():
 
         from app.models import db as _db
 
-        # Check if this file was already uploaded
+        # Block 1: same filename already uploaded.
         existing = DailyUpload.query.filter_by(filename=filename).first()
         if existing:
             flash(f'קובץ זה כבר נמצא במערכת ({existing.upload_date.strftime("%d/%m/%Y")})', 'danger')
             return redirect(url_for('upload.index'))
+
+        # Block 2: same Excel "Period" date already uploaded (under any filename).
+        # Re-downloads of the same day get a fresh PPPoker-side timestamp in the
+        # filename so the filename check above won't catch them; the in-file
+        # period date is what we actually care about.
+        try:
+            import pandas as pd
+            from datetime import datetime as _dt
+            overview = pd.read_excel(io.BytesIO(file_bytes), sheet_name='Union Overview', header=None)
+            period_str = str(overview.iloc[2, 0])
+            date_part = period_str.replace('Period : ', '').strip().split(' ')[0].split('~')[0].strip()
+            peek_date = _dt.strptime(date_part, '%Y-%m-%d').date() if len(date_part) == 10 else None
+        except Exception:
+            peek_date = None
+
+        if peek_date is not None:
+            dup = DailyUpload.query.filter_by(upload_date=peek_date).first()
+            if dup:
+                flash(
+                    f'לא ניתן להעלות — כבר קיימת העלאה לתאריך '
+                    f'{peek_date.strftime("%d/%m/%Y")} (קובץ "{dup.filename}").',
+                    'danger',
+                )
+                return redirect(url_for('upload.index'))
 
         # Step 1: Parse and store CUMULATIVE stats FIRST (most important)
         try:
