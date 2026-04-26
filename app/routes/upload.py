@@ -361,25 +361,12 @@ def preview():
                            sheets=sheets_info)
 
 
-@upload_bp.route('/reset', methods=['POST'])
-@login_required
-def reset():
-    """Reset = archive current active data, then clear it so the next upload cycle starts fresh.
-
-    Historical data remains accessible via the archive; dashboards start a new count from
-    the next file upload onward.
-    """
-    if not hasattr(current_user, 'role') or current_user.role != 'admin':
-        flash('אין הרשאה.', 'danger')
-        return redirect(url_for('upload.index'))
-
-    return _archive_and_clear_active()
-
-
 @upload_bp.route('/reset-all', methods=['POST'])
 @login_required
 def reset_all():
-    """Full data reset — archives data then clears ALL active data."""
+    """Archive the current active cycle, then clear active tables so the next
+    upload starts a fresh cycle. Historical data remains accessible via the
+    archive; dashboards re-count from the next file upload onward."""
     if not hasattr(current_user, 'role') or current_user.role != 'admin':
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
