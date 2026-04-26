@@ -312,6 +312,10 @@ class CycleSummaryReport(db.Model):
     filename = db.Column(db.String(200), nullable=False)
     content = db.Column(db.LargeBinary, nullable=False)
     generated_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    # Distinguishes the "live" snapshot (regenerated on demand) from a
+    # closed-cycle snapshot saved at reset. Historical rows are is_current=False
+    # and subject to the 180-day cleanup; the True case is reserved.
+    is_current = db.Column(db.Boolean, nullable=False, default=False)
 
 
 class PlayerAssignment(db.Model):

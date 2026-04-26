@@ -149,6 +149,31 @@ def create_app():
                         # table doesn't exist yet on a clean install).
                         pass
                 db.session.commit()
+
+                # Add columns that were introduced AFTER the table already
+                # existed in prod. create_all() never alters existing tables,
+                # so columns added later need an explicit idempotent ALTER.
+                # Wrapped per-statement so SQLite (no IF NOT EXISTS for ADD
+                # COLUMN) just falls through the except.
+                column_adds = [
+                    ('cycle_summary_reports', 'is_current',
+                     'BOOLEAN NOT NULL DEFAULT FALSE'),
+                ]
+                for tbl, col, coldef in column_adds:
+                    try:
+                        db.session.execute(text(
+                            f'ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {coldef}'
+                        ))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                        try:
+                            db.session.execute(text(
+                                f'ALTER TABLE {tbl} ADD COLUMN {col} {coldef}'
+                            ))
+                            db.session.commit()
+                        except Exception:
+                            db.session.rollback()
             except Exception as e:
                 db.session.rollback()
                 print(f"Index creation warning: {e}")

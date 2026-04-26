@@ -412,6 +412,21 @@ def _archive_and_clear_active():
         flash('שגיאה בארכוב הנתונים.', 'danger')
         return redirect(url_for('upload.index'))
 
+    # Make the archive durable BEFORE the cycle-summary block. The archive
+    # INSERTs above were only flushed; a rollback in the next try (e.g. an
+    # error inside _build_cycle_summary_xlsx, or any DB hiccup) would otherwise
+    # take the archive down with it — and the delete block that follows would
+    # then wipe active data with nothing recoverable. See the 2026-04 incident
+    # where exactly this happened.
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        import logging
+        logging.getLogger(__name__).error(f'Archive commit error: {e}')
+        flash('שגיאה בארכוב הנתונים.', 'danger')
+        return redirect(url_for('upload.index'))
+
     # Snapshot the cycle summary Excel before clearing active data — the
     # report is built from live tables (DailyPlayerStats, TournamentStats),
     # so this must run BEFORE the delete block. Saved as a historical
