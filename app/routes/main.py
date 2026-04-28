@@ -407,7 +407,8 @@ def dashboard():
         # to exclude managed-club rows from the hier-tree aggregations
         # below (avoids double-counting overlap players).
         managed_club_names = set()
-        rake_cfgs_early = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
+        from app.union_data import get_managed_clubs_all_cfgs
+        rake_cfgs_early = [c for c in get_managed_clubs_all_cfgs() if c.sa_id == sa_id]
         if rake_cfgs_early:
             clubs_data_early, _ = get_members_hierarchy()
             _cid2name_early = {c['club_id']: c['name'] for c in clubs_data_early}
@@ -482,7 +483,7 @@ def dashboard():
         _other_owned_clubs = set(managed_club_names_list)  # start with own (already excluded)
         _clubs_data_co, _ = get_members_hierarchy()
         _c2n_co = {c['club_id']: c['name'] for c in _clubs_data_co}
-        for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+        for _c in get_managed_clubs_all_cfgs():
             if _c.sa_id == sa_id:
                 continue
             _other_owned_clubs.add(_c2n_co.get(_c.managed_club_id) or _c.managed_club_id)
@@ -671,7 +672,7 @@ def dashboard():
             _self_other_clubs = set()  # only OTHER SAs' managed + OVERVIEW_CLUBS are excluded below
             _clubs_ov, _ = get_members_hierarchy()
             _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
-            for _c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+            for _c in get_managed_clubs_all_cfgs():
                 if _c.sa_id == sa_id:
                     continue
                 _self_other_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)

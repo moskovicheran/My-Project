@@ -35,7 +35,10 @@ class Config:
     SQLALCHEMY_DATABASE_URI = database_url
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    TEMPLATES_AUTO_RELOAD = True
+    # TEMPLATES_AUTO_RELOAD intentionally unset — Flask defaults to enabling
+    # it only when DEBUG=True (dev), and disabling it in prod. Hard-coding
+    # True here forced Jinja to stat every template on every render, adding
+    # 100–300ms per page in prod where templates never change between deploys.
 
     # Connection-pool tuning for Neon / Postgres. Not applied to SQLite
     # (local dev) because StaticPool doesn't support these kwargs.

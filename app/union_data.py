@@ -19,12 +19,49 @@ def get_excel_path():
 
 
 def _load_sa_hierarchy():
-    """Load parent→children SA mapping from DB."""
+    """Load parent→children SA mapping from DB. Cached per-request — see
+    `get_sa_children` for the public lookup."""
+    return _request_cached('sa_hierarchy_map', _load_sa_hierarchy_uncached)
+
+
+def _load_sa_hierarchy_uncached():
     from app.models import SAHierarchy
     hierarchy = {}
     for row in SAHierarchy.query.all():
         hierarchy.setdefault(row.parent_sa_id, []).append(row.child_sa_id)
     return hierarchy
+
+
+def get_sa_children(parent_sa_id):
+    """Return [child_sa_id, ...] for a parent SA, using a single cached
+    SAHierarchy.query.all() per request instead of one query per parent.
+
+    Hot paths called this `SAHierarchy.query.filter_by(parent_sa_id=X).all()`
+    inside loops, multiplying DB roundtrips. The full table is small enough
+    to fetch once and look up locally."""
+    return list(_load_sa_hierarchy().get(parent_sa_id, []))
+
+
+def get_managed_clubs_all_cfgs():
+    """All SARakeConfig rows that have a managed_club_id (i.e. SA→club
+    assignments). Cached per-request — many helpers walked this list once
+    each, multiplying DB roundtrips."""
+    from app.models import SARakeConfig
+    return _request_cached(
+        'managed_clubs_all_cfgs',
+        lambda: SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all(),
+    )
+
+
+def get_all_player_assignments():
+    """All PlayerAssignment rows. Cached per-request — `get_agent_totals`
+    walks them once per call, and admin overview calls `get_agent_totals`
+    6 times."""
+    from app.models import PlayerAssignment
+    return _request_cached(
+        'player_assignments_all',
+        lambda: PlayerAssignment.query.all(),
+    )
 
 
 def get_all_super_agents():
@@ -154,7 +191,39 @@ def get_all_members():
     return sorted(members, key=lambda x: x['nickname'].lower())
 
 
+_CACHE_MISS = object()
+
+
+def _request_cached(key, factory):
+    """Memoize `factory()` on flask.g for the lifetime of one request.
+
+    Many helpers here (Excel parsing, get_members_hierarchy,
+    get_player_overrides) are called 3–10 times per dashboard render; caching
+    them per-request collapses that to a single computation. Each new request
+    still re-runs `factory`, so upload/DB changes appear on the very next
+    page load — no stale-data risk."""
+    try:
+        from flask import g, has_app_context
+    except Exception:
+        return factory()
+    if not has_app_context():
+        return factory()
+    cache = getattr(g, '_union_request_cache', None)
+    if cache is None:
+        cache = {}
+        g._union_request_cache = cache
+    val = cache.get(key, _CACHE_MISS)
+    if val is _CACHE_MISS:
+        val = factory()
+        cache[key] = val
+    return val
+
+
 def _read_sheets():
+    return _request_cached('sheets', _read_sheets_uncached)
+
+
+def _read_sheets_uncached():
     import io
     # Try local file first
     path = get_excel_path()
@@ -362,6 +431,10 @@ def get_top_members(limit=20):
 
 def get_members_hierarchy():
     """Returns list of clubs, each with super_agents → agents → players hierarchy."""
+    return _request_cached('members_hierarchy', _get_members_hierarchy_uncached)
+
+
+def _get_members_hierarchy_uncached():
     sheets = _read_sheets()
     if 'Union Member Statistics' not in sheets:
         return [], {'rake': 0, 'pnl': 0}
@@ -625,7 +698,7 @@ def get_child_sa_entries(parent_sa_ids, managed_club_names=None):
     sa_id in multiple clubs are merged — their `agents` dicts combined
     and their `club` strings joined with ", ".
     """
-    from app.models import SAHierarchy, DailyPlayerStats
+    from app.models import DailyPlayerStats
     from sqlalchemy import func as sqlfunc
 
     managed_set = set(managed_club_names or [])
@@ -636,8 +709,7 @@ def get_child_sa_entries(parent_sa_ids, managed_club_names=None):
     for pid in parent_sa_ids:
         if not pid:
             continue
-        for h in SAHierarchy.query.filter_by(parent_sa_id=pid).all():
-            cid = h.child_sa_id
+        for cid in get_sa_children(pid):
             if cid and cid not in seen_ids:
                 seen_ids.add(cid)
                 child_ids.append(cid)
@@ -951,11 +1023,10 @@ def get_agent_scope(player_id):
 
     child_sa_ids = []
     for kid in list(known_ids):
-        child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+        child_sa_ids.extend(get_sa_children(kid))
     all_sa_ids = list(set(list(known_ids) + child_sa_ids))
 
-    rake_cfgs = SARakeConfig.query.filter_by(sa_id=player_id).filter(
-        SARakeConfig.managed_club_id.isnot(None)).all()
+    rake_cfgs = [c for c in get_managed_clubs_all_cfgs() if c.sa_id == player_id]
     managed_club_names = []
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
@@ -1039,12 +1110,12 @@ def _sa_hierarchy_ids(sa_id, M=None):
     the SA itself, child SAs (SAHierarchy), and regular agents whose own
     rows sit under any of those SAs. Used to carve rows in shared clubs
     (SA's managed_club AND an admin OVERVIEW_CLUBS)."""
-    from app.models import DailyPlayerStats, SAHierarchy
+    from app.models import DailyPlayerStats
     if M is None:
         M = DailyPlayerStats
     ids = {sa_id}
-    for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all():
-        ids.add(h.child_sa_id)
+    for child in get_sa_children(sa_id):
+        ids.add(child)
     agent_rows = M.query.with_entities(M.agent_id).filter(
         M.sa_id.in_(list(ids)),
         M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-',
@@ -1059,9 +1130,8 @@ def _sa_hierarchy_ids(sa_id, M=None):
 def _sas_managing_club(club_name, cid_to_name):
     """sa_ids whose SARakeConfig.managed_club_id resolves to `club_name`
     (via Excel club_id or literal match)."""
-    from app.models import SARakeConfig
     out = set()
-    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+    for c in get_managed_clubs_all_cfgs():
         nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
         if nm == club_name:
             out.add(c.sa_id)
@@ -1111,12 +1181,12 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
 
     child_sa_ids = []
     for kid in list(known_ids):
-        child_sa_ids.extend([h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+        child_sa_ids.extend(get_sa_children(kid))
     all_ids = list(set(list(known_ids) + child_sa_ids))
 
     # Managed clubs this agent oversees (resolved via Excel club_id → name).
-    rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(
-        SARakeConfig.managed_club_id.isnot(None)).all()
+    # Filter the request-cached global list locally — saves a DB roundtrip.
+    rake_cfgs = [c for c in get_managed_clubs_all_cfgs() if c.sa_id == uid]
     managed_club_names = []
     managed_club_names_exclusive = []   # clubs only we manage
     managed_club_names_shared = []      # clubs we manage AND tracked in OVERVIEW_CLUBS
@@ -1149,7 +1219,7 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     known_agent_ids = {r[0] for r in known_agent_ids_rows if r[0]}
     override_in_pids = []
     override_target_set = set(all_ids) | known_agent_ids
-    for ov in PlayerAssignment.query.all():
+    for ov in get_all_player_assignments():
         ov_sa = ov.assigned_sa_id or ''
         ov_ag = ov.assigned_agent_id or ''
         if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
@@ -1170,7 +1240,7 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     other_managed_names = set()
     clubs_data_all, _ = get_members_hierarchy()
     cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data_all}
-    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+    for c in get_managed_clubs_all_cfgs():
         if c.sa_id == uid:
             continue
         nm = cid_to_name_all.get(c.managed_club_id) or c.managed_club_id
@@ -1297,12 +1367,10 @@ def get_agent_scope_predicate(sa_id, M=None):
 
     child_sa_ids = []
     for kid in list(known_ids):
-        child_sa_ids.extend([h.child_sa_id for h in
-                             SAHierarchy.query.filter_by(parent_sa_id=kid).all()])
+        child_sa_ids.extend(get_sa_children(kid))
     all_ids = list(set(list(known_ids) + child_sa_ids))
 
-    rake_cfgs = SARakeConfig.query.filter_by(sa_id=uid).filter(
-        SARakeConfig.managed_club_id.isnot(None)).all()
+    rake_cfgs = [c for c in get_managed_clubs_all_cfgs() if c.sa_id == uid]
     managed_club_names = []
     managed_club_names_exclusive = []
     managed_club_names_shared = []
@@ -1325,7 +1393,7 @@ def get_agent_scope_predicate(sa_id, M=None):
     known_agent_ids = {r[0] for r in known_agent_ids_rows if r[0]}
     override_target_set = set(all_ids) | known_agent_ids
     override_in_pids = []
-    for ov in PlayerAssignment.query.all():
+    for ov in get_all_player_assignments():
         ov_sa = ov.assigned_sa_id or ''
         ov_ag = ov.assigned_agent_id or ''
         if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
@@ -1336,7 +1404,7 @@ def get_agent_scope_predicate(sa_id, M=None):
     other_managed_names = set()
     clubs_data_all, _ = get_members_hierarchy()
     cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data_all}
-    for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
+    for c in get_managed_clubs_all_cfgs():
         if c.sa_id == uid:
             continue
         nm = cid_to_name_all.get(c.managed_club_id) or c.managed_club_id
@@ -1473,6 +1541,15 @@ def get_player_overrides(player_ids=None):
     assignments stored in PlayerAssignment. Empty strings in the returned
     dict mean "no override for that field" — only non-empty fields should
     replace the source value."""
+    # Per-request cache only the no-args case (the dashboards' usage). When
+    # a specific player_ids subset is passed, skip the cache so we don't
+    # accidentally serve a partial dict to a later caller asking for "all".
+    if player_ids is None:
+        return _request_cached('player_overrides_all', _get_player_overrides_uncached)
+    return _get_player_overrides_uncached(player_ids)
+
+
+def _get_player_overrides_uncached(player_ids=None):
     from app.models import PlayerAssignment
     query = PlayerAssignment.query
     if player_ids:
