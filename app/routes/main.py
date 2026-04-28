@@ -151,16 +151,22 @@ def dashboard():
 
     # Admin may view any club's dashboard via ?view_as=<club_id>.
     # Ambiguity: some club IDs contain a '-' (e.g. 5481-5364), which used to
-    # collide with the agent view_as format. Resolve by checking User table:
-    # if view_as matches a known user's player_id → agent view, otherwise → club.
+    # collide with the agent view_as format. Resolve by looking at the
+    # matched User's role:
+    #   - matched user with role='agent' → agent view
+    #   - everything else (no match, or matched user with role='club',
+    #     'admin', etc.) → club view
+    # Some clubs have a User row with role='club' and player_id equal to the
+    # club_id (the club's own login). Those must still hit the club view
+    # when an admin opens them, not the empty agent view.
     _admin_view_as_club = None
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and request.args.get('view_as')):
         _va = request.args.get('view_as')
         if _va:
             from app.models import User as _User
-            _matches_user = _User.query.filter_by(player_id=_va).first() is not None
-            if not _matches_user:
+            _matched_user = _User.query.filter_by(player_id=_va).first()
+            if _matched_user is None or _matched_user.role != 'agent':
                 _admin_view_as_club = _va
 
     if (hasattr(current_user, 'role') and current_user.role == 'club' and current_user.player_id) \
