@@ -113,6 +113,18 @@ def build_overview_context():
     # what each manager sees when they log in themselves. get_agent_totals
     # internally carves out OVERVIEW_CLUBS rows so tracked clubs don't
     # double-count with SA current-scope.
+    # Bulk-load expense totals so each card can show "הוצאות שוטפות" and
+    # the bottom bar can subtract them from balance+rake.
+    from sqlalchemy import func as sqlfunc
+    expense_totals = dict(db.session.query(
+        ExpenseCharge.agent_player_id,
+        sqlfunc.sum(ExpenseCharge.charge_amount),
+    ).group_by(ExpenseCharge.agent_player_id).all())
+    expense_counts = dict(db.session.query(
+        ExpenseCharge.agent_player_id,
+        sqlfunc.count(ExpenseCharge.id),
+    ).group_by(ExpenseCharge.agent_player_id).all())
+
     agents_data = []
     for username, pid in OVERVIEW_MANAGERS:
         totals = get_agent_totals(
@@ -121,11 +133,16 @@ def build_overview_context():
             archive_period_id=archive_period_id,
             archive_upload_ids=archive_upload_ids or None,
         )
+        bal_plus_rake = round(totals['total_pnl'] + totals['total_rake'], 2)
+        exp = round(float(expense_totals.get(pid, 0) or 0), 2)
         agents_data.append({
             'username': username, 'player_id': pid,
             'players': totals['player_count'], 'rake': totals['total_rake'],
             'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
-            'balance_plus_rake': round(totals['total_pnl'] + totals['total_rake'], 2),
+            'balance_plus_rake': bal_plus_rake,
+            'total_expenses': exp,
+            'expense_count': int(expense_counts.get(pid, 0) or 0),
+            'balance_after_expenses': round(bal_plus_rake - exp, 2),
         })
     agents_data.sort(key=lambda a: a['rake'], reverse=True)
 
@@ -738,13 +755,46 @@ def cycle_summary_delete_archived(report_id):
     return redirect(url_for('admin.cycle_summary_list'))
 
 
+@admin_bp.route('/archive-period/<int:period_id>/delete', methods=['POST'])
+@admin_required
+def archive_period_delete(period_id):
+    """Manually delete an entire ArchivePeriod and all its archived data
+    (uploads, player stats, sessions, tournaments). Useful for cleaning
+    up duplicate periods created during testing — these otherwise show
+    up forever in the date picker until the 90-day auto-cleanup.
+
+    Order matches the auto-cleanup in app/__init__.py: child rows first,
+    parent ArchivePeriod last. CycleSummaryReport has no FK to
+    ArchivePeriod (it lives 180 days independently), so it's left alone."""
+    from app.models import (ArchivePeriod, ArchivedUpload, ArchivedPlayerStats,
+                             ArchivedPlayerSession, ArchivedTournamentStats)
+    period = ArchivePeriod.query.get(period_id)
+    if not period:
+        flash('התקופה לא נמצאה — ייתכן שכבר נמחקה.', 'warning')
+        return redirect(url_for('admin.cycle_summary_list'))
+    label = period.label
+    try:
+        ArchivedTournamentStats.query.filter_by(period_id=period_id).delete(synchronize_session=False)
+        ArchivedPlayerSession.query.filter_by(period_id=period_id).delete(synchronize_session=False)
+        ArchivedPlayerStats.query.filter_by(period_id=period_id).delete(synchronize_session=False)
+        ArchivedUpload.query.filter_by(period_id=period_id).delete(synchronize_session=False)
+        ArchivePeriod.query.filter_by(id=period_id).delete(synchronize_session=False)
+        db.session.commit()
+        flash(f'תקופת ארכיון "{label}" נמחקה לצמיתות.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'שגיאה במחיקת התקופה: {e}', 'danger')
+    return redirect(url_for('admin.cycle_summary_list'))
+
+
 @admin_bp.route('/cycle-summary/')
 @admin_required
 def cycle_summary_list():
     """Read-only page: a 'download current cycle' link on top + the list
     of historical snapshots (one per past period, auto-saved on reset,
-    kept 180 days)."""
-    from app.models import CycleSummaryReport, DailyUpload
+    kept 180 days). Also lists ArchivePeriod rows (raw archive data,
+    90-day retention) with a delete button for cleanup."""
+    from app.models import CycleSummaryReport, DailyUpload, ArchivePeriod
     # Current-cycle period label (for display only — the file is built on demand)
     uploads = DailyUpload.query.order_by(DailyUpload.upload_date).all()
     if uploads:
@@ -753,8 +803,11 @@ def cycle_summary_list():
         current_period = None
     archived = CycleSummaryReport.query.order_by(
         CycleSummaryReport.generated_at.desc()).all()
+    archive_periods = ArchivePeriod.query.order_by(
+        ArchivePeriod.last_date.desc(), ArchivePeriod.id.desc()).all()
     return render_template('admin/cycle_summary.html',
-                           current_period=current_period, archived=archived)
+                           current_period=current_period, archived=archived,
+                           archive_periods=archive_periods)
 
 
 @admin_bp.route('/agent-view/<sa_id>')
@@ -1816,10 +1869,19 @@ def expenses():
             elif action == 'charge':
                 exp_id = request.form.get('expense_id')
                 exp = SharedExpense.query.get(exp_id)
+                # Form sends one selected_agents per checked manager. If the
+                # field is missing entirely (legacy submit) we fall back to
+                # all agents — preserves the old "charge everyone" semantics.
+                selected_pids = request.form.getlist('selected_agents')
                 if exp and not exp.charged:
-                    agents = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).all()
+                    if selected_pids:
+                        agents = User.query.filter_by(role='agent').filter(
+                            User.player_id.in_(selected_pids)).all()
+                    else:
+                        agents = User.query.filter_by(role='agent').filter(
+                            User.player_id.isnot(None)).all()
                     if not agents:
-                        flash('אין סוכנים במערכת לחייב.', 'warning')
+                        flash('יש לבחור לפחות מנהל אחד לחיוב.', 'warning')
                     else:
                         share = round(exp.amount / len(agents), 2)
                         for agent in agents:
@@ -1859,10 +1921,16 @@ def expenses():
 
     all_expenses = SharedExpense.query.order_by(SharedExpense.created_at.desc()).all()
     recent_charges = ExpenseCharge.query.order_by(ExpenseCharge.created_at.desc()).limit(50).all()
-    agents_count = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).count()
+    all_agents = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).order_by(User.username).all()
+    # Split into "active" (OVERVIEW_MANAGERS — the 6 cards on /admin/) and "other"
+    active_pids = {pid for _, pid in OVERVIEW_MANAGERS}
+    active_agents = [a for a in all_agents if a.player_id in active_pids]
+    other_agents  = [a for a in all_agents if a.player_id not in active_pids]
     return render_template('admin/expenses.html',
                            expenses=all_expenses, charges=recent_charges,
-                           agents_count=agents_count)
+                           agents_count=len(all_agents),
+                           active_agents=active_agents,
+                           other_agents=other_agents)
 
 
 @admin_bp.route('/top-players')

@@ -90,4 +90,41 @@ body.dark .cs-btn-delete { background:#3a1e22; color:#f0a0a4; border-color:#5a2a
     {% endif %}
 </div>
 
+<div class="cs-card">
+    <h2>תקופות ארכיון — נתונים גולמיים ({{ archive_periods|length }})</h2>
+    <p class="muted" style="margin:0 0 0.7rem;">
+        כל איפוס מחזור יוצר תקופה כאן עם עותק של נתוני שחקנים, סשנים וטורנירים.
+        נשמר 90 יום ואז נמחק אוטומטית. מחיקה ידנית לפינוי כפילויות מבדיקות.
+    </p>
+    {% if archive_periods %}
+    <table class="cs-table">
+        <thead>
+            <tr>
+                <th>תקופה</th>
+                <th>נוצר ב-</th>
+                <th>ID</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ap in archive_periods %}
+            <tr>
+                <td><strong>{{ ap.label or '—' }}</strong></td>
+                <td class="muted">{{ ap.created_at.strftime('%d/%m/%Y %H:%M') if ap.created_at else '—' }}</td>
+                <td class="muted"><code style="font-size:0.78rem;">#{{ ap.id }}</code></td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.archive_period_delete', period_id=ap.id) }}" onsubmit="return confirm('למחוק את תקופת הארכיון &quot;{{ ap.label }}&quot; (ID #{{ ap.id }}) על כל נתוניה? לא ניתן לבטל.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="cs-btn cs-btn-delete" style="padding:0.3rem 0.65rem; font-size:0.8rem;">🗑️ מחק לצמיתות</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="cs-empty">אין תקופות ארכיון.</div>
+    {% endif %}
+</div>
+
 {% endblock %}
