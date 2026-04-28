@@ -722,6 +722,22 @@ def cycle_summary_download_archived(report_id):
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+@admin_bp.route('/cycle-summary/<int:report_id>/delete', methods=['POST'])
+@admin_required
+def cycle_summary_delete_archived(report_id):
+    """Manually delete an archived cycle summary. Useful when an admin
+    wants to clear out a snapshot before its 180-day auto-cleanup."""
+    from app.models import CycleSummaryReport
+    rep = CycleSummaryReport.query.get(report_id)
+    if rep:
+        db.session.delete(rep)
+        db.session.commit()
+        flash(f'הקובץ "{rep.filename}" נמחק.', 'success')
+    else:
+        flash('הקובץ לא נמצא — ייתכן שכבר נמחק.', 'warning')
+    return redirect(url_for('admin.cycle_summary_list'))
+
+
 @admin_bp.route('/cycle-summary/')
 @admin_required
 def cycle_summary_list():

@@ -15,6 +15,10 @@
 .cs-btn-primary:hover { background:#3651d4; }
 .cs-btn-download { background:#eaf7ef; color:#1d7a3c; border:1px solid #bde0c9; }
 .cs-btn-download:hover { background:#d4ebd9; }
+.cs-btn-delete { background:#fbeaea; color:#a4292d; border:1px solid #e6c0c0; }
+.cs-btn-delete:hover { background:#f4d4d4; }
+.cs-row-actions { display:inline-flex; gap:0.4rem; align-items:center; }
+.cs-row-actions form { display:inline; margin:0; }
 .cs-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
 .cs-table th, .cs-table td { padding:0.55rem 0.7rem; text-align:right; border-bottom:1px solid #eee; }
 .cs-table th { background:#f8f9fc; font-weight:600; color:#555; font-size:0.82rem; }
@@ -26,6 +30,7 @@ body.dark .cs-hero .info, body.dark .cs-current-row .period { color:#a8b8ff; }
 body.dark .cs-table th { background:#1e1e2a; color:#bbb; }
 body.dark .cs-table td { border-bottom-color:#333; }
 body.dark .cs-btn-download { background:#1e3a2a; color:#8fd4a2; border-color:#2a5440; }
+body.dark .cs-btn-delete { background:#3a1e22; color:#f0a0a4; border-color:#5a2a30; }
 </style>
 
 <div class="cs-hero">
@@ -68,7 +73,13 @@ body.dark .cs-btn-download { background:#1e3a2a; color:#8fd4a2; border-color:#2a
                 <td class="muted">{{ rep.generated_at.strftime('%d/%m/%Y %H:%M') if rep.generated_at else '—' }}</td>
                 <td><code style="font-size:0.78rem;">{{ rep.filename }}</code></td>
                 <td>
-                    <a href="{{ url_for('admin.cycle_summary_download_archived', report_id=rep.id) }}" class="cs-btn cs-btn-download" style="padding:0.3rem 0.65rem; font-size:0.8rem;">⬇️ הורד</a>
+                    <div class="cs-row-actions">
+                        <a href="{{ url_for('admin.cycle_summary_download_archived', report_id=rep.id) }}" class="cs-btn cs-btn-download" style="padding:0.3rem 0.65rem; font-size:0.8rem;">⬇️ הורד</a>
+                        <form method="POST" action="{{ url_for('admin.cycle_summary_delete_archived', report_id=rep.id) }}" onsubmit="return confirm('למחוק את הקובץ &quot;{{ rep.filename }}&quot;? לא ניתן לבטל.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="cs-btn cs-btn-delete" style="padding:0.3rem 0.65rem; font-size:0.8rem;">🗑️ מחק</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
