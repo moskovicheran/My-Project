@@ -1187,6 +1187,10 @@ def dashboard():
                     (sa_id, cfg.managed_club_id), club_name)
                 club_obj = {
                     'name': display_name, 'club_id': cfg.managed_club_id,
+                    # real_name = the actual DailyPlayerStats.club value
+                    # (display_name may be a friendly override like 'תוספת'
+                    # for SPC Un — must NOT leak into ?club= filters).
+                    'real_name': club_name,
                     'total_rake': club_rake, 'total_pnl': club_pnl,
                     'super_agents': club_sas, 'no_sa_members': no_sa,
                     'all_members': all_club_members,
@@ -3886,6 +3890,114 @@ def report_api():
             preds.append(M.club.in_(agent_club_names))
         return or_(*preds)
 
+    if period_id == 'all':
+        # Free-choice: query both active and ALL archive periods in the
+        # date range, sum per player. Caveat — if the same date exists in
+        # multiple sources (e.g. an archive duplicates active), rows count
+        # twice. Normal operation never produces such overlap; the admin
+        # archive-period delete tool exists to clean up the rare cases.
+        active_uploads = DailyUpload.query.filter(
+            DailyUpload.upload_date >= fd,
+            DailyUpload.upload_date <= td,
+        ).all()
+        active_upload_ids = [u.id for u in active_uploads]
+        arch_pairs = ArchivedUpload.query.with_entities(
+            ArchivedUpload.period_id, ArchivedUpload.original_id,
+        ).filter(
+            ArchivedUpload.upload_date >= fd,
+            ArchivedUpload.upload_date <= td,
+        ).all()
+
+        if not active_upload_ids and not arch_pairs:
+            return jsonify({'players': [], 'totals': {'pnl': 0, 'rake': 0, 'hands': 0}, 'days': 0,
+                            'managed_clubs_totals': None})
+
+        merged = {}  # player_id -> {nickname, club, pnl, rake, hands}
+
+        def _merge(pid, nick, club, pnl, rake, hands):
+            cur = merged.get(pid)
+            if cur is None:
+                merged[pid] = {'nickname': nick, 'club': club,
+                               'pnl': float(pnl or 0), 'rake': float(rake or 0),
+                               'hands': int(hands or 0)}
+            else:
+                cur['pnl'] += float(pnl or 0)
+                cur['rake'] += float(rake or 0)
+                cur['hands'] += int(hands or 0)
+
+        if active_upload_ids:
+            base_filters = [
+                DailyPlayerStats.upload_id.in_(active_upload_ids),
+                DailyPlayerStats.role != 'Name Entry',
+            ]
+            row_filter = _hierarchy_row_filter(DailyPlayerStats)
+            if row_filter is not None:
+                base_filters.append(row_filter)
+            q = DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id,
+                func.max(DailyPlayerStats.nickname),
+                func.max(DailyPlayerStats.club),
+                func.sum(DailyPlayerStats.pnl),
+                func.sum(DailyPlayerStats.rake),
+                func.sum(DailyPlayerStats.hands),
+            ).filter(*base_filters)
+            if player_id:
+                q = q.filter(DailyPlayerStats.player_id == player_id)
+            for row in q.group_by(DailyPlayerStats.player_id).all():
+                _merge(*row)
+
+        if arch_pairs:
+            from collections import defaultdict
+            by_period = defaultdict(list)
+            for ap_pid, uid in arch_pairs:
+                by_period[ap_pid].append(uid)
+            for ap_pid, uids in by_period.items():
+                base_filters = [
+                    ArchivedPlayerStats.period_id == ap_pid,
+                    ArchivedPlayerStats.upload_id.in_(uids),
+                    ArchivedPlayerStats.role != 'Name Entry',
+                ]
+                row_filter = _hierarchy_row_filter(ArchivedPlayerStats)
+                if row_filter is not None:
+                    base_filters.append(row_filter)
+                q = ArchivedPlayerStats.query.with_entities(
+                    ArchivedPlayerStats.player_id,
+                    func.max(ArchivedPlayerStats.nickname),
+                    func.max(ArchivedPlayerStats.club),
+                    func.sum(ArchivedPlayerStats.pnl),
+                    func.sum(ArchivedPlayerStats.rake),
+                    func.sum(ArchivedPlayerStats.hands),
+                ).filter(*base_filters)
+                if player_id:
+                    q = q.filter(ArchivedPlayerStats.player_id == player_id)
+                for row in q.group_by(ArchivedPlayerStats.player_id).all():
+                    _merge(*row)
+
+        # Synthesize the same row-shape the rest of the function expects.
+        results = [(pid, m['nickname'], m['club'], m['pnl'], m['rake'], m['hands'])
+                   for pid, m in merged.items()]
+        upload_ids = active_upload_ids + [uid for _, uid in arch_pairs]
+
+        from app.union_data import get_transfer_adjustments
+        xfer_adj = get_transfer_adjustments([r[0] for r in results])
+        players = []
+        total_pnl = total_rake = 0.0
+        total_hands = 0
+        for pid, nick, club, pnl, rake, hands in results:
+            p = round(float(pnl) + xfer_adj.get(pid, 0), 2)
+            r_ = round(float(rake), 2)
+            h = int(hands)
+            players.append({'player_id': pid, 'nickname': nick, 'club': club,
+                            'pnl': p, 'rake': r_, 'hands': h})
+            total_pnl += p; total_rake += r_; total_hands += h
+        players.sort(key=lambda x: x['pnl'], reverse=True)
+        return jsonify({
+            'players': players,
+            'totals': {'pnl': round(total_pnl, 2), 'rake': round(total_rake, 2), 'hands': total_hands},
+            'days': len(upload_ids),
+            'managed_clubs_totals': None,
+        })
+
     if period_id:
         # Query from archive tables
         uploads = ArchivedUpload.query.filter(
@@ -4020,7 +4132,14 @@ def report_dates_api():
 
     period_id = request.args.get('period_id', '')
 
-    if period_id:
+    if period_id == 'all':
+        # Free-choice mode: union of every dated row anywhere — active +
+        # all archive periods. Lets the user pick a date range that spans
+        # cycle boundaries.
+        active = {u[0] for u in DailyUpload.query.with_entities(DailyUpload.upload_date).distinct().all() if u[0]}
+        arch = {u[0] for u in ArchivedUpload.query.with_entities(ArchivedUpload.upload_date).distinct().all() if u[0]}
+        dates = sorted({d.strftime('%Y-%m-%d') for d in (active | arch)})
+    elif period_id:
         # Return dates for specific archived period
         archived = ArchivedUpload.query.with_entities(ArchivedUpload.upload_date).filter(
             ArchivedUpload.period_id == int(period_id)
