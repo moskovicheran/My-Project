@@ -945,6 +945,12 @@ def bot_suspects():
     except ValueError:
         min_hands = 500
     club_filter = request.args.get('club', '').strip()
+    # Date window — default 7 days. Catches active threats sharper than
+    # a 90-day average. Set to 0 to include every day in scope.
+    try:
+        last_days = max(0, int(request.args.get('last_days', 7)))
+    except ValueError:
+        last_days = 7
 
     # ── Data source resolution ──
     # Three modes mirror the reports page:
@@ -1021,6 +1027,21 @@ def bot_suspects():
         _ingest_archive(int(period_id))
     else:
         _ingest_active()
+
+    # Apply the date-window filter: keep only ukeys whose upload_date is
+    # within `last_days` of the most recent date in the dataset. Filters
+    # both daily_rows and the session counts (so dropped uploads don't
+    # contribute to "max distinct tables").
+    window_label = ''
+    if last_days > 0 and ukey_to_date:
+        from datetime import timedelta
+        max_date = max(ukey_to_date.values())
+        cutoff = max_date - timedelta(days=last_days - 1)  # inclusive
+        in_window = {k for k, v in ukey_to_date.items() if v >= cutoff}
+        daily_rows = [r for r in daily_rows if r[3] in in_window]
+        sessions_by_pid_uid = {k: v for k, v in sessions_by_pid_uid.items()
+                                if k[1] in in_window}
+        window_label = f"{cutoff.strftime('%d/%m/%Y')} — {max_date.strftime('%d/%m/%Y')}"
 
     # ── Build per-player profile ──
     by_pid = defaultdict(lambda: {'nickname': '', 'club': '', 'days': []})
@@ -1222,6 +1243,7 @@ def bot_suspects():
                            total_reviewed=total_reviewed,
                            high_count=high_count, med_count=med_count, low_count=low_count,
                            min_score=min_score, min_hands=min_hands,
+                           last_days=last_days, window_label=window_label,
                            period_id=period_id, club_filter=club_filter,
                            archive_periods=archive_periods, clubs=clubs)
 

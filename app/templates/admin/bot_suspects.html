@@ -193,9 +193,9 @@ body.dark details .why { background:#1e1e2e; }
     <h2>סינונים</h2>
     <div class="bs-quick-scan">
         <div class="bs-quick-scan-text">
-            <strong>🔍 סריקה מקיפה</strong> — בקליק אחד יוגדרו: כל הנתונים (active + ארכיון) · ציון 40+ · 100 hands+ · כל המועדונים
+            <strong>🔍 סריקה מקיפה (7 ימים אחרונים)</strong> — בקליק אחד: כל הנתונים · 7 ימים אחרונים · ציון 40+ · 100 hands+
         </div>
-        <a href="{{ url_for('admin.bot_suspects', period_id='all', min_score=40, min_hands=100) }}" class="bs-quick-scan-btn">סרוק הכל</a>
+        <a href="{{ url_for('admin.bot_suspects', period_id='all', last_days=7, min_score=40, min_hands=100) }}" class="bs-quick-scan-btn">סרוק שבוע</a>
     </div>
     <form method="GET" action="{{ url_for('admin.bot_suspects') }}" class="bs-controls">
         <div class="bs-ctrl">
@@ -206,6 +206,14 @@ body.dark details .why { background:#1e1e2e; }
                 <option value="{{ ap.id }}" {% if period_id == ap.id|string %}selected{% endif %}>{{ ap.label }}</option>
                 {% endfor %}
                 <option value="all" {% if period_id == 'all' %}selected{% endif %}>בחירה חופשית (כל הנתונים)</option>
+            </select>
+        </div>
+        <div class="bs-ctrl">
+            <label>ימים אחרונים</label>
+            <select name="last_days">
+                {% for v, label in [(7, '7 ימים אחרונים'), (14, '14 ימים'), (30, '30 ימים'), (60, '60 ימים'), (0, 'כל הטווח')] %}
+                <option value="{{ v }}" {% if last_days == v %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
             </select>
         </div>
         <div class="bs-ctrl">
@@ -263,7 +271,12 @@ body.dark details .why { background:#1e1e2e; }
 </div>
 
 <div class="bs-card">
-    <h2>שחקנים מסומנים <span style="color:#888; font-weight:400; font-size:0.82rem;">— מסודר לפי ציון יורד</span></h2>
+    <h2>שחקנים מסומנים
+        <span style="color:#888; font-weight:400; font-size:0.82rem;">— מסודר לפי ציון יורד</span>
+        {% if window_label %}
+        <span style="color:#4338ca; font-weight:600; font-size:0.78rem; margin-right:0.5rem;">📅 {{ window_label }}</span>
+        {% endif %}
+    </h2>
     {% if suspects %}
     <div style="overflow-x:auto;">
     <table class="bs-table bs-table-main">
@@ -313,6 +326,7 @@ body.dark details .why { background:#1e1e2e; }
                         <form method="POST" action="{{ url_for('admin.bot_suspect_dismiss', player_id=s.player_id) }}" style="display:inline; margin:0;" onsubmit="return confirm('לסמן את {{ s.nickname }} ({{ s.player_id }}) כבדוק? יוסר מהרשימה הראשית עד שתחזירי אותו.');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <input type="hidden" name="period_id" value="{{ period_id }}"/>
+                            <input type="hidden" name="last_days" value="{{ last_days }}"/>
                             <input type="hidden" name="min_score" value="{{ min_score }}"/>
                             <input type="hidden" name="min_hands" value="{{ min_hands }}"/>
                             <input type="hidden" name="club" value="{{ club_filter }}"/>
