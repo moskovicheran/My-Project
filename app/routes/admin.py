@@ -413,6 +413,55 @@ def health():
 
     aligned = abs(delta_rake) < 0.01 and abs(delta_pnl) < 0.01
 
+    # ── Source of PnL delta: asymmetric MoneyTransfers ──
+    # get_agent_totals adds transfer adjustments to per-card PnL but the
+    # top box (get_cumulative_totals) does not. A transfer is zero-sum
+    # between its two players, so when both sides sit in some tracked
+    # card the per-card adjustments cancel out. When ONE side is in scope
+    # and the other isn't, only half the adjustment hits the cards sum,
+    # producing a delta_pnl that won't reconcile via per-row attribution.
+    # This block surfaces exactly those rows so an admin can see the
+    # ledger reason for the gap (and decide to assign the missing side
+    # via /admin/lost-players, edit the transfer, or accept it).
+    from app.models import MoneyTransfer
+    in_scope_pids = set()
+    for si in sa_info:
+        in_scope_pids |= si['cur']
+        in_scope_pids |= si['ov']
+    relevant_clubs = list(all_managed | tracked_clubs)
+    if relevant_clubs:
+        in_scope_pids |= {r[0] for r in DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id
+        ).filter(DailyPlayerStats.club.in_(relevant_clubs)).distinct().all() if r[0]}
+
+    asymm_xfers = []
+    xfer_delta_total = 0.0
+    for t in MoneyTransfer.query.order_by(MoneyTransfer.created_at.desc()).all():
+        f_in = t.from_player_id in in_scope_pids
+        to_in = t.to_player_id in in_scope_pids
+        if f_in == to_in:
+            continue  # both in or both out → adjustments cancel, no delta
+        amt = float(t.amount or 0)
+        # only-from-in: cards gain +amount → delta_pnl drops by amount
+        # only-to-in:   cards lose  -amount → delta_pnl rises by amount
+        impact = -amt if f_in else amt
+        xfer_delta_total += impact
+        asymm_xfers.append({
+            'id': t.id,
+            'from_id': t.from_player_id, 'from_nick': t.from_name or t.from_player_id,
+            'to_id': t.to_player_id, 'to_nick': t.to_name or t.to_player_id,
+            'amount': round(amt, 2),
+            'from_in_scope': f_in, 'to_in_scope': to_in,
+            'impact': round(impact, 2),
+            'description': t.description or '',
+            'created_at': t.created_at.strftime('%d/%m/%Y %H:%M') if t.created_at else '',
+        })
+    xfer_delta_total = round(xfer_delta_total, 2)
+    xfer_explains_delta = (
+        abs(delta_pnl) > 0.01
+        and abs(xfer_delta_total - delta_pnl) < 0.01
+    )
+
     # Assignment targets for the inline "שייך לכרטיס" form. Start with the
     # overview-card managers + external agents (these are the priority picks,
     # pinned at the top), then extend with every SA/agent ID seen in the
@@ -452,7 +501,10 @@ def health():
                            assign_targets=assign_targets,
                            pinned_count=pinned_count,
                            unknown_clubs=unknown_clubs_list,
-                           unknown_sas=unknown_sas_list)
+                           unknown_sas=unknown_sas_list,
+                           asymm_xfers=asymm_xfers,
+                           xfer_delta_total=xfer_delta_total,
+                           xfer_explains_delta=xfer_explains_delta)
 
 
 @admin_bp.route('/health/export-overlay.xlsx')

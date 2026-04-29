@@ -181,6 +181,58 @@ body.dark .sa-pick-opt.pinned { background:#3a3520; }
     </dl>
 </div>
 
+{% if asymm_xfers %}
+<div class="health-card">
+    <div class="section-title">
+        מקור פער ב-PnL מהעברות (settlements) <span class="muted">— צד אחד מחוץ ל-scope</span>
+    </div>
+    <p class="muted" style="margin:0 0 0.6rem;">
+        סכום ההשפעה: <strong>{{ '{:+,.2f}'.format(xfer_delta_total) }}</strong>
+        {% if xfer_explains_delta %}
+        <span style="color:#28a745; font-weight:600;">— מסביר את כל ה-DELTA ב-PnL ✓</span>
+        {% else %}
+        <span style="color:#fd7e14;">— לא תואם בדיוק את ה-DELTA ({{ '{:+,.2f}'.format(delta_pnl) }}); ייתכן שיש גם מקורות פער נוספים</span>
+        {% endif %}
+        <br>
+        העברה היא zero-sum בין שני שחקנים. כשרק אחד מהם משויך לכרטיס במעקב, רק חצי ההתאמה נכנס לסכום-הכרטיסים — ונוצר פער מול ה-TOP BOX (שלא מקבל התאמות בכלל).
+    </p>
+    <div class="table-scroll"><table class="health-table">
+        <thead>
+            <tr>
+                <th>נוצר ב-</th>
+                <th>משלם (from)</th>
+                <th>מקבל (to)</th>
+                <th>סכום</th>
+                <th>השפעה על DELTA</th>
+                <th>תיאור</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for x in asymm_xfers %}
+            <tr>
+                <td class="muted" style="font-size:0.78rem;">{{ x.created_at }}</td>
+                <td>
+                    <strong>{{ x.from_nick }}</strong>
+                    <span class="muted">({{ x.from_id }})</span>
+                    {% if not x.from_in_scope %}<span class="badge badge-orphan">מחוץ ל-scope</span>{% endif %}
+                </td>
+                <td>
+                    <strong>{{ x.to_nick }}</strong>
+                    <span class="muted">({{ x.to_id }})</span>
+                    {% if not x.to_in_scope %}<span class="badge badge-orphan">מחוץ ל-scope</span>{% endif %}
+                </td>
+                <td>{{ '{:,.2f}'.format(x.amount) }}</td>
+                <td class="{% if x.impact > 0 %}delta-pos{% elif x.impact < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+                    {{ '{:+,.2f}'.format(x.impact) }}
+                </td>
+                <td class="muted" style="font-size:0.82rem;">{{ x.description }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</div>
+{% endif %}
+
 <div class="health-card">
     <div class="section-title">שחקנים יתומים <span class="muted">— שורות שלא נכנסות לאף כרטיס</span></div>
     {% if orphans %}
