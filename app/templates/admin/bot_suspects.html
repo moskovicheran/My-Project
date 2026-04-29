@@ -88,6 +88,7 @@ body.dark .bs-quick-scan-text strong { color:#fff; }
 .p-profit_hi { background:#dcfce7; color:#166534; border:1px solid #86efac; }
 .p-profit_med{ background:#ecfdf5; color:#15803d; }
 .p-losing    { background:#f1f5f9; color:#64748b; }
+.p-spike     { background:#fef3c7; color:#92400e; border:1px solid #fbbf24; font-weight:700; }
 
 .player-link { color:#4361ee; text-decoration:none; font-weight:700; }
 .player-link:hover { text-decoration:underline; }
@@ -138,23 +139,24 @@ body.dark details .why { background:#1e1e2e; }
     .bs-btn { width: 100%; padding: 0.6rem; font-size: 0.92rem; }
 
     /* Main suspects table — keep the columns that drive a bot vs fish
-       decision. PnL is critical (a winning high-volume player is the
-       actual bot suspect) so it stays visible on phone.
-       The "שולחנות שונים (max)" number drops; the same signal is still
-       carried by the "שולחנות מרובים+" pill in סימני חשד.
-       Visible: 2 שחקן · 4 Hands/יום · 9 PnL · 11 סימני חשד · 12 ציון */
+       decision. The week-over-week delta column is hidden on phone (the
+       🚀 pill and reasons inside "למה?" carry that signal); the raw
+       "שולחנות שונים (max)" number drops too (same multi-tabling signal
+       is in the "שולחנות מרובים+" pill).
+       Visible: 2 שחקן · 4 Hands/יום · 10 PnL · 12 סימני חשד · 13 ציון */
     .bs-table-main th:nth-child(1),  .bs-table-main td:nth-child(1),   /* # */
     .bs-table-main th:nth-child(3),  .bs-table-main td:nth-child(3),   /* Hands */
-    .bs-table-main th:nth-child(5),  .bs-table-main td:nth-child(5),   /* ימים פעילים */
-    .bs-table-main th:nth-child(6),  .bs-table-main td:nth-child(6),   /* טווח תאריכים */
-    .bs-table-main th:nth-child(7),  .bs-table-main td:nth-child(7),   /* שולחנות שונים */
-    .bs-table-main th:nth-child(8),  .bs-table-main td:nth-child(8),   /* CV */
-    .bs-table-main th:nth-child(10), .bs-table-main td:nth-child(10)   /* Rake */
+    .bs-table-main th:nth-child(5),  .bs-table-main td:nth-child(5),   /* השוואה לשבוע קודם */
+    .bs-table-main th:nth-child(6),  .bs-table-main td:nth-child(6),   /* ימים פעילים */
+    .bs-table-main th:nth-child(7),  .bs-table-main td:nth-child(7),   /* טווח תאריכים */
+    .bs-table-main th:nth-child(8),  .bs-table-main td:nth-child(8),   /* שולחנות שונים */
+    .bs-table-main th:nth-child(9),  .bs-table-main td:nth-child(9),   /* CV */
+    .bs-table-main th:nth-child(11), .bs-table-main td:nth-child(11)   /* Rake */
     { display: none; }
 
-    /* PnL standout on mobile — bold, slightly larger, so it's the first
-       number the eye lands on after the player's name. */
-    .bs-table-main td:nth-child(9) { font-weight: 700; font-size: 0.84rem; }
+    /* PnL standout on mobile — bold so it's the first number the eye
+       lands on after the player's name. */
+    .bs-table-main td:nth-child(10) { font-weight: 700; font-size: 0.84rem; }
 
     /* Dismissed table — hide metadata cols, keep player + score + restore.
        Visible: 1 שחקן · 2 ציון בעבר · 6 (action button) */
@@ -293,6 +295,7 @@ body.dark details .why { background:#1e1e2e; }
                 <th>שחקן</th>
                 <th>Hands</th>
                 <th>Hands/יום</th>
+                <th>השוואה לשבוע קודם</th>
                 <th>ימים פעילים</th>
                 <th>טווח תאריכים</th>
                 <th>שולחנות שונים (max)</th>
@@ -317,6 +320,18 @@ body.dark details .why { background:#1e1e2e; }
                 </td>
                 <td>{{ '{:,}'.format(s.total_hands) }}</td>
                 <td><strong>{{ '{:,}'.format(s.hands_per_day) }}</strong></td>
+                <td style="font-size:0.78rem; line-height:1.45; white-space:nowrap;">
+                    {% if s.delta_hpd is not none %}
+                        <div class="{% if s.delta_hpd > 0 %}score-90{% elif s.delta_hpd < 0 %}score-30{% endif %}">
+                            hands/יום: {{ '{:+,}'.format(s.delta_hpd) }}
+                        </div>
+                        <div class="{% if s.delta_pnl_w > 0 %}score-90{% elif s.delta_pnl_w < 0 %}score-30{% endif %}">
+                            PnL: {{ '{:+,.0f}'.format(s.delta_pnl_w) }}
+                        </div>
+                    {% else %}
+                        <span class="muted">—</span>
+                    {% endif %}
+                </td>
                 <td>{{ s.active_days }} / {{ s.total_uploads }}</td>
                 <td style="white-space:nowrap; font-size:0.8rem;">{{ s.date_range }}</td>
                 <td>{{ s.max_sessions }}</td>
@@ -324,7 +339,7 @@ body.dark details .why { background:#1e1e2e; }
                 <td class="{% if s.total_pnl < 0 %}score-90{% else %}score-30{% endif %}">{{ '{:+,.2f}'.format(s.total_pnl) }}</td>
                 <td>{{ '{:,.2f}'.format(s.total_rake) }}</td>
                 <td>
-                    {% for t in s.tags %}<span class="pill p-{{ t }}">{% if t == 'vol_hi' %}נפח חריג{% elif t == 'vol_med' %}נפח גבוה{% elif t == 'mt_hi' %}שולחנות מרובים+{% elif t == 'mt_med' %}שולחנות מרובים{% elif t == 'low_var' %}σ נמוך{% elif t == 'profit_hi' %}🏆 רווחיות חריגה{% elif t == 'profit_med' %}רווחי{% elif t == 'losing' %}מפסיד (כנראה fish){% endif %}</span>{% endfor %}
+                    {% for t in s.tags %}<span class="pill p-{{ t }}">{% if t == 'vol_hi' %}נפח חריג{% elif t == 'vol_med' %}נפח גבוה{% elif t == 'mt_hi' %}שולחנות מרובים+{% elif t == 'mt_med' %}שולחנות מרובים{% elif t == 'low_var' %}σ נמוך{% elif t == 'profit_hi' %}🏆 רווחיות חריגה{% elif t == 'profit_med' %}רווחי{% elif t == 'losing' %}מפסיד (כנראה fish){% elif t == 'spike' %}🚀 קפיצה השבוע{% endif %}</span>{% endfor %}
                 </td>
                 <td class="score {{ score_class }}">
                     <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">

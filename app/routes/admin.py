@@ -1032,16 +1032,30 @@ def bot_suspects():
     # within `last_days` of the most recent date in the dataset. Filters
     # both daily_rows and the session counts (so dropped uploads don't
     # contribute to "max distinct tables").
+    #
+    # We also keep the PREVIOUS window (same length, ending at the cur cutoff)
+    # for spike detection — a player whose volume/profit jumped this week vs
+    # last week is the strongest "bot just deployed" signal we can compute
+    # without action-level data.
     window_label = ''
+    in_cur_window = set()
+    in_prev_window = set()
+    spike_enabled = (last_days >= 3) and bool(ukey_to_date)
     if last_days > 0 and ukey_to_date:
         from datetime import timedelta
         max_date = max(ukey_to_date.values())
-        cutoff = max_date - timedelta(days=last_days - 1)  # inclusive
-        in_window = {k for k, v in ukey_to_date.items() if v >= cutoff}
-        daily_rows = [r for r in daily_rows if r[3] in in_window]
+        cur_cutoff = max_date - timedelta(days=last_days - 1)
+        prev_cutoff = cur_cutoff - timedelta(days=last_days)
+        for k, v in ukey_to_date.items():
+            if v >= cur_cutoff:
+                in_cur_window.add(k)
+            elif v >= prev_cutoff:
+                in_prev_window.add(k)
+        keep = in_cur_window | in_prev_window
+        daily_rows = [r for r in daily_rows if r[3] in keep]
         sessions_by_pid_uid = {k: v for k, v in sessions_by_pid_uid.items()
-                                if k[1] in in_window}
-        window_label = f"{cutoff.strftime('%d/%m/%Y')} — {max_date.strftime('%d/%m/%Y')}"
+                                if k[1] in keep}
+        window_label = f"{cur_cutoff.strftime('%d/%m/%Y')} — {max_date.strftime('%d/%m/%Y')}"
 
     # ── Build per-player profile ──
     by_pid = defaultdict(lambda: {'nickname': '', 'club': '', 'days': []})
@@ -1059,7 +1073,18 @@ def bot_suspects():
     suspects = []
     total_reviewed = 0
     for pid, prof in by_pid.items():
-        days = [d for d in prof['days'] if d['hands'] > 0]
+        # Split each player's days into current and previous windows. Score
+        # is computed from CURRENT only (existing behaviour); prev is used
+        # solely for the spike comparison.
+        if spike_enabled:
+            cur_days = [d for d in prof['days']
+                        if d['hands'] > 0 and d['ukey'] in in_cur_window]
+            prev_days = [d for d in prof['days']
+                         if d['hands'] > 0 and d['ukey'] in in_prev_window]
+        else:
+            cur_days = [d for d in prof['days'] if d['hands'] > 0]
+            prev_days = []
+        days = cur_days  # alias — score computation below references `days`
         if not days:
             continue
         total_hands = sum(d['hands'] for d in days)
@@ -1090,6 +1115,42 @@ def bot_suspects():
                 mean_abs = statistics.mean([abs(x) for x in per_hand]) or 0.0
                 if mean_abs > 0.001:
                     cv = std / mean_abs
+
+        # ── Spike vs previous window (computed but doesn't affect the score
+        # numerically — it acts as a separate, more recent-focused signal
+        # surfaced as a pill + delta column. Keeps the existing 4-heuristic
+        # score interpretable while still giving recently-deployed bots a
+        # visible flag). ──
+        prev_total_hands = sum(d['hands'] for d in prev_days)
+        prev_active_days = len(prev_days)
+        prev_hands_per_day = (prev_total_hands / prev_active_days
+                              if prev_active_days else 0)
+        prev_pnl = sum(d['pnl'] for d in prev_days)
+        delta_hpd = hands_per_day - prev_hands_per_day if spike_enabled else None
+        delta_pnl_w = total_pnl - prev_pnl if spike_enabled else None
+
+        has_spike = False
+        spike_reasons = []
+        if spike_enabled:
+            # 3x volume jump (with non-trivial absolute floor so 5/d → 50/d
+            # doesn't trigger)
+            if (hands_per_day >= 500 and prev_hands_per_day > 0
+                    and hands_per_day / prev_hands_per_day >= 3):
+                has_spike = True
+                spike_reasons.append(
+                    f'נפח קפץ פי {hands_per_day/prev_hands_per_day:.1f} '
+                    f'({int(prev_hands_per_day):,} → {int(hands_per_day):,} hands/יום)')
+            # Emerged out of nowhere
+            elif hands_per_day >= 500 and prev_hands_per_day < 100:
+                has_spike = True
+                spike_reasons.append(
+                    f'הופיע השבוע משום-מקום: {int(hands_per_day):,} hands/יום '
+                    f'(שבוע קודם: {int(prev_hands_per_day):,})')
+            # Profit jumped from quiet to big winner
+            if total_pnl >= 5000 and prev_pnl <= 1000 and (total_pnl - prev_pnl) >= 3000:
+                has_spike = True
+                spike_reasons.append(
+                    f'רווח קפץ ל-{total_pnl:+,.2f} (שבוע קודם: {prev_pnl:+,.2f})')
 
         # ── Heuristic scores 0-100 ──
         # H1: hands per active day
@@ -1181,6 +1242,12 @@ def bot_suspects():
             tags.append('losing'); reasons.append(
                 f'מפסיד גדול: {total_pnl:+,.2f} — סביר יותר fish, לא בוט')
 
+        # Spike pill — most actionable "this just happened" signal
+        if has_spike:
+            tags.append('spike')
+            for sr in spike_reasons:
+                reasons.append(f'🚀 {sr}')
+
         if active_days == total_uploads and total_uploads >= 3:
             reasons.append(f'פעיל בכל {total_uploads} ימי המחזור — בלי הפסקה')
         # Date range as the closing "when" line in the expander, so mobile
@@ -1204,6 +1271,11 @@ def bot_suspects():
             'total_pnl': round(total_pnl, 2),
             'total_rake': round(total_rake, 2),
             'date_range': date_range,
+            'prev_hands_per_day': int(round(prev_hands_per_day)) if spike_enabled else None,
+            'prev_pnl': round(prev_pnl, 2) if spike_enabled else None,
+            'delta_hpd': int(round(delta_hpd)) if delta_hpd is not None else None,
+            'delta_pnl_w': round(delta_pnl_w, 2) if delta_pnl_w is not None else None,
+            'has_spike': has_spike,
             'score': score,
             'tags': tags,
             'reasons': reasons,
