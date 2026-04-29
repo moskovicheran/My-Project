@@ -1138,18 +1138,20 @@ def bot_suspects():
                     and hands_per_day / prev_hands_per_day >= 3):
                 has_spike = True
                 spike_reasons.append(
-                    f'נפח ×{hands_per_day/prev_hands_per_day:.1f}: '
-                    f'{int(prev_hands_per_day):,} → {int(hands_per_day):,}/יום')
+                    f'השבוע {int(hands_per_day):,} hands/יום — '
+                    f'×{hands_per_day/prev_hands_per_day:.1f} משבוע קודם '
+                    f'({int(prev_hands_per_day):,}/יום)')
             # Emerged out of nowhere
             elif hands_per_day >= 500 and prev_hands_per_day < 100:
                 has_spike = True
                 spike_reasons.append(
-                    f'הופיע השבוע: {int(prev_hands_per_day)} → {int(hands_per_day):,}/יום')
+                    f'הופיע משום-מקום: השבוע {int(hands_per_day):,} hands/יום, '
+                    f'שבוע קודם {int(prev_hands_per_day)} בלבד')
             # Profit jumped from quiet to big winner
             if total_pnl >= 5000 and prev_pnl <= 1000 and (total_pnl - prev_pnl) >= 3000:
                 has_spike = True
                 spike_reasons.append(
-                    f'רווח קפץ: {prev_pnl:+,.0f} → {total_pnl:+,.0f}')
+                    f'רווח השבוע {total_pnl:+,.0f} (שבוע קודם {prev_pnl:+,.0f})')
 
         # ── Heuristic scores 0-100 ──
         # H1: hands per active day
@@ -1212,10 +1214,10 @@ def bot_suspects():
         reasons = []
         if h1 >= 80:
             tags.append('vol_hi'); reasons.append(
-                f'{int(hands_per_day):,} hands/יום × {active_days} ימים — נפח חריג')
+                f'נפח חריג: {int(hands_per_day):,} hands/יום (ב-{active_days} ימים)')
         elif h1 >= 60:
             tags.append('vol_med'); reasons.append(
-                f'{int(hands_per_day):,} hands/יום')
+                f'נפח: {int(hands_per_day):,} hands/יום')
 
         if h2 >= 80:
             tags.append('mt_hi'); reasons.append(
