@@ -22,6 +22,30 @@
 .bs-btn { background:#4361ee; color:#fff; border:none; border-radius:6px;
           padding:0.5rem 1.1rem; font-weight:600; cursor:pointer; font-family:inherit; font-size:0.88rem; }
 .bs-btn:hover { background:#3651d4; }
+.bs-quick-scan {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:0.8rem; flex-wrap:wrap; margin-bottom:0.8rem;
+    padding:0.7rem 0.95rem; border-radius:10px;
+    background:linear-gradient(135deg, #eef3ff, #e3eaff);
+    border:1px solid #c8d4ff;
+}
+.bs-quick-scan-btn {
+    background:linear-gradient(135deg, #6366f1, #4338ca);
+    color:#fff; padding:0.55rem 1.1rem; border-radius:8px;
+    text-decoration:none; font-weight:700; font-size:0.92rem;
+    box-shadow:0 2px 8px rgba(99,102,241,0.25);
+    transition:transform 0.1s, box-shadow 0.1s;
+    white-space:nowrap;
+}
+.bs-quick-scan-btn:hover {
+    transform:translateY(-1px);
+    box-shadow:0 4px 14px rgba(99,102,241,0.35);
+}
+.bs-quick-scan-text { font-size:0.85rem; color:#3b3f78; line-height:1.4; }
+.bs-quick-scan-text strong { color:#1f2554; }
+body.dark .bs-quick-scan { background:linear-gradient(135deg, #1f2a5a, #28347a); border-color:#3a4580; }
+body.dark .bs-quick-scan-text { color:#cbd4ff; }
+body.dark .bs-quick-scan-text strong { color:#fff; }
 
 .bs-stat-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:0.7rem; }
 .bs-stat { background:#fafbff; border:1px solid #e8eaf6; border-radius:10px;
@@ -98,6 +122,12 @@ body.dark details .why { background:#1e1e2e; }
 
 <div class="bs-card">
     <h2>סינונים</h2>
+    <div class="bs-quick-scan">
+        <div class="bs-quick-scan-text">
+            <strong>🔍 סריקה מקיפה</strong> — בקליק אחד יוגדרו: כל הנתונים (active + ארכיון) · ציון 40+ · 100 hands+ · כל המועדונים
+        </div>
+        <a href="{{ url_for('admin.bot_suspects', period_id='all', min_score=40, min_hands=100) }}" class="bs-quick-scan-btn">סרוק הכל</a>
+    </div>
     <form method="GET" action="{{ url_for('admin.bot_suspects') }}" class="bs-controls">
         <div class="bs-ctrl">
             <label>תקופה</label>
