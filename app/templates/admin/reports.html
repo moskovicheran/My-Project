@@ -25,7 +25,8 @@
                     <label class="muted small" style="display:block; margin-bottom:0.2rem;">תקופה</label>
                     <select id="periodSelect" onchange="onPeriodChange()" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; max-width:220px;">
                         <option value="" id="currentPeriodOption">תקופה נוכחית</option>
-                        <option value="all">בחירה חופשית (כל הנתונים)</option>
+                        {# "בחירה חופשית" is appended in JS *after* the archive
+                           periods so it always sits at the bottom of the list. #}
                     </select>
                 </div>
                 <div>
@@ -133,6 +134,12 @@ fetch('/api/report-dates').then(r => r.json()).then(d => {
         opt.textContent = p.label;
         sel.appendChild(opt);
     });
+    // Pin "בחירה חופשית" at the bottom — placed last so it sits below all
+    // archive periods in the dropdown regardless of how many archives exist.
+    var freeOpt = document.createElement('option');
+    freeOpt.value = 'all';
+    freeOpt.textContent = 'בחירה חופשית (כל הנתונים)';
+    sel.appendChild(freeOpt);
     renderCalendar();
 });
 function onPeriodChange() {
