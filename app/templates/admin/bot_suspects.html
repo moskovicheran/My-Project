@@ -134,14 +134,16 @@ body.dark details .why { background:#1e1e2e; }
     .bs-ctrl input, .bs-ctrl select { width: 100%; }
     .bs-btn { width: 100%; padding: 0.6rem; font-size: 0.92rem; }
 
-    /* Main suspects table — hide auxiliary columns.
-       Visible: 2 שחקן · 4 Hands/יום · 6 שולחנות שונים · 10 סימני חשד · 11 ציון */
-    .bs-table-main th:nth-child(1), .bs-table-main td:nth-child(1),  /* # */
-    .bs-table-main th:nth-child(3), .bs-table-main td:nth-child(3),  /* Hands */
-    .bs-table-main th:nth-child(5), .bs-table-main td:nth-child(5),  /* ימים פעילים */
-    .bs-table-main th:nth-child(7), .bs-table-main td:nth-child(7),  /* CV */
-    .bs-table-main th:nth-child(8), .bs-table-main td:nth-child(8),  /* PnL */
-    .bs-table-main th:nth-child(9), .bs-table-main td:nth-child(9)   /* Rake */
+    /* Main suspects table — hide auxiliary columns. Date range column (6)
+       is also hidden on phone; the range still surfaces inside "למה?".
+       Visible cols: 2 שחקן · 4 Hands/יום · 7 שולחנות שונים · 11 סימני חשד · 12 ציון */
+    .bs-table-main th:nth-child(1),  .bs-table-main td:nth-child(1),   /* # */
+    .bs-table-main th:nth-child(3),  .bs-table-main td:nth-child(3),   /* Hands */
+    .bs-table-main th:nth-child(5),  .bs-table-main td:nth-child(5),   /* ימים פעילים */
+    .bs-table-main th:nth-child(6),  .bs-table-main td:nth-child(6),   /* טווח תאריכים */
+    .bs-table-main th:nth-child(8),  .bs-table-main td:nth-child(8),   /* CV */
+    .bs-table-main th:nth-child(9),  .bs-table-main td:nth-child(9),   /* PnL */
+    .bs-table-main th:nth-child(10), .bs-table-main td:nth-child(10)   /* Rake */
     { display: none; }
 
     /* Dismissed table — hide metadata cols, keep player + score + restore.
@@ -267,6 +269,7 @@ body.dark details .why { background:#1e1e2e; }
                 <th>Hands</th>
                 <th>Hands/יום</th>
                 <th>ימים פעילים</th>
+                <th>טווח תאריכים</th>
                 <th>שולחנות שונים (max)</th>
                 <th>CV</th>
                 <th>PnL</th>
@@ -290,6 +293,7 @@ body.dark details .why { background:#1e1e2e; }
                 <td>{{ '{:,}'.format(s.total_hands) }}</td>
                 <td><strong>{{ '{:,}'.format(s.hands_per_day) }}</strong></td>
                 <td>{{ s.active_days }} / {{ s.total_uploads }}</td>
+                <td style="white-space:nowrap; font-size:0.8rem;">{{ s.date_range }}</td>
                 <td>{{ s.max_sessions }}</td>
                 <td>{% if s.cv is not none %}{{ '{:.2f}'.format(s.cv) }}{% else %}—{% endif %}</td>
                 <td class="{% if s.total_pnl < 0 %}score-90{% else %}score-30{% endif %}">{{ '{:+,.2f}'.format(s.total_pnl) }}</td>

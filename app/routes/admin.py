@@ -920,6 +920,20 @@ def bot_suspects():
         BotSuspectDismissal.created_at.desc()).all()
     dismissed_pids = {d.player_id for d in dismissed_rows}
 
+    # Map ukey → upload_date so each suspect can show the date range over
+    # which their flagged activity happened. Done once for active and once
+    # for all archives — both lookups are cheap (a few hundred rows max).
+    ukey_to_date = {}
+    for u in DailyUpload.query.with_entities(
+            DailyUpload.id, DailyUpload.upload_date).all():
+        if u[1] is not None:
+            ukey_to_date[('a', u[0])] = u[1]
+    for u in ArchivedUpload.query.with_entities(
+            ArchivedUpload.period_id, ArchivedUpload.original_id,
+            ArchivedUpload.upload_date).all():
+        if u[2] is not None:
+            ukey_to_date[('p', u[0], u[1])] = u[2]
+
     # ── Filters ──
     period_id = request.args.get('period_id', '')
     try:
@@ -1082,6 +1096,21 @@ def bot_suspects():
         if score < min_score:
             continue
 
+        # Date range — first/last date the player was active in this scope.
+        # Computed once and used both in the dedicated column and in the
+        # "למה?" expander (so mobile users still see it when the column
+        # is hidden).
+        active_dates = [ukey_to_date[d['ukey']] for d in days
+                        if d['ukey'] in ukey_to_date]
+        if active_dates:
+            d_min, d_max = min(active_dates), max(active_dates)
+            if d_min == d_max:
+                date_range = d_min.strftime('%d/%m/%Y')
+            else:
+                date_range = f"{d_min.strftime('%d/%m/%Y')} — {d_max.strftime('%d/%m/%Y')}"
+        else:
+            date_range = '—'
+
         # Display tags + reason lines
         tags = []
         reasons = []
@@ -1108,6 +1137,13 @@ def bot_suspects():
 
         if active_days == total_uploads and total_uploads >= 3:
             reasons.append(f'פעיל בכל {total_uploads} ימי המחזור — בלי הפסקה')
+        # Date range as the closing "when" line in the expander, so mobile
+        # users still see it when the dedicated column is hidden.
+        if active_dates:
+            if d_min == d_max:
+                reasons.append(f'תאריך פעילות: {date_range}')
+            else:
+                reasons.append(f'טווח פעילות: {date_range}')
 
         suspects.append({
             'player_id': pid,
@@ -1121,6 +1157,7 @@ def bot_suspects():
             'cv': round(cv, 2) if cv is not None else None,
             'total_pnl': round(total_pnl, 2),
             'total_rake': round(total_rake, 2),
+            'date_range': date_range,
             'score': score,
             'tags': tags,
             'reasons': reasons,
