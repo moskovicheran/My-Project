@@ -113,6 +113,15 @@ def create_app():
     skip_startup_db = os.environ.get('SKIP_STARTUP_DB_WORK', '').lower() in ('1', 'true', 'yes')
 
     with app.app_context():
+        # Tables added AFTER the original schema must be created even when
+        # SKIP_STARTUP_DB_WORK is set, since the deployed DB doesn't have
+        # them yet. Idempotent (checkfirst=True) and very fast on warm DBs.
+        try:
+            from app.models import BotSuspectDismissal
+            BotSuspectDismissal.__table__.create(db.engine, checkfirst=True)
+        except Exception as e:
+            print(f"New-table create warning: {e}")
+
         if not skip_startup_db:
             try:
                 db.create_all()

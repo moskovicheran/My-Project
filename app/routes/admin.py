@@ -862,6 +862,43 @@ def cycle_summary_list():
                            archive_periods=archive_periods)
 
 
+@admin_bp.route('/bot-suspects/<player_id>/dismiss', methods=['POST'])
+@admin_required
+def bot_suspect_dismiss(player_id):
+    """Mark a player as already-reviewed-not-a-bot. They drop out of the
+    main suspects list and surface in the "כבר בדוקים" section instead."""
+    from app.models import BotSuspectDismissal
+    existing = BotSuspectDismissal.query.filter_by(player_id=player_id).first()
+    if not existing:
+        row = BotSuspectDismissal(
+            player_id=player_id,
+            dismissed_by_user_id=current_user.id,
+            note=request.form.get('note', '')[:200],
+        )
+        db.session.add(row)
+        db.session.commit()
+        flash(f'השחקן {player_id} סומן כבדוק.', 'success')
+    else:
+        flash(f'השחקן {player_id} כבר היה ברשימת הבדוקים.', 'info')
+    # Preserve filter state
+    qs = {k: request.form.get(k) for k in ('period_id', 'min_score', 'min_hands', 'club')
+          if request.form.get(k)}
+    return redirect(url_for('admin.bot_suspects', **qs))
+
+
+@admin_bp.route('/bot-suspects/<player_id>/restore', methods=['POST'])
+@admin_required
+def bot_suspect_restore(player_id):
+    """Un-dismiss — bring the player back into the main suspects list."""
+    from app.models import BotSuspectDismissal
+    BotSuspectDismissal.query.filter_by(player_id=player_id).delete()
+    db.session.commit()
+    flash(f'השחקן {player_id} הוחזר לרשימת החשודים.', 'success')
+    qs = {k: request.form.get(k) for k in ('period_id', 'min_score', 'min_hands', 'club')
+          if request.form.get(k)}
+    return redirect(url_for('admin.bot_suspects', **qs))
+
+
 @admin_bp.route('/bot-suspects')
 @admin_required
 def bot_suspects():
@@ -872,10 +909,16 @@ def bot_suspects():
     """
     from app.models import (DailyPlayerStats, DailyUpload, PlayerSession,
                              ArchivedPlayerStats, ArchivedPlayerSession,
-                             ArchivedUpload, ArchivePeriod)
+                             ArchivedUpload, ArchivePeriod, BotSuspectDismissal)
     from sqlalchemy import func as sqlfunc, distinct
     from collections import defaultdict
     import statistics
+
+    # Already-reviewed players — drop them out of the main list and surface
+    # in a separate "כבר בדוקים" section so admin can restore later.
+    dismissed_rows = BotSuspectDismissal.query.order_by(
+        BotSuspectDismissal.created_at.desc()).all()
+    dismissed_pids = {d.player_id for d in dismissed_rows}
 
     # ── Filters ──
     period_id = request.args.get('period_id', '')
@@ -1083,11 +1126,25 @@ def bot_suspects():
             'reasons': reasons,
         })
 
-    suspects.sort(key=lambda s: s['score'], reverse=True)
+    # Split scored players into "active suspects" (still need attention) and
+    # "already-reviewed" (admin clicked "בדקתי"). The dismissed list is
+    # rendered as a smaller secondary section with a restore button.
+    active_suspects = [s for s in suspects if s['player_id'] not in dismissed_pids]
+    dismissed_suspects = [s for s in suspects if s['player_id'] in dismissed_pids]
 
-    high_count = sum(1 for s in suspects if s['score'] >= 80)
-    med_count = sum(1 for s in suspects if 60 <= s['score'] < 80)
-    low_count = sum(1 for s in suspects if 40 <= s['score'] < 60)
+    active_suspects.sort(key=lambda s: s['score'], reverse=True)
+    dismissed_suspects.sort(key=lambda s: s['score'], reverse=True)
+
+    high_count = sum(1 for s in active_suspects if s['score'] >= 80)
+    med_count = sum(1 for s in active_suspects if 60 <= s['score'] < 80)
+    low_count = sum(1 for s in active_suspects if 40 <= s['score'] < 60)
+
+    # Lookup table for the dismissed metadata (date + note + reviewer)
+    dismissed_meta = {d.player_id: {
+        'created_at': d.created_at.strftime('%d/%m/%Y %H:%M') if d.created_at else '',
+        'note': d.note or '',
+        'by': d.dismissed_by.username if d.dismissed_by else '',
+    } for d in dismissed_rows}
 
     # Period dropdown — list archives, mark current
     archive_periods = ArchivePeriod.query.order_by(
@@ -1097,7 +1154,9 @@ def bot_suspects():
     clubs = sorted({prof['club'] for prof in by_pid.values() if prof['club']})
 
     return render_template('admin/bot_suspects.html',
-                           suspects=suspects,
+                           suspects=active_suspects,
+                           dismissed_suspects=dismissed_suspects,
+                           dismissed_meta=dismissed_meta,
                            total_reviewed=total_reviewed,
                            high_count=high_count, med_count=med_count, low_count=low_count,
                            min_score=min_score, min_hands=min_hands,

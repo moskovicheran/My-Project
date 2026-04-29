@@ -340,3 +340,24 @@ class PlayerAssignment(db.Model):
 
     def __repr__(self):
         return f'<PlayerAssignment {self.player_id} → sa={self.assigned_sa_id} ag={self.assigned_agent_id}>'
+
+
+class BotSuspectDismissal(db.Model):
+    """A player the admin has already reviewed for bot suspicion and
+    decided is fine. Used to filter the player out of the /admin/bot-suspects
+    list on subsequent visits.
+
+    Restoring (un-dismissing) is supported — admin can change their mind
+    later and put the player back on the list."""
+    __tablename__ = 'bot_suspect_dismissals'
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    dismissed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    note = db.Column(db.String(200), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    dismissed_by = db.relationship('User', backref='bot_dismissals')
+
+    def __repr__(self):
+        return f'<BotSuspectDismissal {self.player_id}>'

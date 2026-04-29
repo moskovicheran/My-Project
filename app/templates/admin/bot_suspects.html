@@ -205,8 +205,18 @@ body.dark details .why { background:#1e1e2e; }
                     {% for t in s.tags %}<span class="pill p-{{ t }}">{% if t == 'vol_hi' %}נפח חריג{% elif t == 'vol_med' %}נפח גבוה{% elif t == 'mt_hi' %}מולטי-טייבל גבוה{% elif t == 'mt_med' %}מולטי-טייבל{% elif t == 'low_var' %}σ נמוך{% endif %}</span>{% endfor %}
                 </td>
                 <td class="score {{ score_class }}">
-                    {{ s.score }}
-                    <span class="bar-wrap"><span class="bar {{ bar_class }}" style="width:{{ s.score }}%;"></span></span>
+                    <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                        <span>{{ s.score }}</span>
+                        <span class="bar-wrap"><span class="bar {{ bar_class }}" style="width:{{ s.score }}%;"></span></span>
+                        <form method="POST" action="{{ url_for('admin.bot_suspect_dismiss', player_id=s.player_id) }}" style="display:inline; margin:0;" onsubmit="return confirm('לסמן את {{ s.nickname }} ({{ s.player_id }}) כבדוק? יוסר מהרשימה הראשית עד שתחזירי אותו.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <input type="hidden" name="period_id" value="{{ period_id }}"/>
+                            <input type="hidden" name="min_score" value="{{ min_score }}"/>
+                            <input type="hidden" name="min_hands" value="{{ min_hands }}"/>
+                            <input type="hidden" name="club" value="{{ club_filter }}"/>
+                            <button type="submit" title="סמן כבדוק — לא יופיע יותר ברשימה" style="background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:5px; padding:0.18rem 0.5rem; font-size:0.74rem; cursor:pointer; font-family:inherit;">✓ בדקתי</button>
+                        </form>
+                    </div>
                     {% if s.reasons %}
                     <details>
                         <summary>למה?</summary>
@@ -232,5 +242,52 @@ body.dark details .why { background:#1e1e2e; }
     </div>
     {% endif %}
 </div>
+
+{% if dismissed_suspects %}
+<div class="bs-card">
+    <h2>כבר בדוקים <span style="color:#888; font-weight:400; font-size:0.82rem;">— שחקנים שסומנו כלא-בוטים. ניתן להחזיר לרשימה הראשית.</span></h2>
+    <div style="overflow-x:auto;">
+    <table class="bs-table">
+        <thead>
+            <tr>
+                <th>שחקן</th>
+                <th>ציון בעבר</th>
+                <th>סומן ב-</th>
+                <th>סומן ע"י</th>
+                <th>הערה</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in dismissed_suspects %}
+            {% set m = dismissed_meta[s.player_id] %}
+            <tr style="opacity:0.75;">
+                <td>
+                    <div class="nick-club">
+                        <a class="player-link" href="{{ url_for('union.player_detail', player_id=s.player_id) }}">{{ s.nickname }}</a>
+                        <span class="club">{{ s.club }} · {{ s.player_id }}</span>
+                    </div>
+                </td>
+                <td><span class="score" style="color:#888;">{{ s.score }}</span></td>
+                <td class="muted" style="font-size:0.8rem; color:#888;">{{ m.created_at }}</td>
+                <td class="muted" style="font-size:0.8rem; color:#888;">{{ m.by }}</td>
+                <td class="muted" style="font-size:0.82rem;">{{ m.note }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.bot_suspect_restore', player_id=s.player_id) }}" style="display:inline; margin:0;" onsubmit="return confirm('להחזיר את {{ s.nickname }} לרשימת החשודים?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="period_id" value="{{ period_id }}"/>
+                        <input type="hidden" name="min_score" value="{{ min_score }}"/>
+                        <input type="hidden" name="min_hands" value="{{ min_hands }}"/>
+                        <input type="hidden" name="club" value="{{ club_filter }}"/>
+                        <button type="submit" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:0.2rem 0.6rem; font-size:0.78rem; cursor:pointer; font-family:inherit;">↺ החזר לחשודים</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
 
 {% endblock %}
