@@ -39,12 +39,17 @@
                 </div>
                 <div>
                     <label class="muted small" style="display:block; margin-bottom:0.2rem;">שחקן (אופציונלי)</label>
-                    <select id="playerFilter" style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; max-width:200px;">
-                        <option value="">כל השחקנים</option>
+                    <input type="text" id="playerFilterInput" list="playersList"
+                           placeholder="כל השחקנים — או הקלדי שם"
+                           oninput="syncPlayerFilter()"
+                           autocomplete="off"
+                           style="padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; min-width:220px;">
+                    <datalist id="playersList">
                         {% for m in members %}
-                        <option value="{{ m.player_id }}">{{ m.nickname }} ({{ m.club }})</option>
+                        <option value="{{ m.nickname }} ({{ m.club }})"></option>
                         {% endfor %}
-                    </select>
+                    </datalist>
+                    <input type="hidden" id="playerFilter" value="">
                 </div>
             </div>
             <button onclick="loadReport()" class="btn btn-primary">הצג דוח</button>
@@ -117,6 +122,20 @@ var dataDates = [];
 var calYear, calMonth;
 var selectedFrom = null, selectedTo = null;
 var currentPeriodId = '';
+
+// Datalist autocomplete: visible label → player_id lookup. Built from
+// the {{ members }} list once at page load. The visible <input> shows
+// the friendly "Nickname (Club)" string; the hidden #playerFilter
+// holds the resolved player_id that the API expects.
+var _playerLookup = {
+{% for m in members -%}
+"{{ m.nickname|e }} ({{ m.club|e }})": "{{ m.player_id|e }}"{% if not loop.last %},{% endif %}
+{% endfor -%}
+};
+function syncPlayerFilter() {
+    var text = (document.getElementById('playerFilterInput').value || '').trim();
+    document.getElementById('playerFilter').value = _playerLookup[text] || '';
+}
 
 // Load dates with data
 fetch('/api/report-dates').then(r => r.json()).then(d => {
@@ -234,6 +253,22 @@ function loadReport() {
     document.getElementById('reportInfo').textContent = 'טוען...';
 
     fetch(url).then(r => r.json()).then(data => {
+        document.getElementById('reportInfo').textContent = '';
+        // Empty state: hide the all-zero summary cards/export and show a
+        // clear "no data" message instead. Avoids the misleading 0/0/0/0
+        // wall when the date range simply has no uploads.
+        if (!data.players || data.players.length === 0) {
+            document.getElementById('summaryCards').style.display = 'none';
+            document.getElementById('exportBar').style.display = 'none';
+            document.getElementById('reportResults').style.display = 'block';
+            document.getElementById('reportTitle').textContent = 'אין נתונים בטווח שנבחר';
+            var hint = currentPeriodId
+                ? 'התקופה שנבחרה לא מכילה את התאריכים. נסי תאריכים אחרים או "בחירה חופשית (כל הנתונים)".'
+                : 'אין העלאות פעילות בטווח ' + from + ' עד ' + to + '. נסי תאריכים אחרים, תקופת ארכיון, או "בחירה חופשית".';
+            document.getElementById('reportBody').innerHTML =
+                '<tr><td colspan="6" style="text-align:center; color:#888; padding:1.5rem; line-height:1.6;">' + hint + '</td></tr>';
+            return;
+        }
         document.getElementById('summaryCards').style.display = 'grid';
         document.getElementById('exportBar').style.display = 'block';
         document.getElementById('reportResults').style.display = 'block';
@@ -244,7 +279,6 @@ function loadReport() {
         var pnlCard = document.getElementById('sumPnlCard');
         pnlCard.className = 'stat-card ' + (data.totals.pnl >= 0 ? 'income' : 'expense');
         document.getElementById('reportTitle').textContent = 'תוצאות (' + data.players.length + ' שחקנים, ' + from + ' עד ' + to + ')';
-        document.getElementById('reportInfo').textContent = '';
 
         var html = '';
         data.players.forEach(function(p, i) {
