@@ -1094,10 +1094,10 @@ def bot_suspects():
 
         if h2 >= 80:
             tags.append('mt_hi'); reasons.append(
-                f'מולטי-טייבל קיצוני: {max_sessions} שולחנות במקביל')
+                f'תזוזה גבוהה בין שולחנות: ישב ב-{max_sessions} שולחנות שונים בקובץ יחיד')
         elif h2 >= 60:
             tags.append('mt_med'); reasons.append(
-                f'מולטי-טייבל: עד {max_sessions} שולחנות במקביל')
+                f'תזוזה בין שולחנות: עד {max_sessions} שולחנות שונים בקובץ יחיד')
 
         if h3 >= 80:
             tags.append('low_var'); reasons.append(
