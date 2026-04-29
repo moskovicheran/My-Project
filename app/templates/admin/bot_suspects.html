@@ -1,0 +1,236 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}חשד לבוטים — לוח בקרה{% endblock %}
+
+{% block content %}
+<style>
+.bs-hero { background:linear-gradient(135deg, #6366f1, #4338ca); color:#fff;
+           border-radius:16px; padding:1.4rem 1.8rem; margin-bottom:1.2rem;
+           box-shadow:0 4px 18px rgba(99,102,241,0.25); }
+.bs-hero h1 { margin:0 0 0.3rem; font-size:1.4rem; }
+.bs-hero .info { opacity:0.9; font-size:0.88rem; line-height:1.55; }
+.bs-card { background:#fff; border-radius:14px; padding:1.1rem 1.2rem;
+           margin-bottom:1rem; box-shadow:0 1px 6px rgba(0,0,0,0.06); }
+.bs-card h2 { margin:0 0 0.7rem; font-size:1rem; color:#2c3e8a;
+              border-bottom:2px solid #eef; padding-bottom:0.35rem; }
+.bs-controls { display:flex; gap:0.7rem; flex-wrap:wrap; align-items:flex-end; }
+.bs-ctrl { display:flex; flex-direction:column; gap:0.25rem; }
+.bs-ctrl label { font-size:0.75rem; color:#666; font-weight:600; }
+.bs-ctrl input, .bs-ctrl select {
+    padding:0.42rem 0.65rem; border:1px solid #ddd; border-radius:6px;
+    font-family:inherit; font-size:0.86rem; background:#fff;
+}
+.bs-btn { background:#4361ee; color:#fff; border:none; border-radius:6px;
+          padding:0.5rem 1.1rem; font-weight:600; cursor:pointer; font-family:inherit; font-size:0.88rem; }
+.bs-btn:hover { background:#3651d4; }
+
+.bs-stat-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:0.7rem; }
+.bs-stat { background:#fafbff; border:1px solid #e8eaf6; border-radius:10px;
+           padding:0.6rem 0.8rem; }
+.bs-stat .lbl { color:#666; font-size:0.74rem; margin-bottom:0.15rem; }
+.bs-stat .val { font-size:1.3rem; font-weight:700; }
+.bs-stat.danger .val { color:#dc2626; }
+.bs-stat.warn .val { color:#ea580c; }
+.bs-stat.ok .val { color:#16a34a; }
+
+.bs-table { width:100%; border-collapse:collapse; font-size:0.86rem;
+            font-variant-numeric:tabular-nums; }
+.bs-table th { background:#f8f9fc; color:#555; font-weight:600; font-size:0.76rem;
+               padding:0.5rem 0.6rem; text-align:right; border-bottom:1px solid #eef;
+               white-space:nowrap; }
+.bs-table td { padding:0.5rem 0.6rem; text-align:right; border-bottom:1px solid #eef; }
+.bs-table tr:hover td { background:#fafbff; }
+
+.score { font-weight:700; font-size:0.95rem; }
+.score-90 { color:#dc2626; }
+.score-70 { color:#ea580c; }
+.score-50 { color:#ca8a04; }
+.score-30 { color:#65a30d; }
+
+.bar-wrap { display:inline-block; width:80px; height:6px; background:#eef;
+            border-radius:4px; vertical-align:middle; margin-right:0.4rem; overflow:hidden; }
+.bar { height:100%; border-radius:4px; }
+.bar-90 { background:#dc2626; }
+.bar-70 { background:#ea580c; }
+.bar-50 { background:#ca8a04; }
+.bar-30 { background:#65a30d; }
+
+.pill { display:inline-block; padding:0.13rem 0.5rem; border-radius:10px;
+        font-size:0.68rem; font-weight:600; margin-left:0.2rem; }
+.p-vol_hi   { background:#fee2e2; color:#991b1b; }
+.p-vol_med  { background:#fef3c7; color:#92400e; }
+.p-mt_hi    { background:#ffedd5; color:#9a3412; }
+.p-mt_med   { background:#fef9c3; color:#854d0e; }
+.p-low_var  { background:#e0e7ff; color:#3730a3; }
+
+.player-link { color:#4361ee; text-decoration:none; font-weight:700; }
+.player-link:hover { text-decoration:underline; }
+.nick-club .club { color:#888; font-size:0.74rem; display:block; }
+
+details { margin-top:0.3rem; }
+details summary { cursor:pointer; color:#4361ee; font-size:0.8rem; }
+details .why { background:#f8fafc; border-right:3px solid #6366f1; padding:0.5rem 0.7rem;
+               margin-top:0.35rem; font-size:0.81rem; line-height:1.55;
+               white-space:pre-line; border-radius:0 4px 4px 0; }
+
+.bs-empty { text-align:center; padding:2rem 0; color:#999; }
+
+.bs-note { background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+           padding:0.6rem 0.85rem; font-size:0.82rem; color:#854d0e; }
+.bs-note strong { color:#713f12; }
+
+body.dark .bs-card { background:#252535; }
+body.dark .bs-stat { background:#1e1e2e; border-color:#333; }
+body.dark .bs-table th { background:#1e1e2a; color:#bbb; }
+body.dark .bs-table td { border-bottom-color:#333; }
+body.dark .bs-table tr:hover td { background:#2a2a3a; }
+body.dark .bs-ctrl input, body.dark .bs-ctrl select { background:#1e1e2e; color:#ddd; border-color:#444; }
+body.dark details .why { background:#1e1e2e; }
+</style>
+
+<div class="bs-hero">
+    <h1>🤖 חשד לבוטים — מערכת ניטור</h1>
+    <div class="info">
+        דירוג שחקנים לפי ציון חשד משוקלל מנפח hands, מולטי-טייבלינג, ויציבות PnL/hand.
+        <strong>זה כלי חקירה, לא הוכחה.</strong>
+        שחקן רציני יחיד (multi-tabling דבק) יכול לקבל ציון גבוה — בדקי כל מקרה לגופו.
+    </div>
+</div>
+
+<div class="bs-card">
+    <h2>סינונים</h2>
+    <form method="GET" action="{{ url_for('admin.bot_suspects') }}" class="bs-controls">
+        <div class="bs-ctrl">
+            <label>תקופה</label>
+            <select name="period_id">
+                <option value="" {% if not period_id %}selected{% endif %}>תקופה נוכחית</option>
+                {% for ap in archive_periods %}
+                <option value="{{ ap.id }}" {% if period_id == ap.id|string %}selected{% endif %}>{{ ap.label }}</option>
+                {% endfor %}
+                <option value="all" {% if period_id == 'all' %}selected{% endif %}>בחירה חופשית (כל הנתונים)</option>
+            </select>
+        </div>
+        <div class="bs-ctrl">
+            <label>ציון חשד מינימלי</label>
+            <select name="min_score">
+                {% for v, label in [(40, '40+ (כל החשדות)'), (60, '60+ (חשד בינוני ומעלה)'), (80, '80+ (חשד גבוה בלבד)')] %}
+                <option value="{{ v }}" {% if min_score == v %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="bs-ctrl">
+            <label>מינימום hands</label>
+            <input type="number" name="min_hands" value="{{ min_hands }}" min="0" style="width:100px;">
+        </div>
+        <div class="bs-ctrl">
+            <label>מועדון</label>
+            <select name="club">
+                <option value="">כל המועדונים</option>
+                {% for c in clubs %}
+                <option value="{{ c }}" {% if club_filter == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="bs-btn">סנן</button>
+    </form>
+</div>
+
+<div class="bs-card">
+    <h2>סקירה כללית</h2>
+    <div class="bs-stat-grid">
+        <div class="bs-stat danger">
+            <div class="lbl">חשד גבוה (80+)</div>
+            <div class="val">{{ high_count }}</div>
+        </div>
+        <div class="bs-stat warn">
+            <div class="lbl">חשד בינוני (60-79)</div>
+            <div class="val">{{ med_count }}</div>
+        </div>
+        <div class="bs-stat">
+            <div class="lbl">חשד נמוך (40-59)</div>
+            <div class="val">{{ low_count }}</div>
+        </div>
+        <div class="bs-stat ok">
+            <div class="lbl">שחקנים נסקרו</div>
+            <div class="val">{{ total_reviewed }}</div>
+        </div>
+    </div>
+    <div class="bs-note" style="margin-top:0.8rem;">
+        <strong>איך מחושב הציון?</strong> משוקלל מ-3 היוריסטיקות:
+        נפח hands ביום (40%), מולטי-טייבלינג (35%), ויציבות PnL/hand בין ימים (25%).
+        <strong>מגבלות:</strong> אין לנו timestamp ל-sessions אז "פעילות 24/7" לא נמדדת.
+        אין לנו rake לפי session אז גם "rake אחיד" לא נמדד.
+    </div>
+</div>
+
+<div class="bs-card">
+    <h2>שחקנים מסומנים <span style="color:#888; font-weight:400; font-size:0.82rem;">— מסודר לפי ציון יורד</span></h2>
+    {% if suspects %}
+    <div style="overflow-x:auto;">
+    <table class="bs-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>שחקן</th>
+                <th>Hands</th>
+                <th>Hands/יום</th>
+                <th>ימים פעילים</th>
+                <th>Sessions max</th>
+                <th>CV</th>
+                <th>PnL</th>
+                <th>Rake</th>
+                <th>סימני חשד</th>
+                <th>ציון</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in suspects %}
+            {% set bar_class = 'bar-90' if s.score >= 80 else ('bar-70' if s.score >= 60 else ('bar-50' if s.score >= 40 else 'bar-30')) %}
+            {% set score_class = 'score-90' if s.score >= 80 else ('score-70' if s.score >= 60 else ('score-50' if s.score >= 40 else 'score-30')) %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>
+                    <div class="nick-club">
+                        <a class="player-link" href="{{ url_for('union.player_detail', player_id=s.player_id) }}">{{ s.nickname }}</a>
+                        <span class="club">{{ s.club }} · {{ s.player_id }}</span>
+                    </div>
+                </td>
+                <td>{{ '{:,}'.format(s.total_hands) }}</td>
+                <td><strong>{{ '{:,}'.format(s.hands_per_day) }}</strong></td>
+                <td>{{ s.active_days }} / {{ s.total_uploads }}</td>
+                <td>{{ s.max_sessions }}</td>
+                <td>{% if s.cv is not none %}{{ '{:.2f}'.format(s.cv) }}{% else %}—{% endif %}</td>
+                <td class="{% if s.total_pnl < 0 %}score-90{% else %}score-30{% endif %}">{{ '{:+,.2f}'.format(s.total_pnl) }}</td>
+                <td>{{ '{:,.2f}'.format(s.total_rake) }}</td>
+                <td>
+                    {% for t in s.tags %}<span class="pill p-{{ t }}">{% if t == 'vol_hi' %}נפח חריג{% elif t == 'vol_med' %}נפח גבוה{% elif t == 'mt_hi' %}מולטי-טייבל גבוה{% elif t == 'mt_med' %}מולטי-טייבל{% elif t == 'low_var' %}σ נמוך{% endif %}</span>{% endfor %}
+                </td>
+                <td class="score {{ score_class }}">
+                    {{ s.score }}
+                    <span class="bar-wrap"><span class="bar {{ bar_class }}" style="width:{{ s.score }}%;"></span></span>
+                    {% if s.reasons %}
+                    <details>
+                        <summary>למה?</summary>
+                        <div class="why">{% for r in s.reasons %}• {{ r }}
+{% endfor %}</div>
+                    </details>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="bs-empty">
+        אין שחקנים שעוברים את סף הציון ({{ min_score }}+) במסננים הנוכחיים.
+        <br><br>
+        {% if total_reviewed == 0 %}
+        <span style="color:#888;">לא נמצאו שחקנים עם {{ min_hands }}+ hands בתקופה. נסי להוריד את "מינימום hands".</span>
+        {% else %}
+        <span style="color:#888;">נסקרו {{ total_reviewed }} שחקנים אבל אף אחד לא הגיע לציון. נסי להוריד את הסף או להרחיב את התקופה.</span>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

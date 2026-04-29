@@ -862,6 +862,249 @@ def cycle_summary_list():
                            archive_periods=archive_periods)
 
 
+@admin_bp.route('/bot-suspects')
+@admin_required
+def bot_suspects():
+    """Heuristic bot detection. Reads only data we already have from the
+    uploaded Excel files (DailyPlayerStats + PlayerSession). No raw poker
+    actions, no timestamps — so this surfaces volume/multi-tabling/low-
+    variance signals only. Useful as an investigation list, not a verdict.
+    """
+    from app.models import (DailyPlayerStats, DailyUpload, PlayerSession,
+                             ArchivedPlayerStats, ArchivedPlayerSession,
+                             ArchivedUpload, ArchivePeriod)
+    from sqlalchemy import func as sqlfunc, distinct
+    from collections import defaultdict
+    import statistics
+
+    # ── Filters ──
+    period_id = request.args.get('period_id', '')
+    try:
+        min_score = max(0, min(100, int(request.args.get('min_score', 60))))
+    except ValueError:
+        min_score = 60
+    try:
+        min_hands = max(0, int(request.args.get('min_hands', 500)))
+    except ValueError:
+        min_hands = 500
+    club_filter = request.args.get('club', '').strip()
+
+    # ── Data source resolution ──
+    # Three modes mirror the reports page:
+    #   period_id == 'all'  → active + every archive
+    #   period_id is digits → that one archive
+    #   else                → active (current cycle)
+    #
+    # We collect (player_id, upload_key, hands, pnl, rake) tuples plus
+    # session counts keyed by (player_id, upload_key). upload_key keeps
+    # active and archived buckets unique even if numeric upload_id collides.
+    daily_rows = []
+    sessions_by_pid_uid = {}
+
+    def _ingest_active():
+        rows = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id,
+            sqlfunc.max(DailyPlayerStats.nickname),
+            sqlfunc.max(DailyPlayerStats.club),
+            DailyPlayerStats.upload_id,
+            sqlfunc.sum(DailyPlayerStats.hands),
+            sqlfunc.sum(DailyPlayerStats.pnl),
+            sqlfunc.sum(DailyPlayerStats.rake),
+        ).filter(DailyPlayerStats.role != 'Name Entry').group_by(
+            DailyPlayerStats.player_id, DailyPlayerStats.upload_id
+        ).all()
+        for pid, nick, club, uid, hands, pnl, rake in rows:
+            daily_rows.append((pid, nick, club, ('a', uid),
+                                int(hands or 0), float(pnl or 0), float(rake or 0)))
+        # Session counts (distinct table_name per player per upload)
+        srows = PlayerSession.query.with_entities(
+            PlayerSession.player_id,
+            PlayerSession.upload_id,
+            sqlfunc.count(distinct(PlayerSession.table_name)).label('tables'),
+        ).group_by(PlayerSession.player_id, PlayerSession.upload_id).all()
+        for pid, uid, tables in srows:
+            sessions_by_pid_uid[(pid, ('a', uid))] = int(tables or 0)
+
+    def _ingest_archive(period_filter=None):
+        q = ArchivedPlayerStats.query.with_entities(
+            ArchivedPlayerStats.player_id,
+            sqlfunc.max(ArchivedPlayerStats.nickname),
+            sqlfunc.max(ArchivedPlayerStats.club),
+            ArchivedPlayerStats.period_id,
+            ArchivedPlayerStats.upload_id,
+            sqlfunc.sum(ArchivedPlayerStats.hands),
+            sqlfunc.sum(ArchivedPlayerStats.pnl),
+            sqlfunc.sum(ArchivedPlayerStats.rake),
+        ).filter(ArchivedPlayerStats.role != 'Name Entry')
+        if period_filter:
+            q = q.filter(ArchivedPlayerStats.period_id == period_filter)
+        for pid, nick, club, p_id, uid, hands, pnl, rake in q.group_by(
+                ArchivedPlayerStats.player_id, ArchivedPlayerStats.period_id,
+                ArchivedPlayerStats.upload_id).all():
+            daily_rows.append((pid, nick, club, ('p', p_id, uid),
+                                int(hands or 0), float(pnl or 0), float(rake or 0)))
+        sq = ArchivedPlayerSession.query.with_entities(
+            ArchivedPlayerSession.player_id,
+            ArchivedPlayerSession.period_id,
+            ArchivedPlayerSession.upload_id,
+            sqlfunc.count(distinct(ArchivedPlayerSession.table_name)).label('tables'),
+        )
+        if period_filter:
+            sq = sq.filter(ArchivedPlayerSession.period_id == period_filter)
+        for pid, p_id, uid, tables in sq.group_by(
+                ArchivedPlayerSession.player_id,
+                ArchivedPlayerSession.period_id,
+                ArchivedPlayerSession.upload_id).all():
+            sessions_by_pid_uid[(pid, ('p', p_id, uid))] = int(tables or 0)
+
+    if period_id == 'all':
+        _ingest_active()
+        _ingest_archive()
+    elif period_id and period_id.isdigit():
+        _ingest_archive(int(period_id))
+    else:
+        _ingest_active()
+
+    # ── Build per-player profile ──
+    by_pid = defaultdict(lambda: {'nickname': '', 'club': '', 'days': []})
+    for pid, nick, club, ukey, hands, pnl, rake in daily_rows:
+        prof = by_pid[pid]
+        if not prof['nickname']:
+            prof['nickname'] = nick or pid
+            prof['club'] = club or ''
+        prof['days'].append({'ukey': ukey, 'hands': hands, 'pnl': pnl, 'rake': rake})
+
+    # Total uploads in the dataset — used to display "X / Y active days"
+    total_uploads = len({d['ukey'] for prof in by_pid.values() for d in prof['days']})
+
+    # ── Score per player ──
+    suspects = []
+    total_reviewed = 0
+    for pid, prof in by_pid.items():
+        days = [d for d in prof['days'] if d['hands'] > 0]
+        if not days:
+            continue
+        total_hands = sum(d['hands'] for d in days)
+        if total_hands < min_hands:
+            continue
+        if club_filter and prof['club'] != club_filter:
+            continue
+        total_reviewed += 1
+
+        active_days = len(days)
+        total_pnl = sum(d['pnl'] for d in days)
+        total_rake = sum(d['rake'] for d in days)
+        hands_per_day = total_hands / active_days
+
+        max_sessions = 0
+        for d in days:
+            t = sessions_by_pid_uid.get((pid, d['ukey']), 0)
+            if t > max_sessions:
+                max_sessions = t
+
+        # Coefficient of variation of (pnl/hand) — low CV across many days
+        # is suspicious. Need at least 2 days; otherwise unscoreable.
+        cv = None
+        if active_days >= 2:
+            per_hand = [d['pnl'] / d['hands'] for d in days if d['hands'] > 0]
+            if len(per_hand) >= 2:
+                std = statistics.pstdev(per_hand)
+                mean_abs = statistics.mean([abs(x) for x in per_hand]) or 0.0
+                if mean_abs > 0.001:
+                    cv = std / mean_abs
+
+        # ── Heuristic scores 0-100 ──
+        # H1: hands per active day
+        if hands_per_day >= 8000: h1 = 100
+        elif hands_per_day >= 5000: h1 = 80
+        elif hands_per_day >= 3000: h1 = 60
+        elif hands_per_day >= 1500: h1 = 30
+        else: h1 = 0
+
+        # H2: max simultaneous tables in any one upload
+        if max_sessions >= 10: h2 = 100
+        elif max_sessions >= 8: h2 = 80
+        elif max_sessions >= 6: h2 = 60
+        elif max_sessions >= 4: h2 = 30
+        else: h2 = 0
+
+        # H3: low PnL/hand variability across days (consistency)
+        if cv is None: h3 = 0
+        elif cv < 0.3: h3 = 100
+        elif cv < 0.6: h3 = 60
+        elif cv < 1.0: h3 = 30
+        else: h3 = 0
+
+        score = round(h1 * 0.40 + h2 * 0.35 + h3 * 0.25)
+        if score < min_score:
+            continue
+
+        # Display tags + reason lines
+        tags = []
+        reasons = []
+        if h1 >= 80:
+            tags.append('vol_hi'); reasons.append(
+                f'נפח חריג: {int(hands_per_day):,} hands ביום ב-{active_days} ימי פעילות')
+        elif h1 >= 60:
+            tags.append('vol_med'); reasons.append(
+                f'נפח גבוה: {int(hands_per_day):,} hands ביום')
+
+        if h2 >= 80:
+            tags.append('mt_hi'); reasons.append(
+                f'מולטי-טייבל קיצוני: {max_sessions} שולחנות במקביל')
+        elif h2 >= 60:
+            tags.append('mt_med'); reasons.append(
+                f'מולטי-טייבל: עד {max_sessions} שולחנות במקביל')
+
+        if h3 >= 80:
+            tags.append('low_var'); reasons.append(
+                f'σ נמוך מאוד של PnL/hand (CV={cv:.2f}) — דפוס יציב חשוד')
+        elif h3 >= 60 and cv is not None:
+            tags.append('low_var'); reasons.append(
+                f'σ נמוך של PnL/hand (CV={cv:.2f})')
+
+        if active_days == total_uploads and total_uploads >= 3:
+            reasons.append(f'פעיל בכל {total_uploads} ימי המחזור — בלי הפסקה')
+
+        suspects.append({
+            'player_id': pid,
+            'nickname': prof['nickname'],
+            'club': prof['club'],
+            'total_hands': total_hands,
+            'hands_per_day': int(round(hands_per_day)),
+            'active_days': active_days,
+            'total_uploads': total_uploads,
+            'max_sessions': max_sessions,
+            'cv': round(cv, 2) if cv is not None else None,
+            'total_pnl': round(total_pnl, 2),
+            'total_rake': round(total_rake, 2),
+            'score': score,
+            'tags': tags,
+            'reasons': reasons,
+        })
+
+    suspects.sort(key=lambda s: s['score'], reverse=True)
+
+    high_count = sum(1 for s in suspects if s['score'] >= 80)
+    med_count = sum(1 for s in suspects if 60 <= s['score'] < 80)
+    low_count = sum(1 for s in suspects if 40 <= s['score'] < 60)
+
+    # Period dropdown — list archives, mark current
+    archive_periods = ArchivePeriod.query.order_by(
+        ArchivePeriod.last_date.desc(), ArchivePeriod.id.desc()).all()
+
+    # Unique club list for the filter dropdown
+    clubs = sorted({prof['club'] for prof in by_pid.values() if prof['club']})
+
+    return render_template('admin/bot_suspects.html',
+                           suspects=suspects,
+                           total_reviewed=total_reviewed,
+                           high_count=high_count, med_count=med_count, low_count=low_count,
+                           min_score=min_score, min_hands=min_hands,
+                           period_id=period_id, club_filter=club_filter,
+                           archive_periods=archive_periods, clubs=clubs)
+
+
 @admin_bp.route('/agent-view/<sa_id>')
 @admin_required
 def agent_view(sa_id):
