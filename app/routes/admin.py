@@ -1138,19 +1138,18 @@ def bot_suspects():
                     and hands_per_day / prev_hands_per_day >= 3):
                 has_spike = True
                 spike_reasons.append(
-                    f'נפח קפץ פי {hands_per_day/prev_hands_per_day:.1f} '
-                    f'({int(prev_hands_per_day):,} → {int(hands_per_day):,} hands/יום)')
+                    f'נפח ×{hands_per_day/prev_hands_per_day:.1f}: '
+                    f'{int(prev_hands_per_day):,} → {int(hands_per_day):,}/יום')
             # Emerged out of nowhere
             elif hands_per_day >= 500 and prev_hands_per_day < 100:
                 has_spike = True
                 spike_reasons.append(
-                    f'הופיע השבוע משום-מקום: {int(hands_per_day):,} hands/יום '
-                    f'(שבוע קודם: {int(prev_hands_per_day):,})')
+                    f'הופיע השבוע: {int(prev_hands_per_day)} → {int(hands_per_day):,}/יום')
             # Profit jumped from quiet to big winner
             if total_pnl >= 5000 and prev_pnl <= 1000 and (total_pnl - prev_pnl) >= 3000:
                 has_spike = True
                 spike_reasons.append(
-                    f'רווח קפץ ל-{total_pnl:+,.2f} (שבוע קודם: {prev_pnl:+,.2f})')
+                    f'רווח קפץ: {prev_pnl:+,.0f} → {total_pnl:+,.0f}')
 
         # ── Heuristic scores 0-100 ──
         # H1: hands per active day
@@ -1206,41 +1205,42 @@ def bot_suspects():
         else:
             date_range = '—'
 
-        # Display tags + reason lines
+        # Display tags + reason lines. Reasons are kept terse — the
+        # numerical detail lives in dedicated columns; the expander is
+        # for the "what triggered" headline only.
         tags = []
         reasons = []
         if h1 >= 80:
             tags.append('vol_hi'); reasons.append(
-                f'נפח חריג: {int(hands_per_day):,} hands ביום ב-{active_days} ימי פעילות')
+                f'{int(hands_per_day):,} hands/יום × {active_days} ימים — נפח חריג')
         elif h1 >= 60:
             tags.append('vol_med'); reasons.append(
-                f'נפח גבוה: {int(hands_per_day):,} hands ביום')
+                f'{int(hands_per_day):,} hands/יום')
 
         if h2 >= 80:
             tags.append('mt_hi'); reasons.append(
-                f'תזוזה גבוהה בין שולחנות: ישב ב-{max_sessions} שולחנות שונים בקובץ יחיד')
+                f'{max_sessions} שולחנות שונים בקובץ — חריג')
         elif h2 >= 60:
             tags.append('mt_med'); reasons.append(
-                f'תזוזה בין שולחנות: עד {max_sessions} שולחנות שונים בקובץ יחיד')
+                f'{max_sessions} שולחנות שונים בקובץ')
 
         if h3 >= 80:
             tags.append('low_var'); reasons.append(
-                f'σ נמוך מאוד של PnL/hand (CV={cv:.2f}) — דפוס יציב חשוד')
+                f'CV={cv:.2f} — יציבות חריגה')
         elif h3 >= 60 and cv is not None:
             tags.append('low_var'); reasons.append(
-                f'σ נמוך של PnL/hand (CV={cv:.2f})')
+                f'CV={cv:.2f} — יציבות גבוהה')
 
-        # H4 reasons + pills — explicitly call out winners (the actual
-        # bot suspects) and mark big losers as likely-fish.
+        # H4 reasons — winners are the real bot suspects, big losers are fish
         if total_pnl >= 5000:
             tags.append('profit_hi'); reasons.append(
-                f'רווחיות גבוהה: {total_pnl:+,.2f} סך רווח — מתאים לבוט פעיל')
+                f'רווח: {total_pnl:+,.0f} — מתאים לבוט')
         elif total_pnl >= 500:
             tags.append('profit_med'); reasons.append(
-                f'רווחיות מתונה: {total_pnl:+,.2f}')
+                f'רווח: {total_pnl:+,.0f}')
         elif total_pnl <= -5000:
             tags.append('losing'); reasons.append(
-                f'מפסיד גדול: {total_pnl:+,.2f} — סביר יותר fish, לא בוט')
+                f'הפסד: {total_pnl:+,.0f} — כנראה fish')
 
         # Spike pill — most actionable "this just happened" signal
         if has_spike:
@@ -1249,14 +1249,11 @@ def bot_suspects():
                 reasons.append(f'🚀 {sr}')
 
         if active_days == total_uploads and total_uploads >= 3:
-            reasons.append(f'פעיל בכל {total_uploads} ימי המחזור — בלי הפסקה')
+            reasons.append(f'פעיל כל {total_uploads} הימים ברצף')
         # Date range as the closing "when" line in the expander, so mobile
         # users still see it when the dedicated column is hidden.
         if active_dates:
-            if d_min == d_max:
-                reasons.append(f'תאריך פעילות: {date_range}')
-            else:
-                reasons.append(f'טווח פעילות: {date_range}')
+            reasons.append(f'📅 {date_range}')
 
         suspects.append({
             'player_id': pid,

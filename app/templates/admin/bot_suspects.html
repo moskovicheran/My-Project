@@ -97,8 +97,11 @@ body.dark .bs-quick-scan-text strong { color:#fff; }
 details { margin-top:0.3rem; }
 details summary { cursor:pointer; color:#4361ee; font-size:0.8rem; }
 details .why { background:#f8fafc; border-right:3px solid #6366f1; padding:0.5rem 0.7rem;
-               margin-top:0.35rem; font-size:0.81rem; line-height:1.55;
-               white-space:pre-line; border-radius:0 4px 4px 0; }
+               margin-top:0.35rem; font-size:0.8rem; line-height:1.5;
+               white-space:pre-line; border-radius:0 4px 4px 0;
+               /* Force a usable width so reasons don't wrap to 2-3 chars
+                  when the score column is narrow (12-col table). */
+               min-width:240px; max-width:340px; }
 
 .bs-empty { text-align:center; padding:2rem 0; color:#999; }
 
