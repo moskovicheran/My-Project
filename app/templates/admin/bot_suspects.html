@@ -137,17 +137,24 @@ body.dark details .why { background:#1e1e2e; }
     .bs-ctrl input, .bs-ctrl select { width: 100%; }
     .bs-btn { width: 100%; padding: 0.6rem; font-size: 0.92rem; }
 
-    /* Main suspects table — hide auxiliary columns. Date range column (6)
-       is also hidden on phone; the range still surfaces inside "למה?".
-       Visible cols: 2 שחקן · 4 Hands/יום · 7 שולחנות שונים · 11 סימני חשד · 12 ציון */
+    /* Main suspects table — keep the columns that drive a bot vs fish
+       decision. PnL is critical (a winning high-volume player is the
+       actual bot suspect) so it stays visible on phone.
+       The "שולחנות שונים (max)" number drops; the same signal is still
+       carried by the "שולחנות מרובים+" pill in סימני חשד.
+       Visible: 2 שחקן · 4 Hands/יום · 9 PnL · 11 סימני חשד · 12 ציון */
     .bs-table-main th:nth-child(1),  .bs-table-main td:nth-child(1),   /* # */
     .bs-table-main th:nth-child(3),  .bs-table-main td:nth-child(3),   /* Hands */
     .bs-table-main th:nth-child(5),  .bs-table-main td:nth-child(5),   /* ימים פעילים */
     .bs-table-main th:nth-child(6),  .bs-table-main td:nth-child(6),   /* טווח תאריכים */
+    .bs-table-main th:nth-child(7),  .bs-table-main td:nth-child(7),   /* שולחנות שונים */
     .bs-table-main th:nth-child(8),  .bs-table-main td:nth-child(8),   /* CV */
-    .bs-table-main th:nth-child(9),  .bs-table-main td:nth-child(9),   /* PnL */
     .bs-table-main th:nth-child(10), .bs-table-main td:nth-child(10)   /* Rake */
     { display: none; }
+
+    /* PnL standout on mobile — bold, slightly larger, so it's the first
+       number the eye lands on after the player's name. */
+    .bs-table-main td:nth-child(9) { font-weight: 700; font-size: 0.84rem; }
 
     /* Dismissed table — hide metadata cols, keep player + score + restore.
        Visible: 1 שחקן · 2 ציון בעבר · 6 (action button) */
