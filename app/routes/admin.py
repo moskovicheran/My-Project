@@ -1154,12 +1154,30 @@ def bot_suspects():
                     f'רווח השבוע {total_pnl:+,.0f} (שבוע קודם {prev_pnl:+,.0f})')
 
         # ── Heuristic scores 0-100 ──
-        # H1: hands per active day
-        if hands_per_day >= 8000: h1 = 100
-        elif hands_per_day >= 5000: h1 = 80
-        elif hands_per_day >= 3000: h1 = 60
-        elif hands_per_day >= 1500: h1 = 30
-        else: h1 = 0
+        # H1: hands volume — score is the MAX of two views, so a player
+        # caught by either signal gets credit:
+        #   per-day:    consistent grinding rate (≥2000/יום baseline)
+        #   per-week:   total hands normalised to 7 days (≥8000/שבוע baseline)
+        # The weekly check catches steady moderate-pace players who don't
+        # spike any single day; the per-day check catches single-day bursts.
+        if hands_per_day >= 8000: h1_pd = 100
+        elif hands_per_day >= 5500: h1_pd = 80
+        elif hands_per_day >= 3500: h1_pd = 60
+        elif hands_per_day >= 2000: h1_pd = 30
+        else: h1_pd = 0
+
+        if last_days > 0:
+            weekly_norm = total_hands * (7 / last_days)
+            if weekly_norm >= 40000: h1_w = 100
+            elif weekly_norm >= 22000: h1_w = 80
+            elif weekly_norm >= 14000: h1_w = 60
+            elif weekly_norm >= 8000: h1_w = 30
+            else: h1_w = 0
+        else:
+            weekly_norm = None
+            h1_w = 0
+        h1 = max(h1_pd, h1_w)
+        h1_via_weekly = h1_w > h1_pd  # tracks which path triggered the band
 
         # H2: max simultaneous tables in any one upload
         if max_sessions >= 10: h2 = 100
@@ -1213,11 +1231,28 @@ def bot_suspects():
         tags = []
         reasons = []
         if h1 >= 80:
-            tags.append('vol_hi'); reasons.append(
-                f'נפח חריג: {int(hands_per_day):,} hands/יום (ב-{active_days} ימים)')
+            tags.append('vol_hi')
+            if h1_via_weekly:
+                reasons.append(
+                    f'נפח חריג: {int(weekly_norm):,} hands/שבוע '
+                    f'({int(hands_per_day):,}/יום × {active_days} ימים)')
+            else:
+                reasons.append(
+                    f'נפח חריג: {int(hands_per_day):,} hands/יום (ב-{active_days} ימים)')
         elif h1 >= 60:
-            tags.append('vol_med'); reasons.append(
-                f'נפח: {int(hands_per_day):,} hands/יום')
+            tags.append('vol_med')
+            if h1_via_weekly:
+                reasons.append(f'נפח: {int(weekly_norm):,} hands/שבוע')
+            else:
+                reasons.append(f'נפח: {int(hands_per_day):,} hands/יום')
+        elif h1 >= 30:
+            # New mild tier (2000/יום עקבי או 8000/שבוע) — surfaces
+            # consistent moderate-pace players that the old 1500 floor missed.
+            tags.append('vol_med')
+            if h1_via_weekly:
+                reasons.append(f'נפח עקבי: {int(weekly_norm):,} hands/שבוע')
+            else:
+                reasons.append(f'נפח עקבי: {int(hands_per_day):,} hands/יום')
 
         if h2 >= 80:
             tags.append('mt_hi'); reasons.append(
