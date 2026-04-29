@@ -1092,7 +1092,20 @@ def bot_suspects():
         elif cv < 1.0: h3 = 30
         else: h3 = 0
 
-        score = round(h1 * 0.40 + h2 * 0.35 + h3 * 0.25)
+        # H4: net profitability. Bots are deployed to WIN, so a winning
+        # high-volume player is the actual concern. Big losers with high
+        # volume are far more likely to be human "fish". Bands are in
+        # absolute chip values (matches the typical scale in this data).
+        if total_pnl >= 10000: h4 = 100
+        elif total_pnl >= 2000:  h4 = 70
+        elif total_pnl >= 0:     h4 = 40
+        elif total_pnl >= -2000: h4 = 25
+        elif total_pnl >= -10000: h4 = 10
+        else: h4 = 0
+
+        # Weights: profitability is now as important as volume; variance
+        # demoted because it's the noisiest of the four signals.
+        score = round(h1 * 0.30 + h2 * 0.25 + h3 * 0.15 + h4 * 0.30)
         if score < min_score:
             continue
 
@@ -1134,6 +1147,18 @@ def bot_suspects():
         elif h3 >= 60 and cv is not None:
             tags.append('low_var'); reasons.append(
                 f'σ נמוך של PnL/hand (CV={cv:.2f})')
+
+        # H4 reasons + pills — explicitly call out winners (the actual
+        # bot suspects) and mark big losers as likely-fish.
+        if total_pnl >= 5000:
+            tags.append('profit_hi'); reasons.append(
+                f'רווחיות גבוהה: {total_pnl:+,.2f} סך רווח — מתאים לבוט פעיל')
+        elif total_pnl >= 500:
+            tags.append('profit_med'); reasons.append(
+                f'רווחיות מתונה: {total_pnl:+,.2f}')
+        elif total_pnl <= -5000:
+            tags.append('losing'); reasons.append(
+                f'מפסיד גדול: {total_pnl:+,.2f} — סביר יותר fish, לא בוט')
 
         if active_days == total_uploads and total_uploads >= 3:
             reasons.append(f'פעיל בכל {total_uploads} ימי המחזור — בלי הפסקה')

@@ -80,11 +80,14 @@ body.dark .bs-quick-scan-text strong { color:#fff; }
 
 .pill { display:inline-block; padding:0.13rem 0.5rem; border-radius:10px;
         font-size:0.68rem; font-weight:600; margin-left:0.2rem; }
-.p-vol_hi   { background:#fee2e2; color:#991b1b; }
-.p-vol_med  { background:#fef3c7; color:#92400e; }
-.p-mt_hi    { background:#ffedd5; color:#9a3412; }
-.p-mt_med   { background:#fef9c3; color:#854d0e; }
-.p-low_var  { background:#e0e7ff; color:#3730a3; }
+.p-vol_hi    { background:#fee2e2; color:#991b1b; }
+.p-vol_med   { background:#fef3c7; color:#92400e; }
+.p-mt_hi     { background:#ffedd5; color:#9a3412; }
+.p-mt_med    { background:#fef9c3; color:#854d0e; }
+.p-low_var   { background:#e0e7ff; color:#3730a3; }
+.p-profit_hi { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+.p-profit_med{ background:#ecfdf5; color:#15803d; }
+.p-losing    { background:#f1f5f9; color:#64748b; }
 
 .player-link { color:#4361ee; text-decoration:none; font-weight:700; }
 .player-link:hover { text-decoration:underline; }
@@ -179,7 +182,8 @@ body.dark details .why { background:#1e1e2e; }
 <div class="bs-hero">
     <h1>🤖 חשד לבוטים — מערכת ניטור</h1>
     <div class="info">
-        דירוג שחקנים לפי ציון חשד משוקלל מנפח hands, מספר שולחנות שונים, ויציבות PnL/hand.
+        דירוג שחקנים לפי 4 היוריסטיקות: נפח hands, מספר שולחנות שונים,
+        יציבות PnL/hand, ו-<strong>רווחיות נטו</strong> (בוטים נפרסים כדי להרוויח).
         <strong>זה כלי חקירה, לא הוכחה.</strong>
         שחקן רציני שמדלג בין הרבה שולחנות יכול לקבל ציון גבוה — בדקי כל מקרה לגופו.
     </div>
@@ -250,10 +254,11 @@ body.dark details .why { background:#1e1e2e; }
         </div>
     </div>
     <div class="bs-note" style="margin-top:0.8rem;">
-        <strong>איך מחושב הציון?</strong> משוקלל מ-3 היוריסטיקות:
-        נפח hands ביום (40%), מספר שולחנות שונים שהשתתף בהם (35%),
-        ויציבות PnL/hand בין ימי משחק (25%). הציון בטווח 0-100 — 100 מציין
-        חשד מקסימלי בכל שלוש ההיוריסטיקות יחד.
+        <strong>איך מחושב הציון?</strong> משוקלל מ-4 היוריסטיקות:
+        נפח hands ביום (30%), מספר שולחנות שונים (25%), יציבות PnL/hand (15%),
+        ו-<strong>רווחיות נטו (30%)</strong>. שחקן רווחי בנפח גבוה הוא החשד
+        העיקרי לבוט; שחקן עם הפסד גדול מקבל ציון נמוך אפילו אם הוא בנפח גבוה
+        (סביר יותר fish, לא בוט). הציון בטווח 0-100.
     </div>
 </div>
 
@@ -299,7 +304,7 @@ body.dark details .why { background:#1e1e2e; }
                 <td class="{% if s.total_pnl < 0 %}score-90{% else %}score-30{% endif %}">{{ '{:+,.2f}'.format(s.total_pnl) }}</td>
                 <td>{{ '{:,.2f}'.format(s.total_rake) }}</td>
                 <td>
-                    {% for t in s.tags %}<span class="pill p-{{ t }}">{% if t == 'vol_hi' %}נפח חריג{% elif t == 'vol_med' %}נפח גבוה{% elif t == 'mt_hi' %}שולחנות מרובים+{% elif t == 'mt_med' %}שולחנות מרובים{% elif t == 'low_var' %}σ נמוך{% endif %}</span>{% endfor %}
+                    {% for t in s.tags %}<span class="pill p-{{ t }}">{% if t == 'vol_hi' %}נפח חריג{% elif t == 'vol_med' %}נפח גבוה{% elif t == 'mt_hi' %}שולחנות מרובים+{% elif t == 'mt_med' %}שולחנות מרובים{% elif t == 'low_var' %}σ נמוך{% elif t == 'profit_hi' %}🏆 רווחיות חריגה{% elif t == 'profit_med' %}רווחי{% elif t == 'losing' %}מפסיד (כנראה fish){% endif %}</span>{% endfor %}
                 </td>
                 <td class="score {{ score_class }}">
                     <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
