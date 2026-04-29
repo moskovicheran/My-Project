@@ -109,6 +109,69 @@ body.dark .bs-table td { border-bottom-color:#333; }
 body.dark .bs-table tr:hover td { background:#2a2a3a; }
 body.dark .bs-ctrl input, body.dark .bs-ctrl select { background:#1e1e2e; color:#ddd; border-color:#444; }
 body.dark details .why { background:#1e1e2e; }
+
+/* Tablet: collapse 4-up stats to 2x2 and stack the quick-scan banner. */
+@media (max-width: 900px) {
+    .bs-stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .bs-quick-scan { flex-direction: column; align-items: stretch; gap: 0.55rem; }
+    .bs-quick-scan-btn { text-align: center; }
+}
+
+/* Phone: tighter table — hide the lower-value columns so the row is
+   still readable on a 375px viewport. The "למה?" expander keeps the
+   hidden detail one tap away.
+   Visible cols: 2 שחקן · 4 Hands/יום · 6 Sessions max · 10 סימני חשד · 11 ציון
+   Hidden cols:  1 # · 3 Hands · 5 ימים פעילים · 7 CV · 8 PnL · 9 Rake */
+@media (max-width: 640px) {
+    .bs-card { padding: 0.85rem 0.9rem; }
+    .bs-hero { padding: 1.1rem 1.2rem; }
+    .bs-hero h1 { font-size: 1.15rem; }
+    .bs-hero .info { font-size: 0.78rem; }
+
+    /* Filter form: stack vertically with full-width inputs/button */
+    .bs-controls { flex-direction: column; align-items: stretch; gap: 0.55rem; }
+    .bs-ctrl { width: 100%; }
+    .bs-ctrl input, .bs-ctrl select { width: 100%; }
+    .bs-btn { width: 100%; padding: 0.6rem; font-size: 0.92rem; }
+
+    /* Main suspects table — hide auxiliary columns.
+       Visible: 2 שחקן · 4 Hands/יום · 6 Sessions max · 10 סימני חשד · 11 ציון */
+    .bs-table-main th:nth-child(1), .bs-table-main td:nth-child(1),  /* # */
+    .bs-table-main th:nth-child(3), .bs-table-main td:nth-child(3),  /* Hands */
+    .bs-table-main th:nth-child(5), .bs-table-main td:nth-child(5),  /* ימים פעילים */
+    .bs-table-main th:nth-child(7), .bs-table-main td:nth-child(7),  /* CV */
+    .bs-table-main th:nth-child(8), .bs-table-main td:nth-child(8),  /* PnL */
+    .bs-table-main th:nth-child(9), .bs-table-main td:nth-child(9)   /* Rake */
+    { display: none; }
+
+    /* Dismissed table — hide metadata cols, keep player + score + restore.
+       Visible: 1 שחקן · 2 ציון בעבר · 6 (action button) */
+    .bs-table-dismissed th:nth-child(3), .bs-table-dismissed td:nth-child(3),  /* סומן ב- */
+    .bs-table-dismissed th:nth-child(4), .bs-table-dismissed td:nth-child(4),  /* סומן ע"י */
+    .bs-table-dismissed th:nth-child(5), .bs-table-dismissed td:nth-child(5)   /* הערה */
+    { display: none; }
+
+    .bs-table { font-size: 0.78rem; }
+    .bs-table th { font-size: 0.66rem; padding: 0.4rem 0.3rem; }
+    .bs-table td { padding: 0.45rem 0.3rem; }
+
+    .pill { font-size: 0.62rem; padding: 0.1rem 0.4rem; margin-left: 0.15rem; }
+    .nick-club .club { font-size: 0.66rem; }
+    .player-link { font-size: 0.85rem; }
+
+    /* Score column has score + bar + dismiss button — stack vertically */
+    .score { font-size: 0.85rem; }
+    .bar-wrap { width: 60px !important; }
+    details summary { font-size: 0.74rem; }
+    details .why { font-size: 0.74rem; padding: 0.4rem 0.55rem; }
+
+    /* Stats: tighter values */
+    .bs-stat .val { font-size: 1.1rem; }
+    .bs-stat .lbl { font-size: 0.7rem; }
+
+    /* Dismissed section table — same column hides apply since the table
+       has fewer cols. We hide score + reviewer-by columns for breathing room. */
+}
 </style>
 
 <div class="bs-hero">
@@ -196,7 +259,7 @@ body.dark details .why { background:#1e1e2e; }
     <h2>שחקנים מסומנים <span style="color:#888; font-weight:400; font-size:0.82rem;">— מסודר לפי ציון יורד</span></h2>
     {% if suspects %}
     <div style="overflow-x:auto;">
-    <table class="bs-table">
+    <table class="bs-table bs-table-main">
         <thead>
             <tr>
                 <th>#</th>
@@ -277,7 +340,7 @@ body.dark details .why { background:#1e1e2e; }
 <div class="bs-card">
     <h2>כבר בדוקים <span style="color:#888; font-weight:400; font-size:0.82rem;">— שחקנים שסומנו כלא-בוטים. ניתן להחזיר לרשימה הראשית.</span></h2>
     <div style="overflow-x:auto;">
-    <table class="bs-table">
+    <table class="bs-table bs-table-dismissed">
         <thead>
             <tr>
                 <th>שחקן</th>
