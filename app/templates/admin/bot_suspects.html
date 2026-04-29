@@ -109,6 +109,48 @@ details .why { background:#f8fafc; border-right:3px solid #6366f1; padding:0.5re
            padding:0.6rem 0.85rem; font-size:0.82rem; color:#854d0e; }
 .bs-note strong { color:#713f12; }
 
+/* Legend / glossary */
+.bs-legend summary { cursor:pointer; font-size:0.95rem; color:#2c3e8a; padding:0.3rem 0; }
+.bs-legend summary:hover { color:#4361ee; }
+.bs-legend-body { margin-top:0.8rem; padding-top:0.8rem; border-top:1px dashed #e2e8f0;
+                  display:grid; grid-template-columns:1fr 1fr; gap:1rem 1.5rem; }
+.bs-legend-section h3 { margin:0 0 0.5rem; font-size:0.92rem; color:#2c3e8a;
+                        padding-bottom:0.3rem; border-bottom:1px solid #eef; }
+.bs-legend-row { display:flex; align-items:center; gap:0.6rem; padding:0.25rem 0;
+                 font-size:0.85rem; }
+.bs-legend-row .pill { white-space:nowrap; flex-shrink:0; }
+.bs-legend-text { color:#4b5563; line-height:1.45; }
+.bs-legend-list { margin:0; padding-right:1.1rem; font-size:0.85rem; color:#4b5563;
+                  line-height:1.6; }
+.bs-legend-list li { margin-bottom:0.2rem; }
+.bs-score-demo { display:inline-flex; align-items:center; justify-content:center;
+                 width:36px; height:24px; border-radius:6px; font-weight:700;
+                 font-size:0.82rem; flex-shrink:0;
+                 font-variant-numeric:tabular-nums; }
+.bs-score-demo.score-90 { background:#fee2e2; color:#dc2626; }
+.bs-score-demo.score-70 { background:#ffedd5; color:#ea580c; }
+.bs-score-demo.score-50 { background:#fef9c3; color:#ca8a04; }
+.bs-score-demo.score-30 { background:#ecfdf5; color:#65a30d; }
+.bs-cv-demo { display:inline-flex; align-items:center; justify-content:center;
+              min-width:60px; padding:0.15rem 0.5rem; background:#f1f5f9;
+              border-radius:6px; font-weight:600; font-size:0.78rem;
+              color:#475569; flex-shrink:0; font-variant-numeric:tabular-nums; }
+
+@media (max-width:900px) {
+    .bs-legend-body { grid-template-columns:1fr; gap:1rem; }
+}
+@media (max-width:640px) {
+    .bs-legend-row { font-size:0.78rem; gap:0.4rem; }
+    .bs-legend-text { font-size:0.78rem; }
+    .bs-legend-list { font-size:0.78rem; }
+}
+
+body.dark .bs-legend summary { color:#cbd5ff; }
+body.dark .bs-legend-section h3 { color:#cbd5ff; border-bottom-color:#333; }
+body.dark .bs-legend-text { color:#bbb; }
+body.dark .bs-legend-list { color:#bbb; }
+body.dark .bs-cv-demo { background:#1e1e2e; color:#cbd5ff; }
+
 body.dark .bs-card { background:#252535; }
 body.dark .bs-stat { background:#1e1e2e; border-color:#333; }
 body.dark .bs-table th { background:#1e1e2a; color:#bbb; }
@@ -281,6 +323,78 @@ body.dark details .why { background:#1e1e2e; }
         העיקרי לבוט; שחקן עם הפסד גדול מקבל ציון נמוך אפילו אם הוא בנפח גבוה
         (סביר יותר fish, לא בוט). הציון בטווח 0-100.
     </div>
+</div>
+
+<div class="bs-card">
+    <details class="bs-legend">
+        <summary><strong>📖 מקרא — מה כל דבר בעמוד הזה אומר</strong></summary>
+        <div class="bs-legend-body">
+
+            <div class="bs-legend-section">
+                <h3>🏷️ תגיות (סימני חשד)</h3>
+                <div class="bs-legend-row"><span class="pill p-vol_hi">נפח חריג</span><span class="bs-legend-text">≥ 5,500 hands/יום או ≥ 22,000 hands/שבוע</span></div>
+                <div class="bs-legend-row"><span class="pill p-vol_med">נפח גבוה</span><span class="bs-legend-text">≥ 2,000 hands/יום או ≥ 8,000 hands/שבוע — סף "עקבי"</span></div>
+                <div class="bs-legend-row"><span class="pill p-mt_hi">שולחנות מרובים+</span><span class="bs-legend-text">ישב ב-10+ שולחנות שונים בקובץ אחד</span></div>
+                <div class="bs-legend-row"><span class="pill p-mt_med">שולחנות מרובים</span><span class="bs-legend-text">ישב ב-6-9 שולחנות שונים בקובץ אחד</span></div>
+                <div class="bs-legend-row"><span class="pill p-low_var">σ נמוך</span><span class="bs-legend-text">PnL/hand יציב מאוד מיום ליום (CV מתחת ל-0.6)</span></div>
+                <div class="bs-legend-row"><span class="pill p-profit_hi">🏆 רווחיות חריגה</span><span class="bs-legend-text">סך רווח ≥ +5,000 — החשד המרכזי לבוט</span></div>
+                <div class="bs-legend-row"><span class="pill p-profit_med">רווחי</span><span class="bs-legend-text">סך רווח ≥ +500</span></div>
+                <div class="bs-legend-row"><span class="pill p-losing">מפסיד (כנראה fish)</span><span class="bs-legend-text">סך הפסד ≥ -5,000 — סביר יותר שחקן רגיל ולא בוט</span></div>
+                <div class="bs-legend-row"><span class="pill p-spike">🚀 קפיצה השבוע</span><span class="bs-legend-text">קפיצה חריגה לעומת השבוע הקודם — "בוט שזה עתה הופעל"</span></div>
+            </div>
+
+            <div class="bs-legend-section">
+                <h3>📊 ציון (0-100)</h3>
+                <p class="bs-legend-text" style="margin:0 0 0.5rem;">הציון משוקלל מ-4 ההיוריסטיקות. צבע ה-progress bar והמספר עצמו משקפים את הרמה:</p>
+                <div class="bs-legend-row"><span class="bs-score-demo score-90">82</span><span class="bs-legend-text"><strong>80-100</strong> — חשד גבוה. כדאי לחקור בעדיפות עליונה.</span></div>
+                <div class="bs-legend-row"><span class="bs-score-demo score-70">68</span><span class="bs-legend-text"><strong>60-79</strong> — חשד בינוני. שווה לבדוק.</span></div>
+                <div class="bs-legend-row"><span class="bs-score-demo score-50">52</span><span class="bs-legend-text"><strong>40-59</strong> — חשד נמוך. בעיקר שחקנים נמרצים, יש מקרה קצה אפשרי.</span></div>
+                <div class="bs-legend-row"><span class="bs-score-demo score-30">35</span><span class="bs-legend-text"><strong>0-39</strong> — לא יוצג ברירת מחדל.</span></div>
+            </div>
+
+            <div class="bs-legend-section">
+                <h3>🎯 CV — מדד יציבות PnL</h3>
+                <p class="bs-legend-text" style="margin:0 0 0.5rem;">
+                    מודד עד כמה ה-PnL/hand של השחקן זהה מיום ליום. בוט שמכוון לקצה קטן ויציב נותן CV נמוך; אדם נותן CV גבוה (תנודות).
+                </p>
+                <div class="bs-legend-row"><span class="bs-cv-demo">&lt; 0.3</span><span class="bs-legend-text">יציבות חריגה — כמעט אותו win-rate בכל יום</span></div>
+                <div class="bs-legend-row"><span class="bs-cv-demo">0.3 - 0.6</span><span class="bs-legend-text">יציבות גבוהה</span></div>
+                <div class="bs-legend-row"><span class="bs-cv-demo">0.6 - 1.0</span><span class="bs-legend-text">משתנה — אופייני לאדם רציני</span></div>
+                <div class="bs-legend-row"><span class="bs-cv-demo">&gt; 1.0</span><span class="bs-legend-text">תנודתי מאוד — כנראה אדם רגיל</span></div>
+                <div class="bs-legend-row"><span class="bs-cv-demo">—</span><span class="bs-legend-text">פחות מ-2 ימי פעילות, אין מספיק נתונים לחישוב</span></div>
+            </div>
+
+            <div class="bs-legend-section">
+                <h3>🆚 השוואה לשבוע קודם</h3>
+                <p class="bs-legend-text" style="margin:0;">
+                    מציג את ההפרש בין השבוע האחרון לשבוע שלפניו ב-hands/יום וב-PnL.
+                    <span class="score-90"><strong>אדום</strong></span> = עלייה (יותר חשוד),
+                    <span class="score-30"><strong>ירוק</strong></span> = ירידה (פחות חשוד).
+                    אם הקפיצה עוברת את הספים → תופיע גם תגית 🚀 קפיצה השבוע.
+                </p>
+            </div>
+
+            <div class="bs-legend-section">
+                <h3>🚀 מתי מופיעה תגית "קפיצה השבוע"</h3>
+                <ul class="bs-legend-list">
+                    <li><strong>הופעה משום-מקום</strong> — השבוע ≥ 500 hands/יום, השבוע הקודם פחות מ-100</li>
+                    <li><strong>קפיצת נפח</strong> — נפח השבוע ≥ פי-3 מהשבוע הקודם (במקרה של ≥ 500 hands/יום)</li>
+                    <li><strong>קפיצת רווח</strong> — מנגרטיב/אפס לרווח של ≥ +5,000 בשבוע</li>
+                </ul>
+            </div>
+
+            <div class="bs-legend-section">
+                <h3>✓ פעולות זמינות</h3>
+                <ul class="bs-legend-list">
+                    <li><strong>למה?</strong> — מציג את הסיבות הספציפיות שגרמו לציון של אותו שחקן</li>
+                    <li><strong>קליק על שם השחקן</strong> — פותח דף פרטי שחקן מלא לבדיקה מעמיקה</li>
+                    <li><strong>✓ בדקתי</strong> — מסמן את השחקן כבדוק (לא בוט) ומסיר אותו מהרשימה הראשית</li>
+                    <li><strong>↺ החזר לחשודים</strong> — בסקציה "כבר בדוקים" — מבטל את הסימון</li>
+                </ul>
+            </div>
+
+        </div>
+    </details>
 </div>
 
 <div class="bs-card">
