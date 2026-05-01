@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}🔒 אימות כפול נדרש{% endblock %}
+
+{% block content %}
+<div style="max-width:420px; margin:3rem auto; padding:0 1rem;">
+    <div class="section" style="text-align:center; padding:2rem 1.6rem;">
+        <div style="font-size:3rem; margin-bottom:0.5rem;">🔒</div>
+        <h1 style="margin:0 0 0.4rem; font-size:1.3rem;">אימות כפול נדרש</h1>
+        <p class="subtitle" style="margin-bottom:1.4rem; font-size:0.9rem;">
+            {% if is_panel %}
+            גישה ל<strong style="color:#dc2626;">{{ agent_name }}</strong>
+            דורשת סיסמת הגנה.
+            {% else %}
+            גישה לכרטיס <strong style="color:#dc2626;">{{ agent_name }}</strong>
+            דורשת סיסמה נוספת.
+            {% endif %}
+        </p>
+
+        <form method="POST"
+              action="{{ url_for('auth.unlock_protected_agent', sa_id=sa_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+            <input type="password" name="password"
+                   class="field-input"
+                   style="text-align:center; letter-spacing:0.15em; direction:ltr; font-size:1rem;"
+                   placeholder="הזן סיסמה" autocomplete="off" autofocus required>
+
+            <div style="display:flex; gap:0.6rem; margin-top:1rem;">
+                {# When the whole panel is gated, "back" must NOT point at /admin/
+                   (would loop right back here). Use the user dashboard instead. #}
+                <a href="{{ url_for('main.dashboard') if is_panel else url_for('admin.overview') }}"
+                   class="btn"
+                   style="flex:1; background:#e5e7eb; color:#374151; text-decoration:none;
+                          padding:0.55rem 1rem; border-radius:8px; font-weight:600;">
+                    {% if is_panel %}חזור לדאשבורד{% else %}חזור לסקירה{% endif %}
+                </a>
+                <button type="submit" class="btn btn-primary" style="flex:1;">
+                    המשך
+                </button>
+            </div>
+        </form>
+
+        <div class="muted" style="margin-top:1.2rem; font-size:0.78rem;">
+            הפתיחה תקפה ל-10 דקות. אחר כך תידרש סיסמה מחדש.
+        </div>
+    </div>
+</div>
+{% endblock %}

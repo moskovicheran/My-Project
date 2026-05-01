@@ -155,6 +155,129 @@
     </div>
 </div>
 
+{# ── 2FA on the entire admin panel ── #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">🔒 הגנת לוח בקרה</h2>
+    <p class="subtitle" style="margin-bottom:0.9rem; font-size:0.85rem;">
+        סיסמה נוספת שתידרש מכל מי שמנסה להיכנס ללוח הבקרה (כולל admin1).
+        כשהיא מוגדרת — לא ניתן לראות אף אחד מ-<code>/admin/</code> ללא הזנתה.
+        תוקף הפתיחה — 10 דקות מהזנת הסיסמה האחרונה.
+    </p>
+
+    {% if panel_protection %}
+    <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.9rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">
+        <div>
+            <strong style="color:#991b1b;">🔒 לוח הבקרה מוגן</strong>
+            <span style="font-size:0.82rem; color:var(--muted); margin-right:0.6rem;">
+                (הוגדר ע"י {{ panel_protection.created_by }} · {{ panel_protection.updated_at }})
+            </span>
+        </div>
+        <form method="POST" style="display:inline; margin:0;"
+              onsubmit="return confirm('להסיר את הגנת לוח הבקרה? כניסה ל-/admin/ תחזור להיות חופשית לכל אדמין.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="remove_panel_protection">
+            <button type="submit"
+                    style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:5px; padding:0.3rem 0.8rem; font-size:0.82rem; cursor:pointer; font-family:inherit;">
+                הסר הגנה
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    <form method="POST" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="action" value="set_panel_protection">
+
+        <div style="flex:2; min-width:240px;">
+            <label class="field-label">
+                {% if panel_protection %}סיסמה חדשה (4+ תווים){% else %}סיסמה לוח הבקרה (4+ תווים){% endif %}
+            </label>
+            <input type="password" name="panel_password" class="field-input"
+                   placeholder="הזן סיסמה" autocomplete="new-password" minlength="4" required>
+        </div>
+
+        <div>
+            <button type="submit" class="btn btn-primary">
+                {% if panel_protection %}🔄 עדכן סיסמה{% else %}🔒 הפעל הגנה{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+
+{# ── 2FA on agent cards ── #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">🔒 אימות כפול לכרטיס סוכן</h2>
+    <p class="subtitle" style="margin-bottom:0.9rem; font-size:0.85rem;">
+        הגדר סיסמה נוספת לסוכן ספציפי. ברגע שמוגדר, הכרטיס שלו בדף הסקירה יטושטש,
+        וחשיפה תדרוש הזנת הסיסמה. תוקף הפתיחה — 10 דקות מהחשיפה האחרונה.
+    </p>
+
+    <form method="POST" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1.2rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="action" value="set_agent_protection">
+
+        <div style="flex:2; min-width:220px;">
+            <label class="field-label">בחר סוכן</label>
+            <select name="sa_id" class="field-input" required>
+                <option value="">— בחר —</option>
+                {% for ag in protectable_agents %}
+                <option value="{{ ag.sa_id }}">{{ ag.name }} ({{ ag.sa_id }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="flex:2; min-width:220px;">
+            <label class="field-label">סיסמה (4+ תווים)</label>
+            <input type="password" name="protection_password" class="field-input"
+                   placeholder="הזן סיסמה" autocomplete="new-password" minlength="4" required>
+        </div>
+
+        <div>
+            <button type="submit" class="btn btn-primary">🔒 הפעל / עדכן</button>
+        </div>
+    </form>
+
+    {% if protected_list %}
+    <table class="table" style="font-size:0.88rem;">
+        <thead>
+            <tr>
+                <th>סוכן</th>
+                <th>SA ID</th>
+                <th>הוגדר ע"י</th>
+                <th>עודכן</th>
+                <th>פעולות</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in protected_list %}
+            <tr>
+                <td><strong>{{ p.name }}</strong></td>
+                <td style="font-family:ui-monospace, monospace; font-size:0.82rem; color:var(--muted);">{{ p.sa_id }}</td>
+                <td>{{ p.created_by }}</td>
+                <td style="font-size:0.82rem; color:var(--muted);">{{ p.updated_at }}</td>
+                <td>
+                    <form method="POST" style="display:inline; margin:0;"
+                          onsubmit="return confirm('להסיר את ההגנה מ-{{ p.name }}? הכרטיס יחזור להיות פתוח לכולם.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="remove_agent_protection">
+                        <input type="hidden" name="sa_id" value="{{ p.sa_id }}">
+                        <button type="submit"
+                                style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:5px; padding:0.25rem 0.7rem; font-size:0.78rem; cursor:pointer; font-family:inherit;">
+                            הסר הגנה
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="font-size:0.85rem; color:var(--muted); padding:0.8rem 0;">
+        אין סוכנים מוגנים כרגע.
+    </div>
+    {% endif %}
+</div>
+
 {# ── Users table ── #}
 <div class="section">
     <h2 class="section-title">משתמשים ({{ users|length }})</h2>

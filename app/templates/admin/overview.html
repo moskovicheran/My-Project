@@ -309,10 +309,19 @@ body.dark .dp-reset { color:#ff6b6b; }
     <h2 class="section-title">מנהלים ({{ agents|length }})</h2>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:0.8rem;">
         {% for ag in agents %}
-        <a href="{{ url_for('main.dashboard', view_as=ag.player_id) }}" class="agent-overview-card" style="text-decoration:none; color:inherit;">
+        {% set is_locked = ag.player_id in locked_sa_ids %}
+        {% set is_protected = ag.player_id in protected_sa_ids %}
+        <a href="{{ url_for('main.dashboard', view_as=ag.player_id) }}"
+           class="agent-overview-card{% if is_locked %} card-locked{% endif %}"
+           style="text-decoration:none; color:inherit;"
+           {% if is_locked %}data-protected-sa="{{ ag.player_id }}" data-agent-name="{{ ag.username }}"{% endif %}>
             <div class="ao-header">
                 <div style="display:flex; align-items:center; gap:0.5rem;">
+                    {% if is_protected %}
+                    <span class="role-badge" style="font-size:0.7rem; background:#fef2f2; color:#991b1b; border:1px solid #fecaca;">🔒 מוגן</span>
+                    {% else %}
                     <span class="role-badge role-agent" style="font-size:0.7rem;">Agent</span>
+                    {% endif %}
                     <strong class="ao-name">{{ ag.username }}</strong>
                 </div>
                 <span class="muted" style="font-size:0.75rem;">{{ ag.player_id }}</span>
@@ -380,7 +389,133 @@ body.dark .agent-overview-card:hover { box-shadow: 0 4px 15px rgba(67,97,238,0.1
 body.dark .ao-header { background: #252535; border-bottom-color: #333; }
 body.dark .ao-stat { border-left-color: #333; }
 body.dark .ao-stat-label { color: #777; }
+
+/* ── Locked card: blur stats + bars, leave header readable so the admin can
+   tell which agent it is. The "header" stays clear so the clickable name
+   plus 🔒 badge are visible; everything below gets blurred until unlocked. ── */
+.agent-overview-card.card-locked .ao-stats,
+.agent-overview-card.card-locked .ao-balance-bar { filter: blur(7px); user-select:none; }
+.agent-overview-card.card-locked { position: relative; border-color:#fca5a5; }
+.agent-overview-card.card-locked::after {
+    content: '🔒 לחץ להזנת סיסמה'; position: absolute; left: 50%; top: 60%;
+    transform: translate(-50%, -50%); background: rgba(220,38,38,0.92);
+    color: #fff; padding: 0.3rem 0.7rem; border-radius: 6px;
+    font-size: 0.78rem; font-weight: 700; pointer-events: none; white-space: nowrap;
+}
+
+/* ── Unlock modal (shared with the gate page; styles defined here so the
+   overview can pop it without an extra fetch) ── */
+.unlock-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+                   display: none; align-items: center; justify-content: center;
+                   z-index: 9999; backdrop-filter: blur(2px); }
+.unlock-backdrop.show { display: flex; }
+.unlock-modal { background: #fff; border-radius: 14px; padding: 1.6rem 1.8rem;
+                max-width: 380px; width: 90%; text-align: center;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+.unlock-modal h3 { margin: 0 0 0.4rem; font-size: 1.1rem; color: #1f2937; }
+.unlock-modal .target { font-size: 0.85rem; color: #666; margin-bottom: 1.1rem; }
+.unlock-modal .target strong { color: #dc2626; }
+.unlock-modal input { width: 100%; padding: 0.6rem 0.8rem; border: 1.5px solid #ddd;
+                      border-radius: 8px; font-size: 1rem; font-family: inherit;
+                      text-align: center; letter-spacing: 0.15em; direction: ltr;
+                      box-sizing: border-box; }
+.unlock-modal input:focus { outline: none; border-color: #6366f1; }
+.unlock-modal .err { color: #dc2626; font-size: 0.82rem; margin-top: 0.5rem;
+                     min-height: 1.2rem; }
+.unlock-modal .actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
+.unlock-modal button { flex: 1; padding: 0.55rem 1rem; border: none;
+                       border-radius: 8px; cursor: pointer; font-family: inherit;
+                       font-size: 0.9rem; font-weight: 600; }
+.unlock-modal .btn-primary { background: #4338ca; color: #fff; }
+.unlock-modal .btn-primary:hover { background: #3730a3; }
+.unlock-modal .btn-secondary { background: #e5e7eb; color: #374151; }
+body.dark .unlock-modal { background: #232333; }
+body.dark .unlock-modal h3 { color: #e6e6f5; }
+body.dark .unlock-modal .target { color: #aaa; }
+body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-color: #444; }
 </style>
+
+{# ── Unlock modal (rendered once, reused for whichever protected card is
+    clicked). The card click handler stamps the target sa_id + agent name
+    into the modal before showing it. ── #}
+<div class="unlock-backdrop" id="unlockBackdrop">
+  <div class="unlock-modal">
+    <h3>🔒 אימות כפול נדרש</h3>
+    <div class="target">גישה לכרטיס <strong id="unlockAgentName">—</strong> דורשת סיסמה נוספת</div>
+    <input type="password" id="unlockPwInput" placeholder="הזן סיסמה" autocomplete="off">
+    <div class="err" id="unlockErrMsg"></div>
+    <div class="actions">
+      <button class="btn-secondary" type="button" onclick="closeUnlockModal()">ביטול</button>
+      <button class="btn-primary"   type="button" onclick="submitUnlock()">המשך</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const csrfToken = "{{ csrf_token() }}";
+  let pendingSaId = null;
+  let pendingHref = null;
+
+  function openUnlockModal(saId, agentName, href) {
+    pendingSaId = saId;
+    pendingHref = href;
+    document.getElementById('unlockAgentName').textContent = agentName || saId;
+    document.getElementById('unlockErrMsg').textContent = '';
+    document.getElementById('unlockPwInput').value = '';
+    document.getElementById('unlockBackdrop').classList.add('show');
+    setTimeout(() => document.getElementById('unlockPwInput').focus(), 80);
+  }
+  window.closeUnlockModal = function() {
+    document.getElementById('unlockBackdrop').classList.remove('show');
+    pendingSaId = null;
+    pendingHref = null;
+  };
+  window.submitUnlock = function() {
+    const pw = document.getElementById('unlockPwInput').value;
+    if (!pw || !pendingSaId) return;
+    fetch('/auth/agent-protection/' + encodeURIComponent(pendingSaId) + '/unlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken,
+                 'Accept': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+      credentials: 'same-origin'
+    }).then(r => r.json().then(d => ({ ok: r.ok, body: d })))
+      .then(({ ok, body }) => {
+        if (ok && body.ok) {
+          window.location.href = pendingHref;
+        } else {
+          document.getElementById('unlockErrMsg').textContent = '❌ סיסמה שגויה';
+          document.getElementById('unlockPwInput').value = '';
+          document.getElementById('unlockPwInput').focus();
+        }
+      })
+      .catch(() => {
+        document.getElementById('unlockErrMsg').textContent = 'שגיאה — נסה שוב';
+      });
+  };
+
+  // Intercept clicks on locked cards
+  document.querySelectorAll('.agent-overview-card.card-locked').forEach(card => {
+    card.addEventListener('click', (e) => {
+      e.preventDefault();
+      const saId = card.dataset.protectedSa;
+      const name = card.dataset.agentName;
+      const href = card.getAttribute('href');
+      openUnlockModal(saId, name, href);
+    });
+  });
+
+  // Keyboard: Enter submits, Escape cancels
+  const pwIn = document.getElementById('unlockPwInput');
+  if (pwIn) {
+    pwIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitUnlock();
+      if (e.key === 'Escape') closeUnlockModal();
+    });
+  }
+})();
+</script>
 {% endif %}
 
 {# ── Tracked Clubs + External Agents Section ── #}

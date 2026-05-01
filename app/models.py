@@ -342,6 +342,38 @@ class PlayerAssignment(db.Model):
         return f'<PlayerAssignment {self.player_id} → sa={self.assigned_sa_id} ag={self.assigned_agent_id}>'
 
 
+class ProtectedAgent(db.Model):
+    """Per-agent extra-password gate. When a row exists for an sa_id, the
+    agent's card on the admin overview is blurred and clicking through to
+    the agent dashboard requires re-entering this password. Removing the
+    row removes the protection (no migration of existing data).
+
+    The password is stored as a werkzeug hash, identical to user passwords.
+    Unlock state lives in the Flask session (10-minute window) — see
+    `auth.unlock_protected_agent`.
+    """
+    __tablename__ = 'protected_agents'
+
+    sa_id = db.Column(db.String(20), primary_key=True)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'),
+                                   nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    created_by = db.relationship('User', backref='protected_agents')
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f'<ProtectedAgent {self.sa_id}>'
+
+
 class BotSuspectDismissal(db.Model):
     """A player the admin has already reviewed for bot suspicion and
     decided is fine. Used to filter the player out of the /admin/bot-suspects

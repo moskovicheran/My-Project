@@ -1,9 +1,55 @@
 from functools import wraps
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session
+from datetime import datetime, timedelta
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import db, User
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+
+# ── Per-agent extra-password gate (2FA on agent cards) ──────────────────
+# Unlock state lives in the Flask session so it auto-expires on logout.
+# Window is 10 minutes from the last successful unlock for that sa_id.
+
+_UNLOCK_WINDOW = timedelta(minutes=10)
+
+
+def _now_ts():
+    return datetime.utcnow().timestamp()
+
+
+def is_agent_unlocked(sa_id):
+    """True iff the current session has a fresh unlock for this sa_id."""
+    pa = session.get('protected_unlocked', {})
+    ts = pa.get(sa_id)
+    if not ts:
+        return False
+    if (_now_ts() - ts) > _UNLOCK_WINDOW.total_seconds():
+        # Stale — drop it so the dict doesn't grow forever.
+        pa.pop(sa_id, None)
+        session['protected_unlocked'] = pa
+        session.modified = True
+        return False
+    return True
+
+
+def mark_agent_unlocked(sa_id):
+    pa = session.get('protected_unlocked', {})
+    pa[sa_id] = _now_ts()
+    session['protected_unlocked'] = pa
+    session.modified = True
+
+
+def _purge_unlock(sa_id):
+    """Remove this sa_id from the current session's unlock dict (only —
+    other sessions are unaffected, but they'll be forced to re-enter the
+    new password the next time they hit the gate since the password hash
+    changed)."""
+    pa = session.get('protected_unlocked', {})
+    if sa_id in pa:
+        pa.pop(sa_id, None)
+        session['protected_unlocked'] = pa
+        session.modified = True
 
 
 def admin_required(f):
@@ -224,14 +270,199 @@ def users():
                     db.session.commit()
                     flash(f'תפקיד {user.username} עודכן.', 'success')
 
+        elif action == 'set_agent_protection':
+            from app.models import ProtectedAgent
+            sa_id = request.form.get('sa_id', '').strip()
+            password = request.form.get('protection_password', '')
+            if not sa_id:
+                flash('יש לבחור סוכן.', 'danger')
+            elif len(password) < 4:
+                flash('הסיסמה חייבת להכיל לפחות 4 תווים.', 'danger')
+            else:
+                row = ProtectedAgent.query.filter_by(sa_id=sa_id).first()
+                if row:
+                    row.set_password(password)
+                    flash(f'סיסמת ההגנה לסוכן {sa_id} עודכנה.', 'success')
+                else:
+                    row = ProtectedAgent(sa_id=sa_id,
+                                         created_by_user_id=current_user.id)
+                    row.set_password(password)
+                    db.session.add(row)
+                    flash(f'הגנת אימות-כפול הופעלה על סוכן {sa_id}.', 'success')
+                db.session.commit()
+                # Clear any stale unlock for this sa_id so the new password
+                # takes effect for everyone who had unlocked previously.
+                _purge_unlock(sa_id)
+
+        elif action == 'remove_agent_protection':
+            from app.models import ProtectedAgent
+            sa_id = request.form.get('sa_id', '').strip()
+            row = ProtectedAgent.query.filter_by(sa_id=sa_id).first()
+            if row:
+                db.session.delete(row)
+                db.session.commit()
+                _purge_unlock(sa_id)
+                flash(f'הגנת אימות-כפול הוסרה מסוכן {sa_id}.', 'success')
+
+        elif action == 'set_panel_protection':
+            from app.models import ProtectedAgent
+            from app.routes.admin import ADMIN_PANEL_GATE_KEY
+            password = request.form.get('panel_password', '')
+            if len(password) < 4:
+                flash('הסיסמה חייבת להכיל לפחות 4 תווים.', 'danger')
+            else:
+                row = ProtectedAgent.query.filter_by(
+                    sa_id=ADMIN_PANEL_GATE_KEY).first()
+                if row:
+                    row.set_password(password)
+                    flash('סיסמת הגנת לוח הבקרה עודכנה.', 'success')
+                else:
+                    row = ProtectedAgent(sa_id=ADMIN_PANEL_GATE_KEY,
+                                         created_by_user_id=current_user.id)
+                    row.set_password(password)
+                    db.session.add(row)
+                    flash('הגנת לוח הבקרה הופעלה.', 'success')
+                db.session.commit()
+                _purge_unlock(ADMIN_PANEL_GATE_KEY)
+
+        elif action == 'remove_panel_protection':
+            from app.models import ProtectedAgent
+            from app.routes.admin import ADMIN_PANEL_GATE_KEY
+            row = ProtectedAgent.query.filter_by(
+                sa_id=ADMIN_PANEL_GATE_KEY).first()
+            if row:
+                db.session.delete(row)
+                db.session.commit()
+                _purge_unlock(ADMIN_PANEL_GATE_KEY)
+                flash('הגנת לוח הבקרה הוסרה.', 'success')
+
         return redirect(url_for('auth.users'))
 
     from app.union_data import get_all_members, get_all_clubs
+    from app.models import ProtectedAgent
+    from app.routes.admin import (OVERVIEW_MANAGERS, OVERVIEW_EXTERNAL_AGENTS,
+                                   ADMIN_PANEL_GATE_KEY)
     all_users = User.query.order_by(User.created_at.desc()).all()
     members = get_all_members()
     clubs = get_all_clubs()
     existing_pids = {u.player_id for u in all_users if u.player_id}
     available_members = [m for m in members if m['player_id'] not in existing_pids]
     available_clubs = [c for c in clubs if c['club_id'] not in existing_pids]
+
+    # Agents shown on the admin overview — these are the ones eligible for
+    # extra-password protection. Pre-build the dropdown options including
+    # tracked external agents so the admin can protect those too.
+    protectable_agents = [{'sa_id': pid, 'name': name}
+                          for name, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS]
+    protectable_agents.sort(key=lambda a: a['name'].lower())
+
+    protected_rows = ProtectedAgent.query.order_by(
+        ProtectedAgent.updated_at.desc()).all()
+    name_by_sa = {pid: name for name, pid in
+                  OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS}
+    # Split off the panel-gate sentinel so the per-agent table doesn't show
+    # "__admin_panel__" as a row — it gets its own dedicated section.
+    panel_row = None
+    protected_list = []
+    for r in protected_rows:
+        meta = {
+            'sa_id': r.sa_id,
+            'name': name_by_sa.get(r.sa_id, r.sa_id),
+            'updated_at': r.updated_at.strftime('%d/%m/%Y %H:%M') if r.updated_at else '',
+            'created_by': r.created_by.username if r.created_by else '—',
+        }
+        if r.sa_id == ADMIN_PANEL_GATE_KEY:
+            panel_row = meta
+        else:
+            protected_list.append(meta)
+
     return render_template('auth/users.html', users=all_users,
-                           members=available_members, clubs=available_clubs)
+                           members=available_members, clubs=available_clubs,
+                           protectable_agents=protectable_agents,
+                           protected_list=protected_list,
+                           panel_protection=panel_row)
+
+
+def _safe_next(next_url, fallback):
+    """Only allow same-origin relative paths in `next` to prevent
+    open-redirect into a phishing page."""
+    if next_url and next_url.startswith('/') and not next_url.startswith('//'):
+        return next_url
+    return fallback
+
+
+@auth_bp.route('/agent-protection/<sa_id>/unlock', methods=['POST'])
+@login_required
+def unlock_protected_agent(sa_id):
+    """Verify the per-agent extra password and stamp the session unlock.
+    Returns JSON for the modal flow on the overview page; also accepts
+    form-encoded POST from the fallback gate page (in which case it
+    redirects on success)."""
+    from app.models import ProtectedAgent
+    if request.is_json:
+        password = (request.get_json(silent=True) or {}).get('password', '')
+    else:
+        password = request.form.get('password', '')
+    next_url = request.form.get('next') or request.args.get('next', '')
+    row = ProtectedAgent.query.filter_by(sa_id=sa_id).first()
+
+    wants_json = request.is_json or (
+        request.headers.get('Accept', '').startswith('application/json'))
+
+    if not row:
+        # No protection set — nothing to unlock. Treat as success so the
+        # caller can proceed (defensive — the UI shouldn't reach here).
+        if wants_json:
+            return jsonify({'ok': True}), 200
+        return redirect(_safe_next(next_url,
+                                   url_for('main.dashboard', view_as=sa_id)))
+
+    if not password or not row.check_password(password):
+        if wants_json:
+            return jsonify({'ok': False, 'error': 'wrong_password'}), 403
+        flash('סיסמה שגויה.', 'danger')
+        return redirect(url_for('auth.agent_gate', sa_id=sa_id, next=next_url))
+
+    mark_agent_unlocked(sa_id)
+    if wants_json:
+        return jsonify({'ok': True})
+    return redirect(_safe_next(next_url,
+                               url_for('main.dashboard', view_as=sa_id)))
+
+
+@auth_bp.route('/agent-protection/<sa_id>/gate')
+@login_required
+def agent_gate(sa_id):
+    """Fallback gate page — shown when admin lands on /dashboard?view_as=
+    or /admin/agent-view/<sa_id> for a protected agent without an active
+    unlock. Also handles direct-URL access AND the whole-panel sentinel
+    used by admin_bp.before_request. The overview page normally pops a
+    modal instead of redirecting here, but the server still gates the
+    actual data routes so URL-typing can't bypass it."""
+    from app.models import ProtectedAgent
+    from app.routes.admin import (OVERVIEW_MANAGERS, OVERVIEW_EXTERNAL_AGENTS,
+                                   ADMIN_PANEL_GATE_KEY)
+    next_url = request.args.get('next', '')
+    row = ProtectedAgent.query.filter_by(sa_id=sa_id).first()
+    if not row:
+        # No protection set for this id — let the caller through.
+        # Default fallback differs per kind: panel goes to /admin/, agent
+        # goes to its dashboard.
+        fallback = (url_for('admin.overview') if sa_id == ADMIN_PANEL_GATE_KEY
+                    else url_for('main.dashboard', view_as=sa_id))
+        return redirect(_safe_next(next_url, fallback))
+
+    if sa_id == ADMIN_PANEL_GATE_KEY:
+        agent_name = 'לוח בקרה'
+        is_panel = True
+    else:
+        name_by_sa = {pid: name for name, pid in
+                      OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS}
+        agent_name = name_by_sa.get(sa_id, sa_id)
+        is_panel = False
+
+    return render_template('auth/agent_gate.html',
+                           sa_id=sa_id,
+                           agent_name=agent_name,
+                           is_panel=is_panel,
+                           next_url=next_url)

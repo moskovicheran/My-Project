@@ -344,6 +344,25 @@ def dashboard():
 
     # Admin viewing agent dashboard via ?view_as or agent's own dashboard
     view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+
+    # Per-agent extra-password gate. Applies to ALL entry points into a
+    # protected agent's data:
+    #   • admin using ?view_as=<sa_id>
+    #   • the agent themselves logging in (current_user.player_id == sa_id)
+    # Server-side enforcement so URL typing or direct login can't bypass
+    # the modal on the overview page. Players (role='player') may share
+    # the same id-shape but a ProtectedAgent row only exists for sa_ids
+    # the admin chose to lock, so the lookup naturally short-circuits for
+    # non-agent ids.
+    target_sa_id = view_as_id or getattr(current_user, 'player_id', None)
+    if target_sa_id:
+        from app.models import ProtectedAgent
+        from app.routes.auth import is_agent_unlocked
+        if (ProtectedAgent.query.filter_by(sa_id=target_sa_id).first()
+                and not is_agent_unlocked(target_sa_id)):
+            return redirect(url_for('auth.agent_gate', sa_id=target_sa_id,
+                                    next=request.full_path))
+
     if (current_user.role == 'agent' and current_user.player_id) or view_as_id:
         from app.union_data import get_super_agent_tables, get_members_hierarchy, get_child_sa_entries
         from app.models import SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge, DailyPlayerStats, DailyUpload, MoneyTransfer, User

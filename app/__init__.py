@@ -117,8 +117,9 @@ def create_app():
         # SKIP_STARTUP_DB_WORK is set, since the deployed DB doesn't have
         # them yet. Idempotent (checkfirst=True) and very fast on warm DBs.
         try:
-            from app.models import BotSuspectDismissal
+            from app.models import BotSuspectDismissal, ProtectedAgent
             BotSuspectDismissal.__table__.create(db.engine, checkfirst=True)
+            ProtectedAgent.__table__.create(db.engine, checkfirst=True)
         except Exception as e:
             print(f"New-table create warning: {e}")
 

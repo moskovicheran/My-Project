@@ -57,6 +57,13 @@ LOST_MIN_HANDS = 50
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
+# Sentinel sa_id stored in the protected_agents table to represent the
+# whole-admin-panel gate. Anything that queries a real sa_id will never
+# collide with it. Reusing the same table keeps the schema minimal —
+# one row, one password hash, same session-unlock plumbing.
+ADMIN_PANEL_GATE_KEY = '__admin_panel__'
+
+
 def admin_required(f):
     @wraps(f)
     @login_required
@@ -66,6 +73,27 @@ def admin_required(f):
             return redirect(url_for('main.dashboard'))
         return f(*args, **kwargs)
     return decorated
+
+
+@admin_bp.before_request
+def _gate_admin_panel():
+    """Whole-panel 2FA. If a row exists in protected_agents with the
+    sentinel sa_id, every request under /admin/* requires a session
+    unlock keyed on that sentinel. Cleared after 10 minutes (same as
+    per-agent unlocks). Skipped only for unauthenticated requests
+    (the @admin_required on each route still redirects to login)."""
+    from app.models import ProtectedAgent
+    from app.routes.auth import is_agent_unlocked
+    if not current_user.is_authenticated:
+        return None
+    row = ProtectedAgent.query.filter_by(sa_id=ADMIN_PANEL_GATE_KEY).first()
+    if not row:
+        return None
+    if is_agent_unlocked(ADMIN_PANEL_GATE_KEY):
+        return None
+    return redirect(url_for('auth.agent_gate',
+                            sa_id=ADMIN_PANEL_GATE_KEY,
+                            next=request.full_path))
 
 
 def build_overview_context():
@@ -180,6 +208,18 @@ def build_overview_context():
         })
     tracked_clubs.sort(key=lambda c: c['rake'], reverse=True)
 
+    # Protected-agent set — used by the overview template to apply the
+    # blur + click-gate to specific cards. Cheap query (typically 0–few rows).
+    from app.models import ProtectedAgent
+    from app.routes.auth import is_agent_unlocked
+    protected_sa_ids = {r.sa_id for r in
+                        ProtectedAgent.query.with_entities(ProtectedAgent.sa_id).all()}
+    # An sa_id is "currently locked" if it's protected AND not unlocked in
+    # this session. The template uses `locked_sa_ids` for visual treatment;
+    # protected_sa_ids alone would re-blur cards even after the admin
+    # already entered the password in this session, which is wrong.
+    locked_sa_ids = {sa for sa in protected_sa_ids if not is_agent_unlocked(sa)}
+
     return dict(
         meta=meta, clubs=ct['clubs'],
         total={'active_players': ct['total_players'],
@@ -195,6 +235,8 @@ def build_overview_context():
         active_dates=active_dates,
         archive_dates=archive_dates,
         selected_dates=selected_dates,
+        protected_sa_ids=protected_sa_ids,
+        locked_sa_ids=locked_sa_ids,
     )
 
 
@@ -1358,6 +1400,17 @@ def bot_suspects():
 @admin_required
 def agent_view(sa_id):
     """Admin view of a specific agent's dashboard."""
+    # Same per-agent extra-password gate that protects /dashboard?view_as=.
+    # Without this, an admin could bypass the modal by navigating directly
+    # to /admin/agent-view/<sa_id>. The unlock is shared via session, so a
+    # password entered on either path stays good for 10 minutes.
+    from app.models import ProtectedAgent
+    from app.routes.auth import is_agent_unlocked
+    if (ProtectedAgent.query.filter_by(sa_id=sa_id).first()
+            and not is_agent_unlocked(sa_id)):
+        return redirect(url_for('auth.agent_gate', sa_id=sa_id,
+                                next=request.full_path))
+
     from app.union_data import get_super_agent_tables, get_members_hierarchy, get_cumulative_stats
     from app.models import DailyPlayerStats
     from sqlalchemy import func as sqlfunc
