@@ -11,9 +11,9 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="drop-zone" id="dropZone">
             <div class="drop-icon">📂</div>
-            <p class="drop-text">גרור קובץ לכאן או לחץ לבחירה</p>
+            <p class="drop-text">גרור קבצים לכאן או לחץ לבחירה (אפשר כמה במכה)</p>
             <p class="drop-sub">.xlsx / .xls בלבד</p>
-            <input type="file" name="file" id="fileInput" accept=".xlsx,.xls" hidden>
+            <input type="file" name="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
         </div>
 
         {% if current_file %}
@@ -37,7 +37,7 @@
         </div>
 
         <button type="submit" class="btn btn-primary btn-full" id="submitBtn" style="display:none;">
-            העלה קובץ
+            העלה קבצים
         </button>
     </form>
 </div>
@@ -94,18 +94,24 @@ dropZone.addEventListener('drop', (e) => {
     const files = e.dataTransfer.files;
     if (files.length) {
         fileInput.files = files;
-        showFile(files[0].name);
+        showFiles(files);
     }
 });
 
 fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) showFile(fileInput.files[0].name);
+    if (fileInput.files.length) showFiles(fileInput.files);
 });
 
-function showFile(name) {
-    fileName.textContent = name;
+function showFiles(files) {
+    if (files.length === 1) {
+        fileName.textContent = files[0].name;
+    } else {
+        const names = Array.from(files).map(f => f.name).join(', ');
+        fileName.textContent = `${files.length} קבצים: ${names}`;
+    }
     selectedFile.style.display = 'flex';
     submitBtn.style.display = 'block';
+    submitBtn.textContent = files.length > 1 ? `העלה ${files.length} קבצים` : 'העלה קובץ';
     dropZone.classList.add('has-file');
 }
 </script>

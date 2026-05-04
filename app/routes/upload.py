@@ -224,88 +224,107 @@ def index():
     from app.models import DailyUpload
 
     if request.method == 'POST':
-        if 'file' not in request.files:
+        # Accept either single ('file') or multiple ('file' multiple) — same
+        # field name keeps backwards compatibility with the old form.
+        files = request.files.getlist('file')
+        files = [f for f in files if f and f.filename]
+        if not files:
             flash('לא נבחר קובץ.', 'danger')
             return redirect(request.url)
-
-        file = request.files['file']
-        if file.filename == '':
-            flash('לא נבחר קובץ.', 'danger')
-            return redirect(request.url)
-
-        if not allowed_file(file.filename):
-            flash('סוג קובץ לא נתמך. נא להעלות קובץ .xlsx או .xls', 'danger')
-            return redirect(request.url)
-
-        filename = secure_filename(file.filename)
-        file_bytes = file.read()
 
         from app.models import db as _db
+        import pandas as pd
+        from datetime import datetime as _dt
 
-        # Block 1: same filename already uploaded.
-        existing = DailyUpload.query.filter_by(filename=filename).first()
-        if existing:
-            flash(f'קובץ זה כבר נמצא במערכת ({existing.upload_date.strftime("%d/%m/%Y")})', 'danger')
-            return redirect(url_for('upload.index'))
+        # Pre-read each file: validate type, peek the Period date so we can
+        # process oldest-first (matches normal upload chronology so any
+        # duplicate-period block fires deterministically).
+        prepared = []
+        for f in files:
+            if not allowed_file(f.filename):
+                flash(f'סוג קובץ לא נתמך: {f.filename}', 'danger')
+                continue
+            fname = secure_filename(f.filename)
+            fbytes = f.read()
+            try:
+                overview = pd.read_excel(io.BytesIO(fbytes), sheet_name='Union Overview', header=None)
+                period_str = str(overview.iloc[2, 0])
+                date_part = period_str.replace('Period : ', '').strip().split(' ')[0].split('~')[0].strip()
+                peek_date = _dt.strptime(date_part, '%Y-%m-%d').date() if len(date_part) == 10 else None
+            except Exception:
+                peek_date = None
+            prepared.append({'filename': fname, 'bytes': fbytes, 'period': peek_date})
+        # Oldest period first; files without a parseable date go last.
+        prepared.sort(key=lambda x: (x['period'] is None, x['period']))
 
-        # Block 2: same Excel "Period" date already uploaded (under any filename).
-        # Re-downloads of the same day get a fresh PPPoker-side timestamp in the
-        # filename so the filename check above won't catch them; the in-file
-        # period date is what we actually care about.
-        try:
-            import pandas as pd
-            from datetime import datetime as _dt
-            overview = pd.read_excel(io.BytesIO(file_bytes), sheet_name='Union Overview', header=None)
-            period_str = str(overview.iloc[2, 0])
-            date_part = period_str.replace('Period : ', '').strip().split(' ')[0].split('~')[0].strip()
-            peek_date = _dt.strptime(date_part, '%Y-%m-%d').date() if len(date_part) == 10 else None
-        except Exception:
-            peek_date = None
+        ok_count = 0; skip_count = 0; fail_count = 0
+        last_ok = None  # (filename, bytes) of the most recent successful upload
+        for p in prepared:
+            fname, fbytes, peek_date = p['filename'], p['bytes'], p['period']
 
-        if peek_date is not None:
-            dup = DailyUpload.query.filter_by(upload_date=peek_date).first()
-            if dup:
+            # Block 1: same filename.
+            if DailyUpload.query.filter_by(filename=fname).first():
+                flash(f'דילוג — "{fname}" כבר קיים במערכת.', 'warning')
+                skip_count += 1
+                continue
+
+            # Block 2: same period date under any filename.
+            if peek_date is not None and DailyUpload.query.filter_by(upload_date=peek_date).first():
                 flash(
-                    f'לא ניתן להעלות — כבר קיימת העלאה לתאריך '
-                    f'{peek_date.strftime("%d/%m/%Y")} (קובץ "{dup.filename}").',
-                    'danger',
+                    f'דילוג — "{fname}": כבר קיימת העלאה לתאריך {peek_date.strftime("%d/%m/%Y")}.',
+                    'warning',
                 )
-                return redirect(url_for('upload.index'))
+                skip_count += 1
+                continue
 
-        # Step 1: Parse and store CUMULATIVE stats FIRST (most important)
-        try:
-            player_count = _parse_and_store_stats_from_bytes(file_bytes, filename)
-        except Exception as e:
-            _db.session.rollback()
-            import logging
-            logging.getLogger(__name__).error(f'Parse error: {e}')
-            flash('שגיאה בפרסינג הקובץ. נא לוודא שהקובץ תקין.', 'danger')
-            return redirect(url_for('upload.index'))
+            # Parse + store DPS/sessions/tournaments. The function commits at
+            # the end; on exception we roll back so the next file isn't
+            # poisoned by half-staged rows.
+            try:
+                _parse_and_store_stats_from_bytes(fbytes, fname)
+                ok_count += 1
+                last_ok = (fname, fbytes, peek_date)
+            except Exception as e:
+                _db.session.rollback()
+                import logging
+                logging.getLogger(__name__).error(f'Parse error on {fname}: {e}')
+                flash(f'שגיאה בפרסינג "{fname}".', 'danger')
+                fail_count += 1
 
-        # Step 2: Save Excel as active file in DB (for structure reading)
-        try:
-            from app.models import ActiveExcelData
-            ActiveExcelData.query.delete()
-            _db.session.add(ActiveExcelData(filename=filename, file_data=file_bytes))
-            _db.session.commit()
-        except Exception:
-            _db.session.rollback()
+        # The file with the latest Period date wins as "active" (used for
+        # structure reading by union_data._read_sheets). prepared is sorted
+        # ascending so the last successful upload is the newest.
+        if last_ok:
+            fname, fbytes, _ = last_ok
+            try:
+                from app.models import ActiveExcelData
+                ActiveExcelData.query.delete()
+                _db.session.add(ActiveExcelData(filename=fname, file_data=fbytes))
+                _db.session.commit()
+            except Exception:
+                _db.session.rollback()
 
-        # Step 3: Try to save locally (works on local dev only)
-        try:
-            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            with open(filepath, 'wb') as f:
-                f.write(file_bytes)
-            session['uploaded_file'] = filepath
-            with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
-                f.write(filepath)
-            from app.union_data import set_excel_path
-            set_excel_path(filepath)
-        except Exception:
-            pass
+            # Save locally too (best-effort, dev-only).
+            try:
+                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+                filepath = os.path.join(UPLOAD_FOLDER, fname)
+                with open(filepath, 'wb') as f:
+                    f.write(fbytes)
+                session['uploaded_file'] = filepath
+                with open(ACTIVE_FILE_PATH, 'w', encoding='utf-8') as f:
+                    f.write(filepath)
+                from app.union_data import set_excel_path
+                set_excel_path(filepath)
+            except Exception:
+                pass
 
-        flash(f'הקובץ "{filename}" הועלה — {player_count} שחקנים נוספו למצטבר.', 'success')
+        # Summary flash. If exactly one OK, keep it specific; otherwise roll up.
+        if ok_count == 1 and skip_count == 0 and fail_count == 0:
+            flash(f'הקובץ "{last_ok[0]}" הועלה.', 'success')
+        elif ok_count > 0:
+            flash(f'הועלו {ok_count} קבצים בהצלחה. דילוגים: {skip_count}, שגיאות: {fail_count}.', 'success')
+        elif skip_count > 0 and fail_count == 0:
+            flash(f'כל {skip_count} הקבצים כבר קיימים — לא נוספו עליות חדשות.', 'warning')
         return redirect(url_for('upload.index'))
 
     uploaded = session.get('uploaded_file')
