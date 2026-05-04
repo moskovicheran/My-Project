@@ -1099,6 +1099,27 @@ def bot_suspects():
                                 if k[1] in keep}
         window_label = f"{cur_cutoff.strftime('%d/%m/%Y')} — {max_date.strftime('%d/%m/%Y')}"
 
+    # Dedupe by (player_id, calendar date). Same date can land under multiple
+    # ukeys when an admin runs /upload/reset-all and re-uploads the same
+    # files: the "old" copies live on as overlapping ArchivePeriod ranges,
+    # so summing across ukeys would double-count every per-player metric.
+    # _ingest_active runs before _ingest_archive, so iterating in arrival
+    # order and keeping the first occurrence prefers the active row over
+    # any archived twin — and an older archive over a newer one when the
+    # date isn't in active.
+    seen_pid_date = set()
+    deduped = []
+    for row in daily_rows:
+        pid, _, _, ukey, _, _, _ = row
+        d = ukey_to_date.get(ukey)
+        key = (pid, d) if d is not None else None
+        if key is not None:
+            if key in seen_pid_date:
+                continue
+            seen_pid_date.add(key)
+        deduped.append(row)
+    daily_rows = deduped
+
     # ── Build per-player profile ──
     by_pid = defaultdict(lambda: {'nickname': '', 'club': '', 'days': []})
     for pid, nick, club, ukey, hands, pnl, rake in daily_rows:
