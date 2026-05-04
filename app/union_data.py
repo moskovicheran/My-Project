@@ -257,18 +257,17 @@ def get_union_overview():
 
     # Col layout: 0=No, 1=NaN(Country), 2=ClubID, 3=ClubName, 4=MasterID,
     #             5=MasterNick, 6=ActivePlayers, 7=TotalHands, 8=TotalFee,
-    #             9-16=sub-fees, 17=P&L
+    #             9-19=sub-fees (incl. Non-Chip Prize Value added 2026-05), 20=P&L
     clubs = []
     for i in range(5, len(df)):
         row = df.iloc[i]
         no = str(row.iloc[0])
         if no == 'TOTAL':
-            # TOTAL row: 1-5=NaN, 6=ActivePlayers, 7=Hands, 8=Fee, 17=P&L
             total = {
                 'active_players': _num(row.iloc[6]),
                 'total_hands': _num(row.iloc[7]),
                 'total_fee': _num(row.iloc[8]),
-                'pnl': _num(row.iloc[17]),
+                'pnl': _num(row.iloc[20]),
             }
             break
         clubs.append({
@@ -280,7 +279,7 @@ def get_union_overview():
             'active_players': _num(row.iloc[6]),
             'total_hands': _num(row.iloc[7]),
             'total_fee': _num(row.iloc[8]),
-            'pnl': _num(row.iloc[17]),
+            'pnl': _num(row.iloc[20]),
         })
     else:
         total = {}
