@@ -1054,17 +1054,26 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None):
     agent being viewed (their own play is "Member Detail" in ClubGG terms,
     not downline activity)."""
     from app.models import DailyPlayerStats
-    from sqlalchemy import func as sqlfunc, and_
+    from sqlalchemy import func as sqlfunc, and_, or_
     if M is None:
         M = DailyPlayerStats
 
-    # Per-player latest upload_id (among non-Name-Entry rows).
+    # Per-player latest upload among rows that actually carry an sa/agent.
+    # Rows with sa_id and agent_id both empty/'-' (e.g. master/own-club play
+    # in a session where PPPoker drops the SA attribution) must NOT be picked
+    # as the player's "current" assignment — that would erase their real,
+    # historical SA on a single bad day and orphan all their prior rows in
+    # SPC T/SPC C. Truly unassigned players (no real row anywhere) still
+    # fall through to the orphan list.
+    real_sa = and_(M.sa_id.isnot(None), M.sa_id != '', M.sa_id != '-')
+    real_ag = and_(M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-')
     latest_uid_subq = M.query.with_entities(
         M.player_id,
         sqlfunc.max(M.upload_id).label('max_uid')
-    ).filter(M.role != 'Name Entry').group_by(M.player_id).subquery()
+    ).filter(M.role != 'Name Entry', or_(real_sa, real_ag)
+    ).group_by(M.player_id).subquery()
 
-    # The sa_id / agent_id recorded in each player's latest row.
+    # The sa_id / agent_id recorded in each player's latest real row.
     rows = M.query.with_entities(
         M.player_id, M.sa_id, M.agent_id
     ).join(
