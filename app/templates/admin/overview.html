@@ -466,6 +466,7 @@ body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-colo
     document.getElementById('unlockBackdrop').classList.add('show');
     setTimeout(() => document.getElementById('unlockPwInput').focus(), 80);
   }
+  window.openUnlockModal = openUnlockModal;
   window.closeUnlockModal = function() {
     document.getElementById('unlockBackdrop').classList.remove('show');
     pendingSaId = null;
@@ -483,7 +484,8 @@ body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-colo
     }).then(r => r.json().then(d => ({ ok: r.ok, body: d })))
       .then(({ ok, body }) => {
         if (ok && body.ok) {
-          window.location.href = pendingHref;
+          if (pendingHref) window.location.href = pendingHref;
+          else window.location.reload();
         } else {
           document.getElementById('unlockErrMsg').textContent = '❌ סיסמה שגויה';
           document.getElementById('unlockPwInput').value = '';
@@ -560,6 +562,37 @@ body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-colo
 
 <div class="section" style="margin-top:1.5rem;">
     <h2 class="section-title">מועדונים פעילים</h2>
+    {% if active_clubs_locked %}
+    <div id="activeClubsLocked" class="active-clubs-locked"
+         data-protected-sa="{{ active_clubs_gate_key }}">
+        <div class="acl-icon">🔒</div>
+        <div class="acl-title">טבלה מוגנת בסיסמה</div>
+        <div class="acl-hint">לחץ להזנת סיסמה</div>
+    </div>
+    <style>
+    .active-clubs-locked {
+        border: 2px dashed #fca5a5; background: #fef7f7; border-radius: 12px;
+        padding: 1.6rem 1rem; text-align: center; cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .active-clubs-locked:hover { background: #fde8ec; border-color: #ef4444; }
+    .acl-icon { font-size: 1.6rem; margin-bottom: 0.3rem; }
+    .acl-title { font-weight: 700; color: #991b1b; font-size: 0.95rem; }
+    .acl-hint { font-size: 0.8rem; color: #b45a5a; margin-top: 0.3rem; }
+    body.dark .active-clubs-locked { background: #2e1a1c; border-color: #ef4444; }
+    body.dark .acl-title { color: #ff7a8f; }
+    body.dark .acl-hint { color: #c89898; }
+    </style>
+    <script>
+    (function() {
+      const el = document.getElementById('activeClubsLocked');
+      if (!el || !window.openUnlockModal) return;
+      el.addEventListener('click', () => {
+        window.openUnlockModal(el.dataset.protectedSa, 'טבלת מועדונים פעילים', null);
+      });
+    })();
+    </script>
+    {% else %}
     <table class="table table-sm">
         <thead>
             <tr>
@@ -586,5 +619,6 @@ body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-colo
             {% endfor %}
         </tbody>
     </table>
+    {% endif %}
 </div>
 {% endblock %}

@@ -336,12 +336,44 @@ def users():
                 _purge_unlock(ADMIN_PANEL_GATE_KEY)
                 flash('הגנת לוח הבקרה הוסרה.', 'success')
 
+        elif action == 'set_active_clubs_protection':
+            from app.models import ProtectedAgent
+            from app.routes.admin import ACTIVE_CLUBS_GATE_KEY
+            password = request.form.get('active_clubs_password', '')
+            if len(password) < 4:
+                flash('הסיסמה חייבת להכיל לפחות 4 תווים.', 'danger')
+            else:
+                row = ProtectedAgent.query.filter_by(
+                    sa_id=ACTIVE_CLUBS_GATE_KEY).first()
+                if row:
+                    row.set_password(password)
+                    flash('סיסמת הגנת טבלת המועדונים עודכנה.', 'success')
+                else:
+                    row = ProtectedAgent(sa_id=ACTIVE_CLUBS_GATE_KEY,
+                                         created_by_user_id=current_user.id)
+                    row.set_password(password)
+                    db.session.add(row)
+                    flash('הגנת טבלת המועדונים הופעלה.', 'success')
+                db.session.commit()
+                _purge_unlock(ACTIVE_CLUBS_GATE_KEY)
+
+        elif action == 'remove_active_clubs_protection':
+            from app.models import ProtectedAgent
+            from app.routes.admin import ACTIVE_CLUBS_GATE_KEY
+            row = ProtectedAgent.query.filter_by(
+                sa_id=ACTIVE_CLUBS_GATE_KEY).first()
+            if row:
+                db.session.delete(row)
+                db.session.commit()
+                _purge_unlock(ACTIVE_CLUBS_GATE_KEY)
+                flash('הגנת טבלת המועדונים הוסרה.', 'success')
+
         return redirect(url_for('auth.users'))
 
     from app.union_data import get_all_members, get_all_clubs
     from app.models import ProtectedAgent
     from app.routes.admin import (OVERVIEW_MANAGERS, OVERVIEW_EXTERNAL_AGENTS,
-                                   ADMIN_PANEL_GATE_KEY)
+                                   ADMIN_PANEL_GATE_KEY, ACTIVE_CLUBS_GATE_KEY)
     all_users = User.query.order_by(User.created_at.desc()).all()
     members = get_all_members()
     clubs = get_all_clubs()
@@ -362,7 +394,9 @@ def users():
                   OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS}
     # Split off the panel-gate sentinel so the per-agent table doesn't show
     # "__admin_panel__" as a row — it gets its own dedicated section.
+    # Same treatment for the active-clubs-table sentinel.
     panel_row = None
+    active_clubs_row = None
     protected_list = []
     for r in protected_rows:
         meta = {
@@ -373,6 +407,8 @@ def users():
         }
         if r.sa_id == ADMIN_PANEL_GATE_KEY:
             panel_row = meta
+        elif r.sa_id == ACTIVE_CLUBS_GATE_KEY:
+            active_clubs_row = meta
         else:
             protected_list.append(meta)
 
@@ -380,7 +416,8 @@ def users():
                            members=available_members, clubs=available_clubs,
                            protectable_agents=protectable_agents,
                            protected_list=protected_list,
-                           panel_protection=panel_row)
+                           panel_protection=panel_row,
+                           active_clubs_protection=active_clubs_row)
 
 
 def _safe_next(next_url, fallback):

@@ -63,6 +63,12 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 # one row, one password hash, same session-unlock plumbing.
 ADMIN_PANEL_GATE_KEY = '__admin_panel__'
 
+# Same idea, narrower scope: gates only the "מועדונים פעילים" table on the
+# admin overview. When a row exists for this sentinel and the session has
+# not unlocked it, the template hides the table contents (server-side, so
+# DevTools can't reveal them) and shows a click-to-unlock placeholder.
+ACTIVE_CLUBS_GATE_KEY = '__active_clubs__'
+
 
 def admin_required(f):
     @wraps(f)
@@ -220,6 +226,10 @@ def build_overview_context():
     # already entered the password in this session, which is wrong.
     locked_sa_ids = {sa for sa in protected_sa_ids if not is_agent_unlocked(sa)}
 
+    active_clubs_protected = ACTIVE_CLUBS_GATE_KEY in protected_sa_ids
+    active_clubs_locked = (active_clubs_protected
+                           and not is_agent_unlocked(ACTIVE_CLUBS_GATE_KEY))
+
     return dict(
         meta=meta, clubs=ct['clubs'],
         total={'active_players': ct['total_players'],
@@ -237,6 +247,8 @@ def build_overview_context():
         selected_dates=selected_dates,
         protected_sa_ids=protected_sa_ids,
         locked_sa_ids=locked_sa_ids,
+        active_clubs_locked=active_clubs_locked,
+        active_clubs_gate_key=ACTIVE_CLUBS_GATE_KEY,
     )
 
 

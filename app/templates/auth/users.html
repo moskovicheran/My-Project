@@ -204,6 +204,54 @@
     </form>
 </div>
 
+{# ── 2FA on the active-clubs table on the admin overview ── #}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">🔒 הגנת טבלת "מועדונים פעילים"</h2>
+    <p class="subtitle" style="margin-bottom:0.9rem; font-size:0.85rem;">
+        סיסמה נוספת שתסתיר את טבלת "מועדונים פעילים" בלוח הבקרה. כשהיא מוגדרת —
+        תוכן הטבלה מוסתר עד להזנת הסיסמה. תוקף הפתיחה — 10 דקות מהזנת הסיסמה האחרונה.
+    </p>
+
+    {% if active_clubs_protection %}
+    <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.9rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">
+        <div>
+            <strong style="color:#991b1b;">🔒 טבלת מועדונים מוגנת</strong>
+            <span style="font-size:0.82rem; color:var(--muted); margin-right:0.6rem;">
+                (הוגדר ע"י {{ active_clubs_protection.created_by }} · {{ active_clubs_protection.updated_at }})
+            </span>
+        </div>
+        <form method="POST" style="display:inline; margin:0;"
+              onsubmit="return confirm('להסיר את ההגנה מטבלת המועדונים? הטבלה תחזור להיות גלויה לכל אדמין.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="remove_active_clubs_protection">
+            <button type="submit"
+                    style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:5px; padding:0.3rem 0.8rem; font-size:0.82rem; cursor:pointer; font-family:inherit;">
+                הסר הגנה
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    <form method="POST" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="action" value="set_active_clubs_protection">
+
+        <div style="flex:2; min-width:240px;">
+            <label class="field-label">
+                {% if active_clubs_protection %}סיסמה חדשה (4+ תווים){% else %}סיסמה לטבלת מועדונים (4+ תווים){% endif %}
+            </label>
+            <input type="password" name="active_clubs_password" class="field-input"
+                   placeholder="הזן סיסמה" autocomplete="new-password" minlength="4" required>
+        </div>
+
+        <div>
+            <button type="submit" class="btn btn-primary">
+                {% if active_clubs_protection %}🔄 עדכן סיסמה{% else %}🔒 הפעל הגנה{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+
 {# ── 2FA on agent cards ── #}
 <div class="section" style="margin-bottom:1.5rem;">
     <h2 class="section-title">🔒 אימות כפול לכרטיס סוכן</h2>
