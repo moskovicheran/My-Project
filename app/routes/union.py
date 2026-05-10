@@ -834,15 +834,26 @@ def _build_hierarchy_chain(player_id):
 
     # Fallback — no Manager found via SA hierarchy. Try matching the player's
     # club against SARakeConfig.managed_club_id (e.g. Spc o → Riko via
-    # literal club-name mapping). Covers players attributed via managed
-    # clubs rather than SA/agent hierarchy.
-    if not any(n['is_manager'] for n in chain) and player_club:
+    # literal club-name mapping). Covers regular players attributed via
+    # managed clubs rather than SA/agent hierarchy.
+    #
+    # Skip for SAs/Agents — they are themselves nodes in the management
+    # tree, and the fallback would otherwise misattribute them to whoever
+    # else manages a club they happen to play in (e.g. Robin Hood 777
+    # plays through Mangisto's SPC Un, but isn't managed by Mangisto).
+    # Also skip self-rows.
+    if (not any(n['is_manager'] for n in chain)
+            and player_club
+            and not is_sa
+            and not is_agent_role):
         from app.models import SARakeConfig
         from app.union_data import get_members_hierarchy as _gmh
         _cd, _ = _gmh()
         _cid_to_name = {c['club_id']: c['name'] for c in _cd}
         for cfg in SARakeConfig.query.filter(
                 SARakeConfig.managed_club_id.isnot(None)).all():
+            if cfg.sa_id == player_id:
+                continue
             resolved = _cid_to_name.get(cfg.managed_club_id) or cfg.managed_club_id
             if resolved == player_club and cfg.sa_id in managers_map:
                 chain.append({'role': 'Manager', 'id': cfg.sa_id,

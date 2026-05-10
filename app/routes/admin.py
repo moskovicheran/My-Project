@@ -350,7 +350,8 @@ def health():
         ov_pids = {ov.player_id for ov in all_overrides
                     if (ov.assigned_sa_id in override_target) or (ov.assigned_agent_id in override_target)}
         sa_info.append({'pid': pid, 'cur': cur, 'managed': managed, 'ov': ov_pids,
-                        'hier': override_target})
+                        'hier': override_target,
+                        'player_only': pid in MANAGED_CLUB_PLAYER_ONLY})
 
     # Build same other_managed/tracked exclusion as get_agent_totals
     all_managed = set()
@@ -390,6 +391,16 @@ def health():
         for mc in si['managed']:
             if mc in sas_per_tracked:
                 sas_per_tracked[mc].add(si['pid'])
+
+    # Map club → PLAYER_ONLY SAs' player_ids that registered it. Used in
+    # the per-row loop so an OTHER SA's exclusive-managed claim on the
+    # same club subtracts those player_ids — mirrors the carve-out in
+    # get_agent_totals (managed_club_names_player_only).
+    po_pids_per_club = defaultdict(set)
+    for si in sa_info:
+        if si['player_only']:
+            for mc in si['managed']:
+                po_pids_per_club[mc].add(si['pid'])
     for r in DailyPlayerStats.query.yield_per(5000):
         if (r.role or '') == 'Name Entry': continue
         cards_hit = []
@@ -406,14 +417,27 @@ def health():
                 cards_hit.append('CLUB:' + (r.club or ''))
         for sa in sa_info:
             in_cur = (r.player_id in sa['cur']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
+            # PLAYER_ONLY SAs must not extend current_scope into their
+            # managed clubs beyond their own player_id — downline rows
+            # in those clubs belong to the actual roster manager.
+            if sa['player_only'] and r.club in sa['managed'] and r.player_id != sa['pid']:
+                in_cur = False
             # Managed-club claim: if club is in sa's managed AND also tracked
             # (shared), require explicit sa/agent in hierarchy (per-row). If
             # it's managed but not tracked, claim unconditionally as before.
             if r.club in sa['managed']:
-                if r.club in tracked_clubs:
+                if sa['player_only']:
+                    # PLAYER_ONLY SAs claim only their own player_id row.
+                    in_managed = (r.player_id == sa['pid'])
+                elif r.club in tracked_clubs:
                     in_managed = (r.sa_id in sa['hier']) or (r.agent_id in sa['hier'])
                 else:
                     in_managed = True
+                    # Subtract rows owned by any PLAYER_ONLY SA that
+                    # registered the same club (those rows belong to
+                    # that SA, not here).
+                    if r.player_id in po_pids_per_club.get(r.club, ()) and r.player_id != sa['pid']:
+                        in_managed = False
             else:
                 in_managed = False
             # Override applies the SAME carve-out as current_scope: a row in
