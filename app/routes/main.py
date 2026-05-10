@@ -688,43 +688,19 @@ def dashboard():
         _self_existing_pids = set(m['player_id'] for m in direct_players)
         _self_existing_pids |= {m['player_id'] for ag in agents_map.values() for m in ag['members']}
         if sa_id not in _self_existing_pids:
-            # Own managed clubs are INCLUDED in the self-row by default so
-            # the SA's own rows in them roll into the direct-players card
-            # (e.g. Mangisto San's SPC Un play joins his SPC T play into a
-            # single unified row totalling Rake 3,849.20 / PnL -17,182.37).
-            # To avoid double-counting, the managed_clubs loop below skips
-            # the SA himself when listing the club's players. SAs in
-            # MANAGED_CLUB_SHOW_SELF opt into the opposite convention —
-            # their own rows surface inside the per-club תוספת card, so
-            # those clubs ARE excluded from the self-row here.
-            #
-            # Two-pass build: first collect names this SA manages, then
-            # add OTHER SAs' clubs while skipping any that this SA also
-            # manages (otherwise a club managed by both — e.g. SPC Un
-            # under Mangisto AND Robin Hood — would wrongly drop out of
-            # Mangisto's self-row just because Robin Hood also registered
-            # it).
-            from app.routes.admin import MANAGED_CLUB_SHOW_SELF
+            # Own managed clubs are INCLUDED here so the SA's own rows in
+            # them roll into the direct-players card (e.g. Mangisto San's
+            # SPC Un play joins his SPC T play into a single unified row
+            # totalling Rake 3,849.20 / PnL -17,182.37). To avoid double-
+            # counting, the managed_clubs loop below skips the SA himself
+            # when listing the club's players.
+            _self_other_clubs = set()  # only OTHER SAs' managed + OVERVIEW_CLUBS are excluded below
             _clubs_ov, _ = get_members_hierarchy()
             _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
-            _own_mc_names = set()
             for _c in get_managed_clubs_all_cfgs():
                 if _c.sa_id == sa_id:
-                    _own_mc_names.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
-            _self_other_clubs = set()  # OTHER SAs' managed + OVERVIEW_CLUBS (and own managed for SHOW_SELF SAs)
-            for _c in get_managed_clubs_all_cfgs():
-                _nm = _c2n_ov.get(_c.managed_club_id) or _c.managed_club_id
-                if _c.sa_id == sa_id:
-                    # OWN managed club: include in self-row only when this
-                    # SA opts into the per-club breakout via SHOW_SELF.
-                    if sa_id in MANAGED_CLUB_SHOW_SELF:
-                        _self_other_clubs.add(_nm)
                     continue
-                # Another SA's managed club. If THIS SA also manages it,
-                # the rule above already decided — don't override here.
-                if _nm in _own_mc_names:
-                    continue
-                _self_other_clubs.add(_nm)
+                _self_other_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
             try:
                 from app.routes.admin import OVERVIEW_CLUBS as _OV
                 for _, _cid in _OV:
@@ -1161,29 +1137,12 @@ def dashboard():
                 ).group_by(SM.player_id).all())
 
                 # Get ALL players in this club from DB — excluding the SA
-                # himself by default. His own rows here are attributed to
-                # the unified "direct players" card on his dashboard (see
-                # _self_other_clubs block above), so listing him again in
-                # the managed-club card would double-count and clutter the
-                # UI. SAs in MANAGED_CLUB_SHOW_SELF opt into the opposite
-                # convention — they only PLAY in the club rather than
-                # managing the whole roster, so the תוספת card is scoped
-                # to themselves + their hierarchy (own player_id, rows
-                # whose sa_id is theirs or a child SA), and their rows
-                # are excluded from the direct-players self-row (matching
-                # exclusion is wired into _self_other_clubs).
-                from app.routes.admin import MANAGED_CLUB_SHOW_SELF
-                from sqlalchemy import or_
-                club_filters = [SM.club == club_name, SM.role != 'Name Entry']
-                if sa_id in MANAGED_CLUB_SHOW_SELF:
-                    from app.union_data import get_sa_children
-                    scope_sa_ids = [sa_id] + list(get_sa_children(sa_id) or [])
-                    club_filters.append(or_(
-                        SM.player_id == sa_id,
-                        SM.sa_id.in_(scope_sa_ids),
-                    ))
-                else:
-                    club_filters.append(SM.player_id != sa_id)
+                # himself. His own rows here are attributed to the unified
+                # "direct players" card on his dashboard (see _self_other_clubs
+                # block above), so listing him again in the managed-club card
+                # would double-count and clutter the UI.
+                club_filters = [SM.club == club_name, SM.role != 'Name Entry',
+                                SM.player_id != sa_id]
                 if use_archive and archive_period_id:
                     club_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:

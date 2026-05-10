@@ -47,20 +47,6 @@ MANAGED_CLUB_DISPLAY_NAMES = {
     # stored in SARakeConfig (was previously Excel club_id '970996', which
     # doesn't exist in the hierarchy, so we switched to the literal name).
     ('4406-1298', 'SPC Un'): 'תוספת',
-    # Robin Hood 777 plays through SPC Un and SPC T — his cards on his
-    # own agent dashboard read "תוספת" too.
-    ('3849-4104', 'SPC Un'): 'תוספת',
-    ('3849-4104', 'SPC T'):  'תוספת',
-}
-
-# SAs whose own play in their managed clubs is broken out into the per-
-# club ("תוספת") card on their AGENT dashboard, instead of being rolled
-# into the unified "שחקנים ישירים" self-row. Default behavior (Mangisto
-# San) is "rolled into direct" — keeping his SPC Un + SPC T as one
-# combined self-row. SAs listed here switch to the per-club breakout
-# (Robin Hood 777 wants his SPC Un play visible under "תוספות").
-MANAGED_CLUB_SHOW_SELF = {
-    '3849-4104',  # robin hood 777
 }
 
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
