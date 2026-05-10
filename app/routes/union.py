@@ -575,6 +575,32 @@ def player_detail(player_id):
     if scope_applied and not _master_fallback:
         _sess_q = _sess_q.filter(PlayerSession.upload_id.in_(list(scope_upload_ids)))
     db_sessions = _sess_q.order_by(DailyUpload.upload_date.asc()).all()
+
+    # Club-scoped narrowing: PlayerSession has no `club` column, so
+    # `upload_id IN scope` returns sessions across all clubs the player
+    # touched in those uploads. Try to recover the right subset by
+    # matching the Member Stats pnl total: find the unique non-empty
+    # subset of sessions whose pnls sum (within 0.01) to total_pnl.
+    # Fall back to the unfiltered list when zero / multiple subsets
+    # match — better to show too much than hide real data.
+    if club_filter and db_sessions and len(db_sessions) <= 18:
+        _target = round(float(total_pnl or 0), 2)
+        _pnls = [round(float(s.pnl or 0), 2) for s, _ in db_sessions]
+        _hit = None
+        _ambiguous = False
+        for _mask in range(1, 1 << len(_pnls)):
+            _s = sum(_pnls[i] for i in range(len(_pnls)) if _mask & (1 << i))
+            if abs(_s - _target) < 0.01:
+                if _hit is None:
+                    _hit = _mask
+                else:
+                    _ambiguous = True
+                    break
+        if _hit is not None and not _ambiguous:
+            db_sessions = [
+                pair for i, pair in enumerate(db_sessions) if _hit & (1 << i)
+            ]
+
     if db_sessions:
         sessions = []
         for s, upload_date in db_sessions:
