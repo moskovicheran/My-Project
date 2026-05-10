@@ -1198,6 +1198,13 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     managed_club_names = []
     managed_club_names_exclusive = []   # clubs only we manage
     managed_club_names_shared = []      # clubs we manage AND tracked in OVERVIEW_CLUBS
+    managed_club_names_player_only = [] # clubs we registered in player-only mode
+                                        # (we play there, don't manage roster)
+    try:
+        from app.routes.admin import MANAGED_CLUB_PLAYER_ONLY as _PLAYER_ONLY
+    except Exception:
+        _PLAYER_ONLY = set()
+    is_player_only = uid in _PLAYER_ONLY
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
@@ -1207,7 +1214,10 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         for c in rake_cfgs:
             nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
             managed_club_names.append(nm)
-            if nm in overview_clubs:
+            if is_player_only:
+                # Player-only: only claim rows where player_id == self.
+                managed_club_names_player_only.append(nm)
+            elif nm in overview_clubs:
                 managed_club_names_shared.append(nm)
             else:
                 managed_club_names_exclusive.append(nm)
@@ -1278,8 +1288,20 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         else:
             scope_preds.append(M.player_id.in_(list(current_scope_pids)))
     if managed_club_names_exclusive:
-        # Clubs only we manage — claim every row there.
-        scope_preds.append(M.club.in_(managed_club_names_exclusive))
+        # Clubs only we manage — claim every row there, EXCEPT rows
+        # whose player_id is a PLAYER_ONLY SA that registered the same
+        # club (those rows belong to that SA's own card on his dashboard).
+        excl_pred = M.club.in_(managed_club_names_exclusive)
+        _po_overlap_pids = []
+        for _c in get_managed_clubs_all_cfgs():
+            if _c.sa_id == uid or _c.sa_id not in _PLAYER_ONLY:
+                continue
+            _nm = cid_to_name_all.get(_c.managed_club_id) or _c.managed_club_id
+            if _nm in managed_club_names_exclusive:
+                _po_overlap_pids.append(_c.sa_id)
+        if _po_overlap_pids:
+            excl_pred = and_(excl_pred, not_(M.player_id.in_(_po_overlap_pids)))
+        scope_preds.append(excl_pred)
     if managed_club_names_shared:
         # Clubs we manage that are ALSO tracked as standalone OVERVIEW_CLUBS
         # cards — per-row attribution: only claim rows whose sa/agent is
@@ -1288,6 +1310,14 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         scope_preds.append(and_(
             M.club.in_(managed_club_names_shared),
             or_(M.sa_id.in_(_hier_list), M.agent_id.in_(_hier_list)),
+        ))
+    if managed_club_names_player_only:
+        # Player-only clubs: we don't manage the roster, we just play
+        # there. Claim only rows whose player_id is us. Everything else
+        # in the club stays with whoever manages it.
+        scope_preds.append(and_(
+            M.club.in_(managed_club_names_player_only),
+            M.player_id == uid,
         ))
     if override_in_pids:
         # Same club carve-out as current_scope: rows whose club is owned by

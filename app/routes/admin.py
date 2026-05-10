@@ -49,6 +49,18 @@ MANAGED_CLUB_DISPLAY_NAMES = {
     ('4406-1298', 'SPC Un'): 'תוספת',
 }
 
+# SAs whose managed-club card on their OWN dashboard is scoped to just
+# their personal play (player_id == self), with no downline. Used when an
+# SA plays through someone else's club and wants visibility on his own
+# dashboard, but doesn't manage the club's roster. The matching cleanup
+# on the actual managed SA's card (the one who runs the club): rows with
+# player_id == this SA are removed, so they don't count twice.
+MANAGED_CLUB_PLAYER_ONLY = {
+    '3849-4104',  # robin hood 777 — his SPC Un play surfaces on his
+                  # dashboard as an "SPC Un" card (literal label), and is
+                  # excluded from Mangisto's "תוספת" card.
+}
+
 # Activity thresholds: show a player in /admin/lost-players only if EITHER
 # they generated some rake, OR they played at least this many hands.
 # Filters out "tried-a-few-hands-and-left" tails from the list.

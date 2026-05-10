@@ -694,13 +694,21 @@ def dashboard():
             # totalling Rake 3,849.20 / PnL -17,182.37). To avoid double-
             # counting, the managed_clubs loop below skips the SA himself
             # when listing the club's players.
+            from app.routes.admin import MANAGED_CLUB_PLAYER_ONLY
             _self_other_clubs = set()  # only OTHER SAs' managed + OVERVIEW_CLUBS are excluded below
             _clubs_ov, _ = get_members_hierarchy()
             _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
             for _c in get_managed_clubs_all_cfgs():
+                _nm = _c2n_ov.get(_c.managed_club_id) or _c.managed_club_id
                 if _c.sa_id == sa_id:
+                    # PLAYER_ONLY SAs: their managed-club card displays
+                    # only their own player_id, so the same row would
+                    # otherwise also flow into the unified self-row.
+                    # Exclude the club here to break that double-count.
+                    if sa_id in MANAGED_CLUB_PLAYER_ONLY:
+                        _self_other_clubs.add(_nm)
                     continue
-                _self_other_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
+                _self_other_clubs.add(_nm)
             try:
                 from app.routes.admin import OVERVIEW_CLUBS as _OV
                 for _, _cid in _OV:
@@ -1137,12 +1145,23 @@ def dashboard():
                 ).group_by(SM.player_id).all())
 
                 # Get ALL players in this club from DB — excluding the SA
-                # himself. His own rows here are attributed to the unified
-                # "direct players" card on his dashboard (see _self_other_clubs
-                # block above), so listing him again in the managed-club card
-                # would double-count and clutter the UI.
-                club_filters = [SM.club == club_name, SM.role != 'Name Entry',
-                                SM.player_id != sa_id]
+                # himself by default. His own rows here are attributed to
+                # the unified "direct players" card on his dashboard (see
+                # _self_other_clubs block above). PLAYER_ONLY SAs flip
+                # this: the card is scoped to JUST his own player_id (no
+                # other players, no downline), and his row is excluded
+                # from the unified self-row instead.
+                # Also exclude any PLAYER_ONLY SA's player_id from OTHER
+                # SAs' cards on the same club (so the same row doesn't
+                # show up twice across two dashboards).
+                from app.routes.admin import MANAGED_CLUB_PLAYER_ONLY
+                club_filters = [SM.club == club_name, SM.role != 'Name Entry']
+                if sa_id in MANAGED_CLUB_PLAYER_ONLY:
+                    club_filters.append(SM.player_id == sa_id)
+                else:
+                    _exclude_pids = [sa_id] + [
+                        _po for _po in MANAGED_CLUB_PLAYER_ONLY if _po != sa_id]
+                    club_filters.append(SM.player_id.notin_(_exclude_pids))
                 if use_archive and archive_period_id:
                     club_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
                 elif upload_ids_filter:
