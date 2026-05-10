@@ -702,15 +702,29 @@ def dashboard():
             _self_other_clubs = set()  # only OTHER SAs' managed + OVERVIEW_CLUBS are excluded below
             _clubs_ov, _ = get_members_hierarchy()
             _c2n_ov = {_c['club_id']: _c['name'] for _c in _clubs_ov}
+            # PLAYER_ONLY SAs fold their personal play in registered
+            # clubs into the self-row (no separate card). Pre-compute
+            # those club names so we can skip excluding them below even
+            # when another SA also manages the club (the SA's own row
+            # there should still surface).
+            _own_player_only_clubs = set()
+            if sa_id in MANAGED_CLUB_PLAYER_ONLY:
+                for _c in get_managed_clubs_all_cfgs():
+                    if _c.sa_id == sa_id:
+                        _own_player_only_clubs.add(_c2n_ov.get(_c.managed_club_id) or _c.managed_club_id)
             for _c in get_managed_clubs_all_cfgs():
                 _nm = _c2n_ov.get(_c.managed_club_id) or _c.managed_club_id
                 if _c.sa_id == sa_id:
-                    # PLAYER_ONLY SAs: their managed-club card displays
-                    # only their own player_id, so the same row would
-                    # otherwise also flow into the unified self-row.
-                    # Exclude the club here to break that double-count.
-                    if sa_id in MANAGED_CLUB_PLAYER_ONLY:
-                        _self_other_clubs.add(_nm)
+                    # Own managed club: handled by its own card iteration
+                    # below. PLAYER_ONLY SAs skip the card and fold into
+                    # self-row, so don't exclude either way.
+                    continue
+                # Another SA's managed club. Normally excluded from the
+                # self-row. Exception: PLAYER_ONLY SAs whose own
+                # SARakeConfig overlaps with this club — keep it
+                # claimable via self-row (their personal play in that
+                # club surfaces here instead of in a separate card).
+                if _nm in _own_player_only_clubs:
                     continue
                 _self_other_clubs.add(_nm)
             try:
@@ -1117,6 +1131,15 @@ def dashboard():
         managed_clubs = []
         club_net_rake = 0
         club_keeps_pct = 0
+        # PLAYER_ONLY SAs: their SARakeConfig entries don't render as
+        # separate cards on their own dashboard — own play folds into
+        # the self-row above (see _self_other_clubs handling). Attribution
+        # in get_agent_totals' player_only branch still uses these rows,
+        # and Mangisto-side exclusion still subtracts the player_id, so
+        # the math stays consistent.
+        from app.routes.admin import MANAGED_CLUB_PLAYER_ONLY as _PO_SAS
+        if sa_id in _PO_SAS:
+            rake_cfgs = []
         if rake_cfgs:
             # Get club names from hierarchy (for club_id -> name mapping)
             clubs_data, _ = get_members_hierarchy()

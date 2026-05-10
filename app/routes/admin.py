@@ -47,21 +47,18 @@ MANAGED_CLUB_DISPLAY_NAMES = {
     # stored in SARakeConfig (was previously Excel club_id '970996', which
     # doesn't exist in the hierarchy, so we switched to the literal name).
     ('4406-1298', 'SPC Un'): 'תוספת',
-    # Robin Hood 777's SPC Un card (PLAYER_ONLY) shares the same friendly
-    # label so his own dashboard reads symmetrically: SPC T flows into
-    # "שחקנים ישירים", SPC Un into a "תוספת" card with just his user.
-    ('3849-4104', 'SPC Un'): 'תוספת',
 }
 
-# SAs whose managed-club card on their OWN dashboard is scoped to just
-# their personal play (player_id == self), with no downline. Used when an
-# SA plays through someone else's club and wants visibility on his own
-# dashboard, but doesn't manage the club's roster. The matching cleanup
-# on the actual managed SA's card (the one who runs the club): rows with
-# player_id == this SA are removed, so they don't count twice.
+# SAs whose SARakeConfig entries are NOT rendered as separate cards on
+# their own dashboard — their personal play in those clubs is folded
+# into the unified "שחקנים ישירים" self-row alongside the rest of their
+# play. Used when the SA plays through someone else's managed club: his
+# own play stays visible on his dashboard, and the matching row is
+# excluded from the actual roster manager's card so it isn't counted
+# twice.
 MANAGED_CLUB_PLAYER_ONLY = {
-    '3849-4104',  # robin hood 777 — his SPC Un play surfaces on his
-                  # dashboard as an "SPC Un" card (literal label), and is
+    '3849-4104',  # robin hood 777 — his SPC Un play merges into
+                  # "שחקנים ישירים" (with his SPC T play), and is
                   # excluded from Mangisto's "תוספת" card.
 }
 
