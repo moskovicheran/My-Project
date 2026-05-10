@@ -534,8 +534,13 @@ function toggleExpenseDetails() {
                 <thead><tr><th>שחקן</th><th>Rake</th><th>רווח/הפסד</th><th></th></tr></thead>
                 <tbody>
                     {% for m in my_sa.direct %}
+                    {# SA's synthetic self-row: forward the same club    #}
+                    {# exclusions the dashboard uses, so player_detail   #}
+                    {# doesn't surface plays already counted elsewhere   #}
+                    {# (e.g. SPC Un under "תוספת" for Robin Hood 777).   #}
+                    {% set _excl = (self_other_clubs|join(',')) if (m.player_id == my_sa.sa_id and self_other_clubs) else '' %}
                     <tr>
-                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong>{% if m.overridden %} <span class="override-badge" title="שויך ידנית ע״י מנהל">🔗</span>{% endif %}</a></td>
+                        <td><a href="{{ url_for('union.player_detail', player_id=m.player_id, exclude_clubs=_excl) if _excl else url_for('union.player_detail', player_id=m.player_id) }}" class="player-link"><strong>{{ m.nickname }}</strong>{% if m.overridden %} <span class="override-badge" title="שויך ידנית ע״י מנהל">🔗</span>{% endif %}</a></td>
                         <td class="amount income">{{ m.rake|comma }}</td>
                         <td class="amount {% if m.pnl >= 0 %}income{% else %}expense{% endif %}">
                             {% if m.pnl > 0 %}+{% endif %}{{ m.pnl|comma }}

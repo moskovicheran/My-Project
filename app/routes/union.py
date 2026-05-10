@@ -417,9 +417,16 @@ def player_detail(player_id):
     # section, filter to that club only (a player may have rows in multiple
     # clubs per upload, so the scope predicate alone is not enough).
     club_filter = request.args.get('club', '').strip()
+    # Optional ?exclude_clubs=A,B — inverse filter, used by the "שחקנים
+    # ישירים" link on the agent dashboard so a SA who clicks his own
+    # synthetic self-row drills into a view that mirrors the dashboard's
+    # scope (his managed clubs are accounted for in their own cards, so
+    # they should NOT appear here too).
+    _excl_raw = request.args.get('exclude_clubs', '').strip()
+    exclude_clubs = [c.strip() for c in _excl_raw.split(',') if c.strip()] if _excl_raw else []
     # If a club filter is set we always run the "scoped" branch below so the
     # totals/sessions slice picks up the club constraint.
-    scope_applied = (scope_pred is not None) or bool(club_filter)
+    scope_applied = (scope_pred is not None) or bool(club_filter) or bool(exclude_clubs)
 
     # Scoped-view helpers: rebuild totals/clubs/upload_filter from
     # DailyPlayerStats restricted to the viewer's scope predicate / club.
@@ -435,6 +442,8 @@ def player_detail(player_id):
             _scope_filters.append(scope_pred)
         if club_filter:
             _scope_filters.append(_DPS.club == club_filter)
+        if exclude_clubs:
+            _scope_filters.append(_DPS.club.notin_(exclude_clubs))
         scoped_rows = _DPS.query.with_entities(
             _DPS.upload_id, _DPS.club,
             _sf.sum(_DPS.rake), _sf.sum(_DPS.pnl), _sf.sum(_DPS.hands),
@@ -583,7 +592,10 @@ def player_detail(player_id):
     # subset of sessions whose pnls sum (within 0.01) to total_pnl.
     # Fall back to the unfiltered list when zero / multiple subsets
     # match — better to show too much than hide real data.
-    if club_filter and db_sessions and len(db_sessions) <= 18:
+    # Also fires for exclude_clubs (e.g. SA's self-row link forwarding
+    # his managed-club exclusions), since the same upload-id ambiguity
+    # applies in reverse.
+    if (club_filter or exclude_clubs) and db_sessions and len(db_sessions) <= 18:
         _target = round(float(total_pnl or 0), 2)
         _pnls = [round(float(s.pnl or 0), 2) for s, _ in db_sessions]
         _hit = None

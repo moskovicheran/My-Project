@@ -687,6 +687,10 @@ def dashboard():
         # OVERVIEW_CLUBS) belong to those cards, not to this SA's own row.
         _self_existing_pids = set(m['player_id'] for m in direct_players)
         _self_existing_pids |= {m['player_id'] for ag in agents_map.values() for m in ag['members']}
+        # Expose to template too — links from "שחקנים ישירים" need to
+        # forward the same exclusion to player_detail so the SA's own
+        # row drills into a view that mirrors the dashboard's scope.
+        self_other_clubs_for_template = []
         if sa_id not in _self_existing_pids:
             # Own managed clubs are INCLUDED here so the SA's own rows in
             # them roll into the direct-players card (e.g. Mangisto San's
@@ -739,6 +743,7 @@ def dashboard():
                     'role': 'Super Agent', 'pnl': _own_pnl, 'rake': _own_rake,
                     'hands': _own_hands, 'overridden': False,
                 })
+                self_other_clubs_for_template = sorted(_self_other_clubs)
 
         # Fetch missing agents and players for child_sas from DB
         for cs in child_sas:
@@ -1357,6 +1362,7 @@ def dashboard():
                                available_dates=available_dates,
                                selected_dates=selected_dates,
                                view_as_username=view_as_username,
+                               self_other_clubs=self_other_clubs_for_template,
                                hide_personal_breakdown=hide_personal_breakdown)
 
     # Admin preview of any player's dashboard via ?view_player=<player_id>
