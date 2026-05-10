@@ -990,10 +990,17 @@ def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_uploa
 def get_agent_scope(player_id):
     """Resolve the hierarchy SA IDs and managed-club names for an agent.
 
-    Callers build a row-level scope predicate as:
+    Returns (all_sa_ids, managed_club_names, player_only_clubs).
+    PLAYER_ONLY clubs are NOT in managed_club_names — they need a
+    different predicate (own player_id only, since the SA plays
+    through someone else's club rather than managing the roster).
+
+    Build the row-level scope predicate like:
       or_(M.sa_id.in_(all_sa_ids),
           M.agent_id.in_(all_sa_ids),
-          M.club.in_(managed_club_names))            # if any clubs
+          M.club.in_(managed_club_names),               # full club
+          and_(M.club.in_(player_only_clubs),
+               M.player_id == player_id))                # own play only
     Use managed_club_names with notin_() when aggregating the
     'personal' (hier-only-not-club) bucket so it excludes overlap rows.
     """
@@ -1025,8 +1032,15 @@ def get_agent_scope(player_id):
         child_sa_ids.extend(get_sa_children(kid))
     all_sa_ids = list(set(list(known_ids) + child_sa_ids))
 
+    try:
+        from app.routes.admin import MANAGED_CLUB_PLAYER_ONLY as _PO
+    except Exception:
+        _PO = set()
+    is_player_only = player_id in _PO
+
     rake_cfgs = [c for c in get_managed_clubs_all_cfgs() if c.sa_id == player_id]
     managed_club_names = []
+    player_only_clubs = []
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
@@ -1034,9 +1048,13 @@ def get_agent_scope(player_id):
         # clubs_data (e.g. "Spc o" which has no club_id in the Excel hierarchy),
         # fall back to using the managed_club_id value itself as a literal
         # club name — matches rows where DailyPlayerStats.club == that value.
-        managed_club_names = [cid_to_name.get(c.managed_club_id) or c.managed_club_id
-                              for c in rake_cfgs]
-    return all_sa_ids, managed_club_names
+        for c in rake_cfgs:
+            nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
+            if is_player_only:
+                player_only_clubs.append(nm)
+            else:
+                managed_club_names.append(nm)
+    return all_sa_ids, managed_club_names, player_only_clubs
 
 
 def get_players_with_current_scope(scope_ids, M=None, exclude_self=None):

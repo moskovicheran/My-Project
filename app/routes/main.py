@@ -1569,7 +1569,7 @@ def agent_top_players():
 
     from app.models import DailyPlayerStats, SAHierarchy, SARakeConfig
     from app.union_data import get_transfer_adjustments
-    from sqlalchemy import func as sqlfunc, or_
+    from sqlalchemy import func as sqlfunc, or_, and_
 
     all_players = []
 
@@ -1624,11 +1624,14 @@ def agent_top_players():
         # club in managed clubs). Same logic used by /api/report and
         # agent_dashboard — prevents cross-channel leakage and double counts.
         from app.union_data import get_agent_scope
-        _scope_sa_ids, managed_club_names = get_agent_scope(sa_id)
+        _scope_sa_ids, managed_club_names, _po_clubs = get_agent_scope(sa_id)
         scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
                        DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
         if managed_club_names:
             scope_preds.append(DailyPlayerStats.club.in_(managed_club_names))
+        if _po_clubs:
+            scope_preds.append(and_(DailyPlayerStats.club.in_(_po_clubs),
+                                    DailyPlayerStats.player_id == sa_id))
         players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -2149,7 +2152,7 @@ def export_agent_account():
     from app.models import (SAHierarchy, SARakeConfig, RakeConfig, ExpenseCharge,
                             DailyPlayerStats, ArchivedPlayerStats)
     from app.union_data import get_members_hierarchy, get_transfer_adjustments
-    from sqlalchemy import func as sqlfunc, or_
+    from sqlalchemy import func as sqlfunc, or_, and_
 
     # Date filter
     requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
@@ -2173,11 +2176,19 @@ def export_agent_account():
             scope.append(SM.upload_id.in_(upload_ids_filter))
 
     # Personal rake — hier channel only (exclude managed-club rows so they
-    # aren't double-counted below in the clubs section).
+    # aren't double-counted below in the clubs section). PLAYER_ONLY
+    # clubs aren't excluded — they fold into the personal channel by
+    # design (no separate clubs-section card).
     from app.union_data import get_agent_scope
-    _scope_sa_ids, _mc_names = get_agent_scope(sa_id)
+    _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(sa_id)
+    _hier_or_self = or_(SM.sa_id.in_(_scope_sa_ids),
+                        SM.agent_id.in_(_scope_sa_ids))
+    if _po_clubs:
+        _hier_or_self = or_(_hier_or_self,
+                            and_(SM.club.in_(_po_clubs),
+                                 SM.player_id == sa_id))
     personal_filters = [
-        or_(SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)),
+        _hier_or_self,
         SM.role != 'Name Entry',
     ]
     if _mc_names:
@@ -2503,11 +2514,14 @@ def export_agent_players():
     # Unified scope predicate — row is in scope iff sa_id/agent_id in
     # hierarchy OR club in managed clubs. Every row counted once.
     from app.union_data import get_agent_scope
-    from sqlalchemy import or_ as _or
-    _scope_sa_ids, _mc_names = get_agent_scope(sa_id)
+    from sqlalchemy import or_ as _or, and_ as _and
+    _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(sa_id)
     _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
     if _mc_names:
         _scope_preds.append(SM.club.in_(_mc_names))
+    if _po_clubs:
+        _scope_preds.append(_and(SM.club.in_(_po_clubs),
+                                 SM.player_id == sa_id))
 
     # Nickname map (always from active data — needed for resolving names even
     # when archive filter returns no rows for the SA itself)
@@ -2760,10 +2774,14 @@ def export_agent_full_box():
             scope.append(SM.upload_id.in_(upload_ids_filter))
 
     # Agent scope — zero-leakage rule
-    _scope_sa_ids, _mc_names = get_agent_scope(sa_id)
+    from sqlalchemy import and_ as _and
+    _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(sa_id)
     _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
     if _mc_names:
         _scope_preds.append(SM.club.in_(_mc_names))
+    if _po_clubs:
+        _scope_preds.append(_and(SM.club.in_(_po_clubs),
+                                 SM.player_id == sa_id))
 
     # Nickname lookup (from active data — names are stable across archives)
     all_nicks = dict(DailyPlayerStats.query.with_entities(
@@ -3025,13 +3043,16 @@ def export_agent_period():
 
     # Unified scope: sa_id/agent_id in hierarchy OR club in managed clubs.
     from app.union_data import get_agent_scope
-    from sqlalchemy import or_ as _or
-    _scope_sa_ids, _mc_names = get_agent_scope(current_user.player_id)
+    from sqlalchemy import or_ as _or, and_ as _and
+    _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(current_user.player_id)
+    _po_pid = current_user.player_id
 
     def _scope_preds(M):
         preds = [M.sa_id.in_(_scope_sa_ids), M.agent_id.in_(_scope_sa_ids)]
         if _mc_names:
             preds.append(M.club.in_(_mc_names))
+        if _po_clubs:
+            preds.append(_and(M.club.in_(_po_clubs), M.player_id == _po_pid))
         return _or(*preds)
 
     if period_id:
@@ -3672,11 +3693,15 @@ def export_periodic():
     if current_user.role == 'agent' and current_user.player_id:
         # Unified scope — hierarchy + managed clubs (no leakage).
         from app.union_data import get_agent_scope
-        _scope_sa_ids, _mc_names = get_agent_scope(current_user.player_id)
+        from sqlalchemy import and_ as _and_po
+        _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(current_user.player_id)
         _scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
                         DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
         if _mc_names:
             _scope_preds.append(DailyPlayerStats.club.in_(_mc_names))
+        if _po_clubs:
+            _scope_preds.append(_and_po(DailyPlayerStats.club.in_(_po_clubs),
+                                        DailyPlayerStats.player_id == current_user.player_id))
         base_filters.append(or_(*_scope_preds))
 
     # Sheet 1: Player summary
@@ -3806,10 +3831,14 @@ def periodic_report_api():
     if current_user.role == 'agent' and current_user.player_id:
         # Unified scope — hierarchy + managed clubs (no leakage across channels).
         from app.union_data import get_agent_scope
-        _scope_sa_ids, _mc_names = get_agent_scope(current_user.player_id)
+        from sqlalchemy import and_ as _and_po
+        _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(current_user.player_id)
         _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
         if _mc_names:
             _scope_preds.append(SM.club.in_(_mc_names))
+        if _po_clubs:
+            _scope_preds.append(_and_po(SM.club.in_(_po_clubs),
+                                        SM.player_id == current_user.player_id))
         base_filters.append(or_(*_scope_preds))
 
     if game_type_filter:
