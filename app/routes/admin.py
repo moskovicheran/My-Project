@@ -47,6 +47,10 @@ MANAGED_CLUB_DISPLAY_NAMES = {
     # stored in SARakeConfig (was previously Excel club_id '970996', which
     # doesn't exist in the hierarchy, so we switched to the literal name).
     ('4406-1298', 'SPC Un'): 'תוספת',
+    # Robin Hood 777's SPC Un card (PLAYER_ONLY) shares the same friendly
+    # label so his own dashboard reads symmetrically: SPC T flows into
+    # "שחקנים ישירים", SPC Un into a "תוספת" card with just his user.
+    ('3849-4104', 'SPC Un'): 'תוספת',
 }
 
 # SAs whose managed-club card on their OWN dashboard is scoped to just
