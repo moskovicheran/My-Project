@@ -1198,6 +1198,13 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     managed_club_names = []
     managed_club_names_exclusive = []   # clubs only we manage
     managed_club_names_shared = []      # clubs we manage AND tracked in OVERVIEW_CLUBS
+    managed_club_names_show_self = []   # clubs we registered in show-self mode
+                                        # (we play there, don't manage the roster)
+    try:
+        from app.routes.admin import MANAGED_CLUB_SHOW_SELF as _SHOW_SELF
+    except Exception:
+        _SHOW_SELF = set()
+    is_show_self = uid in _SHOW_SELF
     if rake_cfgs:
         clubs_data, _ = get_members_hierarchy()
         cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
@@ -1207,7 +1214,11 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         for c in rake_cfgs:
             nm = cid_to_name.get(c.managed_club_id) or c.managed_club_id
             managed_club_names.append(nm)
-            if nm in overview_clubs:
+            if is_show_self:
+                # Show-self SAs only claim rows in their own hierarchy —
+                # they play through the club but don't own the roster.
+                managed_club_names_show_self.append(nm)
+            elif nm in overview_clubs:
                 managed_club_names_shared.append(nm)
             else:
                 managed_club_names_exclusive.append(nm)
@@ -1278,8 +1289,26 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         else:
             scope_preds.append(M.player_id.in_(list(current_scope_pids)))
     if managed_club_names_exclusive:
-        # Clubs only we manage — claim every row there.
-        scope_preds.append(M.club.in_(managed_club_names_exclusive))
+        # Clubs only we manage — claim every row there, EXCEPT rows owned
+        # by another SA that registered the same club in show-self mode
+        # (those rows belong to that SA's per-club תוספת card).
+        excl_pred = M.club.in_(managed_club_names_exclusive)
+        _show_self_overlap_excludes = []
+        for _c in get_managed_clubs_all_cfgs():
+            if _c.sa_id == uid or _c.sa_id not in _SHOW_SELF:
+                continue
+            _nm = cid_to_name_all.get(_c.managed_club_id) or _c.managed_club_id
+            if _nm in managed_club_names_exclusive:
+                _their_scope = list({_c.sa_id, *get_sa_children(_c.sa_id)})
+                _show_self_overlap_excludes.append(and_(
+                    M.club == _nm,
+                    or_(M.player_id == _c.sa_id,
+                        M.sa_id.in_(_their_scope),
+                        M.agent_id.in_(_their_scope)),
+                ))
+        if _show_self_overlap_excludes:
+            excl_pred = and_(excl_pred, not_(or_(*_show_self_overlap_excludes)))
+        scope_preds.append(excl_pred)
     if managed_club_names_shared:
         # Clubs we manage that are ALSO tracked as standalone OVERVIEW_CLUBS
         # cards — per-row attribution: only claim rows whose sa/agent is
@@ -1288,6 +1317,17 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
         scope_preds.append(and_(
             M.club.in_(managed_club_names_shared),
             or_(M.sa_id.in_(_hier_list), M.agent_id.in_(_hier_list)),
+        ))
+    if managed_club_names_show_self:
+        # Show-self clubs: we don't manage the roster, we just play there.
+        # Claim only rows whose player_id is us, or whose sa/agent is in
+        # our hierarchy. The rest stay with whoever else manages the club.
+        _hier_list = list(set(all_ids) | set(known_agent_ids))
+        scope_preds.append(and_(
+            M.club.in_(managed_club_names_show_self),
+            or_(M.player_id == uid,
+                M.sa_id.in_(_hier_list),
+                M.agent_id.in_(_hier_list)),
         ))
     if override_in_pids:
         # Same club carve-out as current_scope: rows whose club is owned by
