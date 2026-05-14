@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
+from sqlalchemy import and_
 from app.models import db, SAHierarchy
 from app.union_data import (get_union_overview, get_ring_games, get_mtts,
                             get_top_members, get_members_hierarchy,
@@ -114,7 +115,7 @@ def agents():
                     sqlfunc.sum(DailyPlayerStats.hands),
                 ).filter(
                     DailyPlayerStats.player_id == sa_id_val,
-                    DailyPlayerStats.role != 'Name Entry'
+                    and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
                 ).first()
                 if sa_own and (float(sa_own[1] or 0) != 0 or float(sa_own[2] or 0) != 0):
                     sa['direct'].insert(0, {
@@ -327,7 +328,7 @@ def players():
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(
             _or(DailyPlayerStats.sa_id == pid, DailyPlayerStats.agent_id == pid),
-            DailyPlayerStats.role != 'Name Entry',
+            and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
         ).first()
         if not agg:
             continue
@@ -436,7 +437,7 @@ def player_detail(player_id):
         from sqlalchemy import func as _sf
         _scope_filters = [
             _DPS.player_id == player_id,
-            _DPS.role != 'Name Entry',
+            and_(_DPS.role != 'Name Entry', _DPS.role.isnot(None), _DPS.role != ''),
         ]
         if scope_pred is not None:
             _scope_filters.append(scope_pred)
@@ -463,7 +464,7 @@ def player_detail(player_id):
         from sqlalchemy import func as _sqlfunc
         actual_role = _DPS.query.with_entities(_sqlfunc.max(_DPS.role)).filter(
             _DPS.player_id == player_id,
-            _DPS.role != 'Name Entry'
+            and_(_DPS.role != 'Name Entry', _DPS.role.isnot(None), _DPS.role != '')
         ).scalar() or 'Player'
         member_info = {
             'player_id': player_id,
@@ -533,7 +534,7 @@ def player_detail(player_id):
             _sf_ce.sum(_DPS_ce.hands),
         ).filter(
             _DPS_ce.player_id == player_id,
-            _DPS_ce.role != 'Name Entry',
+            and_(_DPS_ce.role != 'Name Entry', _DPS_ce.role.isnot(None), _DPS_ce.role != ''),
             _DPS_ce.club != '',
         ).group_by(_DPS_ce.club).all()
         if _club_rows:
@@ -776,7 +777,7 @@ def _build_hierarchy_chain(player_id):
                  DailyPlayerStats.sa_id == player_id).first() is not None)
     is_agent_role = DailyPlayerStats.query.filter(
         DailyPlayerStats.agent_id == player_id,
-        DailyPlayerStats.role != 'Name Entry').first() is not None
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')).first() is not None
 
     chain = []
     seen = {player_id}
@@ -785,7 +786,7 @@ def _build_hierarchy_chain(player_id):
     player_club = DailyPlayerStats.query.with_entities(
         sqlfunc.max(DailyPlayerStats.club)
     ).filter(DailyPlayerStats.player_id == player_id,
-             DailyPlayerStats.role != 'Name Entry').scalar() or ''
+             and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')).scalar() or ''
 
     if is_sa:
         # Player themselves IS an SA — walk UPWARD from their parent in
@@ -808,7 +809,7 @@ def _build_hierarchy_chain(player_id):
             sqlfunc.max(DailyPlayerStats.sa_id),
             sqlfunc.max(DailyPlayerStats.agent_id),
         ).filter(DailyPlayerStats.player_id == player_id,
-                 DailyPlayerStats.role != 'Name Entry').first() or ('', '')
+                 and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')).first() or ('', '')
         sa_id = (pa.assigned_sa_id if pa and pa.assigned_sa_id else (own_sa or ''))
         ag_id = (pa.assigned_agent_id if pa and pa.assigned_agent_id else (own_ag or ''))
         # Agent node first (if distinct from SA)

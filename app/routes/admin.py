@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from functools import wraps
+from sqlalchemy import and_
 from app.models import (db, AdminNote, MoneyTransfer, SAHierarchy, SARakeConfig,
                         RakeConfig, SharedExpense, ExpenseCharge, User, LoginLog,
                         PlayerAssignment)
@@ -1067,7 +1068,7 @@ def bot_suspects():
             sqlfunc.sum(DailyPlayerStats.hands),
             sqlfunc.sum(DailyPlayerStats.pnl),
             sqlfunc.sum(DailyPlayerStats.rake),
-        ).filter(DailyPlayerStats.role != 'Name Entry').group_by(
+        ).filter(and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')).group_by(
             DailyPlayerStats.player_id, DailyPlayerStats.upload_id
         ).all()
         for pid, nick, club, uid, hands, pnl, rake in rows:
@@ -1092,7 +1093,7 @@ def bot_suspects():
             sqlfunc.sum(ArchivedPlayerStats.hands),
             sqlfunc.sum(ArchivedPlayerStats.pnl),
             sqlfunc.sum(ArchivedPlayerStats.rake),
-        ).filter(ArchivedPlayerStats.role != 'Name Entry')
+        ).filter(and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != ''))
         if period_filter:
             q = q.filter(ArchivedPlayerStats.period_id == period_filter)
         for pid, nick, club, p_id, uid, hands, pnl, rake in q.group_by(
@@ -1512,7 +1513,7 @@ def agent_view(sa_id):
         sqlfunc.sum(DailyPlayerStats.hands),
     ).filter(
         DailyPlayerStats.player_id.in_(current_scope_pids) if current_scope_pids else DailyPlayerStats.id < 0,
-        DailyPlayerStats.role != 'Name Entry',
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
     ).group_by(DailyPlayerStats.player_id).all()
 
     # Get actual sa_id per player (for correct direct player filtering)
@@ -1559,7 +1560,7 @@ def agent_view(sa_id):
                 or_(DailyPlayerStats.agent_id.in_(direct_agent_ids),
                     DailyPlayerStats.sa_id.in_(direct_agent_ids)),
                 DailyPlayerStats.player_id.notin_(list(all_my_player_ids)),
-                DailyPlayerStats.role != 'Name Entry'
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
             ]
             # Exclude rows under child SAs — they're rendered by the
             # child_sas section; without this, an agent like Notorius1
@@ -1608,7 +1609,7 @@ def agent_view(sa_id):
                 sqlfunc.sum(DailyPlayerStats.hands),
             ).filter(
                 DailyPlayerStats.player_id == ag_id,
-                DailyPlayerStats.role != 'Name Entry'
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
             ).first()
             if own_stats and (float(own_stats[0] or 0) != 0 or float(own_stats[1] or 0) != 0):
                 ag_nick = ag.get('nick', ag_id)
@@ -1644,7 +1645,7 @@ def agent_view(sa_id):
                 _nm = _cid
             if _nm:
                 _self_other_clubs.add(_nm)
-        _self_filters = [DailyPlayerStats.player_id == sa_id, DailyPlayerStats.role != 'Name Entry']
+        _self_filters = [DailyPlayerStats.player_id == sa_id, and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')]
         if _self_other_clubs:
             _self_filters.append(DailyPlayerStats.club.notin_(list(_self_other_clubs)))
         _self_row = DailyPlayerStats.query.with_entities(
@@ -1736,7 +1737,7 @@ def agent_view(sa_id):
             ).filter(
                 DailyPlayerStats.agent_id == ag_id,
                 DailyPlayerStats.player_id.notin_(list(existing_pids)) if existing_pids else True,
-                DailyPlayerStats.role != 'Name Entry'
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
             ).group_by(DailyPlayerStats.player_id).all()
             for pid, nick, role, pnl, rake, hands in db_members:
                 ag['members'].append({
@@ -1764,7 +1765,7 @@ def agent_view(sa_id):
                 DailyPlayerStats.sa_id == sa_id_val,
                 DailyPlayerStats.agent_id.in_(['', '-']),
                 DailyPlayerStats.player_id.notin_(list(all_existing)),
-                DailyPlayerStats.role != 'Name Entry'
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
             ).group_by(DailyPlayerStats.player_id).all()
             for pid, nick, role, pnl, rake, hands in db_direct:
                 cs['direct'].append({
@@ -1790,7 +1791,7 @@ def agent_view(sa_id):
                     sqlfunc.sum(DailyPlayerStats.hands),
                 ).filter(
                     DailyPlayerStats.player_id == sa_id_val,
-                    DailyPlayerStats.role != 'Name Entry'
+                    and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
                 ).first()
                 if sa_own and (float(sa_own[1] or 0) != 0 or float(sa_own[2] or 0) != 0):
                     cs['direct'].insert(0, {
@@ -2135,7 +2136,7 @@ def lost_players():
         func.sum(DailyPlayerStats.hands),
         func.sum(DailyPlayerStats.pnl),
     ).filter(
-        DailyPlayerStats.role != 'Name Entry',
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
         DailyPlayerStats.club.in_(MANAGED_LOST_CLUBS),
         or_(DailyPlayerStats.sa_id.is_(None), DailyPlayerStats.sa_id == '', DailyPlayerStats.sa_id == '-'),
         or_(DailyPlayerStats.agent_id.is_(None), DailyPlayerStats.agent_id == '', DailyPlayerStats.agent_id == '-'),
@@ -2433,7 +2434,7 @@ def agents():
         sqlfunc.sum(DailyPlayerStats.pnl),
         sqlfunc.sum(DailyPlayerStats.rake),
         sqlfunc.sum(DailyPlayerStats.hands),
-    ).filter(DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-', DailyPlayerStats.role != 'Name Entry'
+    ).filter(DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-', and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
     ).group_by(DailyPlayerStats.sa_id).all()
     sa_stats = {}
     for sid, pnl, rake, hands in sa_stats_db:
@@ -2457,7 +2458,7 @@ def agents():
     _db_players = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, func.max(DailyPlayerStats.nickname),
         func.max(DailyPlayerStats.role), func.max(DailyPlayerStats.club),
-    ).filter(DailyPlayerStats.role != 'Name Entry'
+    ).filter(and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
     ).group_by(DailyPlayerStats.player_id).all()
     for pid, nick, role, club in _db_players:
         if pid in _excel_pids or not nick:

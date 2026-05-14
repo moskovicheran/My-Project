@@ -1113,7 +1113,7 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
     # fall through to the orphan list.
     real_sa = and_(M.sa_id.isnot(None), M.sa_id != '', M.sa_id != '-')
     real_ag = and_(M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-')
-    subq_filters = [M.role != 'Name Entry', or_(real_sa, real_ag)]
+    subq_filters = [and_(M.role != 'Name Entry', M.role.isnot(None), M.role != ''), or_(real_sa, real_ag)]
     if period_clause is not None:
         subq_filters.append(period_clause)
     latest_uid_subq = M.query.with_entities(
@@ -1417,7 +1417,7 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
     else:
         # Include the agent's own personal play in their totals so the
         # admin-overview cards reconcile with the top-box (no delta).
-        scope_filters = [or_(*scope_preds), M.role != 'Name Entry'] + time_filters
+        scope_filters = [or_(*scope_preds), and_(M.role != 'Name Entry', M.role.isnot(None), M.role != '')] + time_filters
 
     stats = M.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(M.player_id)),
@@ -1581,7 +1581,7 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_up
 
     Optional filters identical in shape to get_agent_totals()."""
     from app.models import DailyPlayerStats, ArchivedPlayerStats, RakeConfig
-    from sqlalchemy import func as sqlfunc
+    from sqlalchemy import func as sqlfunc, and_
 
     use_archive = bool(archive_period_id and archive_upload_ids)
     StatsModel = ArchivedPlayerStats if use_archive else DailyPlayerStats
@@ -1631,7 +1631,7 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_up
         sqlfunc.sum(StatsModel.pnl),
         sqlfunc.sum(StatsModel.hands),
     ).filter(StatsModel.club == club_name,
-             StatsModel.role != 'Name Entry',
+             and_(StatsModel.role != 'Name Entry', StatsModel.role.isnot(None), StatsModel.role != ''),
              *scope_filters, *carve_filters).first()
 
     player_count = stats[0] or 0

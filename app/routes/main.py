@@ -259,13 +259,13 @@ def dashboard():
                 # Query from archived data
                 from app.models import ArchivedPlayerStats
                 base_filters = [ArchivedPlayerStats.club == club_name,
-                                ArchivedPlayerStats.role != 'Name Entry',
+                                and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != ''),
                                 _archive_filter(ArchivedPlayerStats, archive_buckets)]
                 StatsModel = ArchivedPlayerStats
             else:
                 # Base query (active data)
                 base_filters = [DailyPlayerStats.club == club_name,
-                                DailyPlayerStats.role != 'Name Entry']
+                                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')]
                 if upload_ids_filter:
                     base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
                 elif had_date_filter:
@@ -551,7 +551,7 @@ def dashboard():
         # eliasaf111's POKER GARDEN play (Riko's managed club) would show
         # up on niroha's / Dolar 10's dashboard too.
         base_agent_filters = [SM.player_id.in_(my_player_id_list),
-                              SM.role != 'Name Entry']
+                              and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
         # Clubs shown in their own cards (OTHER SAs' managed + OVERVIEW_CLUBS).
         _other_owned_clubs = set(managed_club_names_list)  # start with own (already excluded)
         _clubs_data_co, _ = get_members_hierarchy()
@@ -648,7 +648,7 @@ def dashboard():
                 _miss_filters = [
                     or_(SM.agent_id.in_(direct_agent_ids), SM.sa_id.in_(direct_agent_ids)),
                     SM.player_id.notin_(list(all_my_player_ids)),
-                    SM.role != 'Name Entry'
+                    and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')
                 ]
                 # Exclude rows whose sa is under a child SA — those are
                 # rendered by the child_sas section below. Without this,
@@ -701,7 +701,7 @@ def dashboard():
         for ag_id, ag in agents_map.items():
             existing_pids = set(m['player_id'] for m in ag['members'])
             if ag_id not in existing_pids:
-                _own_filters = [SM.player_id == ag_id, SM.role != 'Name Entry']
+                _own_filters = [SM.player_id == ag_id, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
                 if managed_club_names_list:
                     _own_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
@@ -783,7 +783,7 @@ def dashboard():
                         _self_other_clubs.add(_nm)
             except Exception:
                 pass
-            _self_filters = [SM.player_id == sa_id, SM.role != 'Name Entry']
+            _self_filters = [SM.player_id == sa_id, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
             if _self_other_clubs:
                 _self_filters.append(SM.club.notin_(list(_self_other_clubs)))
             if use_archive and archive_period_id:
@@ -829,7 +829,7 @@ def dashboard():
         for cs in child_sas:
             for ag_id, ag in cs.get('agents', {}).items():
                 existing_pids = set(m['player_id'] for m in ag.get('members', []))
-                _mem_filters = [SM.agent_id == ag_id, SM.role != 'Name Entry']
+                _mem_filters = [SM.agent_id == ag_id, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
                 if existing_pids:
                     _mem_filters.append(SM.player_id.notin_(list(existing_pids)))
                 if managed_club_names_list:
@@ -861,7 +861,7 @@ def dashboard():
                         existing_agent_pids.add(m['player_id'])
                 all_existing = existing_direct_pids | existing_agent_pids | {sa_id_val}
                 _dir_filters = [SM.sa_id == sa_id_val, SM.agent_id.in_(['', '-']),
-                                SM.player_id.notin_(list(all_existing)), SM.role != 'Name Entry']
+                                SM.player_id.notin_(list(all_existing)), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
                 if managed_club_names_list:
                     _dir_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
@@ -891,7 +891,7 @@ def dashboard():
                     for m in ag.get('members', []):
                         existing_pids.add(m['player_id'])
                 if sa_id_val not in existing_pids:
-                    _csa_filters = [SM.player_id == sa_id_val, SM.role != 'Name Entry']
+                    _csa_filters = [SM.player_id == sa_id_val, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
                     if managed_club_names_list:
                         _csa_filters.append(SM.club.notin_(managed_club_names_list))
                     if use_archive and archive_period_id:
@@ -951,7 +951,7 @@ def dashboard():
             cumul_cs = {}
             if cs_player_ids and cs_sa:
                 _cumul_filters = [SM.player_id.in_(list(cs_player_ids)),
-                                  SM.role != 'Name Entry']
+                                  and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
                 if managed_club_names_list:
                     _cumul_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
@@ -1230,7 +1230,7 @@ def dashboard():
                 # SAs' cards on the same club (so the same row doesn't
                 # show up twice across two dashboards).
                 from app.routes.admin import MANAGED_CLUB_PLAYER_ONLY
-                club_filters = [SM.club == club_name, SM.role != 'Name Entry']
+                club_filters = [SM.club == club_name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
                 if sa_id in MANAGED_CLUB_PLAYER_ONLY:
                     club_filters.append(SM.player_id == sa_id)
                 else:
@@ -1654,7 +1654,7 @@ def agent_top_players():
         ).filter(
             or_(DailyPlayerStats.sa_id.in_(all_sa_ids),
                 DailyPlayerStats.agent_id.in_(all_sa_ids)),
-            DailyPlayerStats.role != 'Name Entry'
+            and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
         ).distinct().all()]
 
         # Also include SA IDs themselves (they may play too)
@@ -1662,7 +1662,7 @@ def agent_top_players():
             if sid not in my_pids:
                 has_stats = DailyPlayerStats.query.filter(
                     DailyPlayerStats.player_id == sid,
-                    DailyPlayerStats.role != 'Name Entry'
+                    and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
                 ).first()
                 if has_stats:
                     my_pids.append(sid)
@@ -1690,7 +1690,7 @@ def agent_top_players():
             sqlfunc.sum(DailyPlayerStats.hands),
         ).filter(
             or_(*scope_preds),
-            DailyPlayerStats.role != 'Name Entry',
+            and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
         ).group_by(DailyPlayerStats.player_id).all()
 
         # Nickname lookup for agent names
@@ -1740,7 +1740,7 @@ def agent_top_players():
                 sqlfunc.sum(DailyPlayerStats.hands),
             ).filter(
                 DailyPlayerStats.club == club_name,
-                DailyPlayerStats.role != 'Name Entry'
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
             ).group_by(DailyPlayerStats.player_id).all()
 
             xfer_adj = get_transfer_adjustments([p[0] for p in club_players_db])
@@ -1846,7 +1846,7 @@ def agent_reports():
         # 1) sa_id OR agent_id in hierarchy
         rows = M.query.with_entities(M.player_id).filter(
             or_(M.sa_id.in_(all_sa_ids), M.agent_id.in_(all_sa_ids)),
-            M.role != 'Name Entry'
+            and_(M.role != 'Name Entry', M.role.isnot(None), M.role != '')
         ).distinct().all()
         for (pid,) in rows:
             all_ids.add(pid); hier_ids.add(pid)
@@ -1869,14 +1869,14 @@ def agent_reports():
         agents_here = [r[0] for r in agent_rows if r[0]]
         if agents_here:
             rows = M.query.with_entities(M.player_id).filter(
-                M.agent_id.in_(agents_here), M.role != 'Name Entry'
+                M.agent_id.in_(agents_here), and_(M.role != 'Name Entry', M.role.isnot(None), M.role != '')
             ).distinct().all()
             for (pid,) in rows:
                 all_ids.add(pid); hier_ids.add(pid)
 
         # 4) The agent's own game stats (+ sub-SAs' own play)
         rows = M.query.with_entities(M.player_id).filter(
-            M.player_id.in_(all_sa_ids), M.role != 'Name Entry'
+            M.player_id.in_(all_sa_ids), and_(M.role != 'Name Entry', M.role.isnot(None), M.role != '')
         ).distinct().all()
         for (pid,) in rows:
             all_ids.add(pid); hier_ids.add(pid)
@@ -1885,7 +1885,7 @@ def agent_reports():
         # Club players do NOT go into hier_ids (dashboard bucketises them).
         if managed_club_names:
             rows = M.query.with_entities(M.player_id).filter(
-                M.club.in_(managed_club_names), M.role != 'Name Entry'
+                M.club.in_(managed_club_names), and_(M.role != 'Name Entry', M.role.isnot(None), M.role != '')
             ).distinct().all()
             for (pid,) in rows:
                 all_ids.add(pid)
@@ -2152,7 +2152,7 @@ def export_player(player_id):
             sqlfunc.sum(StatsModel.hands),
         ).filter(*stat_filters,
                  StatsModel.club != '',
-                 StatsModel.role != 'Name Entry',
+                 and_(StatsModel.role != 'Name Entry', StatsModel.role.isnot(None), StatsModel.role != ''),
         ).group_by(StatsModel.club).all()
         if len(per_club) > 1:
             summary = []
@@ -2237,7 +2237,7 @@ def export_agent_account():
                                  SM.player_id == sa_id))
     personal_filters = [
         _hier_or_self,
-        SM.role != 'Name Entry',
+        and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''),
     ]
     if _mc_names:
         personal_filters.append(SM.club.notin_(_mc_names))
@@ -2296,7 +2296,7 @@ def export_agent_account():
     sa_summary_rows = []
     child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
     for csa_id in child_sa_ids:
-        csa_filters = [SM.sa_id == csa_id, SM.role != 'Name Entry']
+        csa_filters = [SM.sa_id == csa_id, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
         if _mc_names:
             csa_filters.append(SM.club.notin_(_mc_names))
         csa = SM.query.with_entities(
@@ -2323,7 +2323,7 @@ def export_agent_account():
 
     # Per-Agent summary — regular agents (sa_id in scope, agent_id present).
     agent_filters = [
-        SM.sa_id.in_(_scope_sa_ids), SM.role != 'Name Entry',
+        SM.sa_id.in_(_scope_sa_ids), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''),
         SM.agent_id != '', SM.agent_id != '-', SM.agent_id.isnot(None),
     ]
     if _mc_names:
@@ -2412,10 +2412,10 @@ def export_single_agent(agent_id):
     if use_archive and archive_period_id:
         StatsModel = ArchivedPlayerStats
         base_filters = [_archive_filter(ArchivedPlayerStats, archive_buckets),
-                        ArchivedPlayerStats.role != 'Name Entry']
+                        and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != '')]
     else:
         StatsModel = DailyPlayerStats
-        base_filters = [DailyPlayerStats.role != 'Name Entry']
+        base_filters = [and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')]
         if upload_ids_filter:
             base_filters.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
         elif had_date_filter:
@@ -2588,7 +2588,7 @@ def export_agent_players():
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands),
     ).filter(
-        _or(*_scope_preds), SM.role != 'Name Entry', *scope,
+        _or(*_scope_preds), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope,
     ).group_by(SM.player_id).all()
 
     # Transfers only apply to the unfiltered (all-time) view
@@ -2679,7 +2679,7 @@ def export_agent_players():
 
     # ── Sheet 2: My Agents ──
     _agent_filters = [
-        SM.sa_id.in_(all_sa_ids), SM.role != 'Name Entry',
+        SM.sa_id.in_(all_sa_ids), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''),
         SM.agent_id != '', SM.agent_id != '-',
     ]
     if _mc_names:
@@ -2714,7 +2714,7 @@ def export_agent_players():
     # ── Sheet 3: My Super Agents ──
     sa_rows = []
     for csa_id in child_sa_ids:
-        _csa_filters = [SM.sa_id == csa_id, SM.role != 'Name Entry']
+        _csa_filters = [SM.sa_id == csa_id, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
         if _mc_names:
             _csa_filters.append(SM.club.notin_(_mc_names))
         sa_data = SM.query.with_entities(
@@ -2754,7 +2754,7 @@ def export_agent_players():
             cr = SM.query.with_entities(
                 sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
                 sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
-            ).filter(SM.club == name, SM.role != 'Name Entry', *scope).first()
+            ).filter(SM.club == name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope).first()
             club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
             keeps = club_rc.rake_percent if club_rc else 0
             rake = round(float(cr[1] or 0), 2)
@@ -2845,7 +2845,7 @@ def export_agent_full_box():
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands),
     ).filter(
-        _or(*_scope_preds), SM.role != 'Name Entry', *scope,
+        _or(*_scope_preds), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope,
     ).group_by(SM.player_id).all()
 
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
@@ -2960,7 +2960,7 @@ def export_agent_club(club_id):
         sqlfunc.max(SM.sa_id), sqlfunc.max(SM.agent_id),
         sqlfunc.max(SM.role), sqlfunc.sum(SM.pnl),
         sqlfunc.sum(SM.rake), sqlfunc.sum(SM.hands),
-    ).filter(SM.club == club_name, SM.role != 'Name Entry', *scope
+    ).filter(SM.club == club_name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope
     ).group_by(SM.player_id).all()
 
     # Nickname map (always from active data so names resolve even if the SA
@@ -3121,7 +3121,7 @@ def export_agent_period():
             ArchivedPlayerStats.period_id == int(period_id),
             ArchivedPlayerStats.upload_id.in_(upload_ids),
             _scope_preds(ArchivedPlayerStats),
-            ArchivedPlayerStats.role != 'Name Entry',
+            and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != ''),
         ]
         if player_id_filter:
             base_filters.append(ArchivedPlayerStats.player_id == player_id_filter)
@@ -3145,7 +3145,7 @@ def export_agent_period():
         base_filters = [
             DailyPlayerStats.upload_id.in_(upload_ids),
             _scope_preds(DailyPlayerStats),
-            DailyPlayerStats.role != 'Name Entry',
+            and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
         ]
         if player_id_filter:
             base_filters.append(DailyPlayerStats.player_id == player_id_filter)
@@ -3230,11 +3230,11 @@ def export_club_report():
 
     if use_archive and archive_period_id:
         SM = ArchivedPlayerStats
-        base_filters = [SM.club == club_name, SM.role != 'Name Entry',
+        base_filters = [SM.club == club_name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''),
                         _archive_filter(SM, archive_buckets)]
     else:
         SM = DailyPlayerStats
-        base_filters = [SM.club == club_name, SM.role != 'Name Entry']
+        base_filters = [SM.club == club_name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
         if upload_ids_filter:
             base_filters.append(SM.upload_id.in_(upload_ids_filter))
 
@@ -3344,7 +3344,7 @@ def club_reports():
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).filter(
         DailyPlayerStats.club == club_name,
-        DailyPlayerStats.role != 'Name Entry'
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
     ).group_by(DailyPlayerStats.player_id).all()
 
     players = [{'player_id': pid, 'nickname': nick} for pid, nick in club_players]
@@ -3391,7 +3391,7 @@ def export_club_period():
     base_filters = [
         DailyPlayerStats.upload_id.in_(upload_ids),
         DailyPlayerStats.club == club_name,
-        DailyPlayerStats.role != 'Name Entry',
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
     ]
     if player_id_filter:
         base_filters.append(DailyPlayerStats.player_id == player_id_filter)
@@ -3453,7 +3453,7 @@ def club_transfers():
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).filter(
         DailyPlayerStats.club == club_name,
-        DailyPlayerStats.role != 'Name Entry'
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
     ).group_by(DailyPlayerStats.player_id).all()
 
     my_player_ids = set()
@@ -3651,7 +3651,7 @@ def export_admin_period():
 
     base_filters = [
         DailyPlayerStats.upload_id.in_(upload_ids),
-        DailyPlayerStats.role != 'Name Entry',
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
     ]
     if player_id_filter:
         base_filters.append(DailyPlayerStats.player_id == player_id_filter)
@@ -3739,7 +3739,7 @@ def export_periodic():
     # Filter by role: agent sees only their players
     base_filters = [
         DailyPlayerStats.upload_id.in_(upload_ids),
-        DailyPlayerStats.role != 'Name Entry',
+        and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
     ]
     if current_user.role == 'agent' and current_user.player_id:
         # Unified scope — hierarchy + managed clubs (no leakage).
@@ -3870,10 +3870,10 @@ def periodic_report_api():
     if arc_buckets:
         from app.models import ArchivedPlayerStats
         SM = ArchivedPlayerStats
-        base_filters = [_archive_filter(SM, arc_buckets), SM.role != 'Name Entry']
+        base_filters = [_archive_filter(SM, arc_buckets), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
     else:
         SM = DailyPlayerStats
-        base_filters = [SM.role != 'Name Entry']
+        base_filters = [and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
         if active_ids:
             base_filters.append(SM.upload_id.in_(active_ids))
 
@@ -4075,7 +4075,7 @@ def report_api():
         if active_upload_ids:
             base_filters = [
                 DailyPlayerStats.upload_id.in_(active_upload_ids),
-                DailyPlayerStats.role != 'Name Entry',
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
             ]
             row_filter = _hierarchy_row_filter(DailyPlayerStats)
             if row_filter is not None:
@@ -4102,7 +4102,7 @@ def report_api():
                 base_filters = [
                     ArchivedPlayerStats.period_id == ap_pid,
                     ArchivedPlayerStats.upload_id.in_(uids),
-                    ArchivedPlayerStats.role != 'Name Entry',
+                    and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != ''),
                 ]
                 row_filter = _hierarchy_row_filter(ArchivedPlayerStats)
                 if row_filter is not None:
@@ -4161,7 +4161,7 @@ def report_api():
         base_filters = [
             ArchivedPlayerStats.period_id == int(period_id),
             ArchivedPlayerStats.upload_id.in_(upload_ids),
-            ArchivedPlayerStats.role != 'Name Entry',
+            and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != ''),
         ]
         row_filter = _hierarchy_row_filter(ArchivedPlayerStats)
         if row_filter is not None:
@@ -4191,7 +4191,7 @@ def report_api():
 
         base_filters = [
             DailyPlayerStats.upload_id.in_(upload_ids),
-            DailyPlayerStats.role != 'Name Entry',
+            and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
         ]
         row_filter = _hierarchy_row_filter(DailyPlayerStats)
         if row_filter is not None:
@@ -4244,7 +4244,7 @@ def report_api():
                 ArchivedPlayerStats.period_id == int(period_id),
                 ArchivedPlayerStats.upload_id.in_(upload_ids),
                 ArchivedPlayerStats.club.in_(club_names),
-                ArchivedPlayerStats.role != 'Name Entry',
+                and_(ArchivedPlayerStats.role != 'Name Entry', ArchivedPlayerStats.role.isnot(None), ArchivedPlayerStats.role != ''),
             ).first()
         else:
             mc_q = DailyPlayerStats.query.with_entities(
@@ -4254,7 +4254,7 @@ def report_api():
             ).filter(
                 DailyPlayerStats.upload_id.in_(upload_ids),
                 DailyPlayerStats.club.in_(club_names),
-                DailyPlayerStats.role != 'Name Entry',
+                and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
             ).first()
         mc_pnl, mc_rake, mc_hands = mc_q if mc_q else (0, 0, 0)
         managed_clubs_totals = {
