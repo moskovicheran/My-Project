@@ -106,8 +106,18 @@ def _resolve_date_uploads(selected_dates):
                 active_upload_ids.append(upload.id)
                 valid_dates.append(ds)
             else:
-                # Check archive
-                archived = ArchivedUpload.query.filter(ArchivedUpload.upload_date == sel).first()
+                # Check archive — when a date exists in MULTIPLE archive
+                # periods (overlapping snapshots), pick the HIGHEST period_id.
+                # Older periods can carry phantom rows (e.g. role='' for
+                # players no longer in the club) AND lack rows for players
+                # who joined later. The latest snapshot is the canonical
+                # source; without `order_by(period_id desc)` the choice is
+                # non-deterministic and may drop a player's real row in the
+                # newer period because the bucket got built from the older.
+                archived = (ArchivedUpload.query
+                            .filter(ArchivedUpload.upload_date == sel)
+                            .order_by(ArchivedUpload.period_id.desc())
+                            .first())
                 if archived:
                     archive_buckets_map.setdefault(archived.period_id, []).append(archived.original_id)
                     valid_dates.append(ds)
