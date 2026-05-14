@@ -493,7 +493,8 @@ def dashboard():
         # not downline activity — shouldn't appear as "his own direct player".
         from app.union_data import get_players_with_current_scope
         current_scope_pids = get_players_with_current_scope(
-            all_sa_ids, M=SM, exclude_self=sa_id)
+            all_sa_ids, M=SM, exclude_self=sa_id,
+            period_id=archive_period_id if use_archive else None)
         my_player_id_list = list(current_scope_pids | override_player_ids)
 
         # Step 2: Sum rows of those players — excluding rows whose club is
@@ -888,7 +889,8 @@ def dashboard():
             # keeping it in-scope here ensures the card total matches the
             # export (otherwise Mamtakk's own -401.98/895.61 is missing).
             cs_current_pids = get_players_with_current_scope(
-                [cs_sa], M=SM) if cs_sa else set()
+                [cs_sa], M=SM,
+                period_id=archive_period_id if use_archive else None) if cs_sa else set()
             # Union with Excel-discovered / previously-known pids so nothing
             # silently vanishes, but drop anyone whose current SA is no
             # longer this one (they've been moved elsewhere).
