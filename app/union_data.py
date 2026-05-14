@@ -896,6 +896,40 @@ def get_cumulative_totals(upload_ids=None, archive_period_id=None,
         if use_archive:
             archive_buckets = [{'period_id': archive_period_id,
                                 'upload_ids': list(archive_upload_ids)}]
+
+    # Cross-source: split a range that covers both active and archive into
+    # two single-source calls and sum. Otherwise the binary use_archive flag
+    # would drop one of them. The dashboard's top totals need this so the
+    # numbers reconcile with per-card sums when the range crosses cycles.
+    if use_archive and upload_ids:
+        t_active = get_cumulative_totals(upload_ids=upload_ids)
+        t_archive = get_cumulative_totals(archive_buckets=archive_buckets)
+        # Merge: sum monetary fields, union date-range edges, union club rows.
+        out = dict(t_active)
+        out['total_rake'] = round(t_active['total_rake'] + t_archive['total_rake'], 2)
+        out['total_pnl'] = round(t_active['total_pnl'] + t_archive['total_pnl'], 2)
+        out['ring_rake'] = round(t_active.get('ring_rake', 0) + t_archive.get('ring_rake', 0), 2)
+        out['mtt_rake'] = round(t_active.get('mtt_rake', 0) + t_archive.get('mtt_rake', 0), 2)
+        out['total_hands'] = t_active['total_hands'] + t_archive['total_hands']
+        out['total_players'] = max(t_active['total_players'], t_archive['total_players'])
+        out['uploads_count'] = t_active.get('uploads_count', 0) + t_archive.get('uploads_count', 0)
+        # Date range: combine both — `period` is a display string here.
+        # The dashboard only reads it for the header label so a joined form
+        # is sufficient ("DD/MM/YYYY — DD/MM/YYYY" per source, separated).
+        out['period'] = (t_active.get('period', '-') + ', ' + t_archive.get('period', '-')).strip(', ')
+        # Clubs: merge by club_name, summing rake/pnl/hands and maxing players.
+        clubs_map = {c['club_name']: dict(c) for c in t_active.get('clubs', [])}
+        for c in t_archive.get('clubs', []):
+            nm = c['club_name']
+            if nm in clubs_map:
+                clubs_map[nm]['pnl'] = round(clubs_map[nm]['pnl'] + c['pnl'], 2)
+                clubs_map[nm]['total_fee'] = round(clubs_map[nm]['total_fee'] + c['total_fee'], 2)
+                clubs_map[nm]['total_hands'] += c['total_hands']
+                clubs_map[nm]['active_players'] = max(clubs_map[nm]['active_players'], c['active_players'])
+            else:
+                clubs_map[nm] = dict(c)
+        out['clubs'] = list(clubs_map.values())
+        return out
     if use_archive:
         StatsModel = ArchivedPlayerStats
         # `_archive_filter`-equivalent: one `(period_id == X AND upload_id IN [...])`
@@ -1246,6 +1280,27 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
         if use_archive:
             archive_buckets = [{'period_id': archive_period_id,
                                 'upload_ids': list(archive_upload_ids)}]
+
+    # Cross-source: when the date range covers BOTH the current active cycle
+    # AND a previously archived cycle, split the call into two single-source
+    # runs and sum the monetary totals. Without this, the binary `use_archive`
+    # flag below picks one source and the other half of the range is silently
+    # dropped (e.g. selecting 09–13/05 with active=11–13 and archive=09–10
+    # would show only the archive rake unless we recurse).
+    if use_archive and upload_ids:
+        t_active = get_agent_totals(player_id, upload_ids=upload_ids)
+        t_archive = get_agent_totals(player_id, archive_buckets=archive_buckets)
+        return {
+            'total_rake': round(t_active['total_rake'] + t_archive['total_rake'], 2),
+            'total_pnl': round(t_active['total_pnl'] + t_archive['total_pnl'], 2),
+            'total_hands': t_active['total_hands'] + t_archive['total_hands'],
+            # Distinct player_count across sources isn't trivial without
+            # exposing the player_id set; max is a reasonable approximation
+            # (a player active in both sources counts once; non-overlapping
+            # players from one source still inflate the larger). Refine if
+            # the dashboard ever displays a precise per-source split.
+            'player_count': max(t_active['player_count'], t_archive['player_count']),
+        }
     M = ArchivedPlayerStats if use_archive else DailyPlayerStats
     time_filters = []
     if use_archive:
@@ -1612,6 +1667,21 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
         if use_archive:
             archive_buckets = [{'period_id': archive_period_id,
                                 'upload_ids': list(archive_upload_ids)}]
+
+    # Cross-source: range covers both active and archive. Split, recurse, sum.
+    if use_archive and upload_ids:
+        t_active = get_club_totals(club_id, upload_ids=upload_ids)
+        t_archive = get_club_totals(club_id, archive_buckets=archive_buckets)
+        if not t_active.get('club_name') and not t_archive.get('club_name'):
+            return t_active  # both empty → return one
+        out = dict(t_active if t_active.get('club_name') else t_archive)
+        out['total_rake'] = round(t_active['total_rake'] + t_archive['total_rake'], 2)
+        out['total_pnl'] = round(t_active['total_pnl'] + t_archive['total_pnl'], 2)
+        out['total_hands'] = t_active['total_hands'] + t_archive['total_hands']
+        out['player_count'] = max(t_active['player_count'], t_archive['player_count'])
+        # net_rake recomputed from combined gross rake
+        out['net_rake'] = round(out['total_rake'] * out.get('rake_pct', 0) / 100, 2)
+        return out
     StatsModel = ArchivedPlayerStats if use_archive else DailyPlayerStats
     if use_archive:
         _clauses = [and_(StatsModel.period_id == b['period_id'],

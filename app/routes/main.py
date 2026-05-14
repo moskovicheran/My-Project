@@ -193,12 +193,16 @@ def _stats_union_subquery(filter_builder, upload_ids_filter, archive_buckets):
 
     parts = []
     if upload_ids_filter:
-        cols_active = [getattr(DailyPlayerStats, c) for c in _STATS_UNION_COLS]
+        # Label each column so the union resolves columns by NAME (not by
+        # table-qualified key), which the outer aggregation references via
+        # `.c.player_id`. Without labels the two SELECTs have different
+        # qualified names and `.c.player_id` lookup raises AttributeError.
+        cols_active = [getattr(DailyPlayerStats, c).label(c) for c in _STATS_UNION_COLS]
         flts = list(filter_builder(DailyPlayerStats))
         flts.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
         parts.append(db.session.query(*cols_active).filter(*flts))
     if archive_buckets:
-        cols_archive = [getattr(ArchivedPlayerStats, c) for c in _STATS_UNION_COLS]
+        cols_archive = [getattr(ArchivedPlayerStats, c).label(c) for c in _STATS_UNION_COLS]
         flts = list(filter_builder(ArchivedPlayerStats))
         flts.append(_archive_filter(ArchivedPlayerStats, archive_buckets))
         parts.append(db.session.query(*cols_archive).filter(*flts))
