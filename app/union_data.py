@@ -1058,7 +1058,7 @@ def get_agent_scope(player_id):
 
 
 def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
-                                    period_id=None):
+                                    period_id=None, period_ids=None):
     """Return the set of player_ids whose CURRENT sa_id or agent_id is in
     scope_ids. "Current" = the sa_id/agent_id from the player's most recent
     upload row (ignoring Name Entry rows).
@@ -1073,13 +1073,16 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
     agent being viewed (their own play is "Member Detail" in ClubGG terms,
     not downline activity).
 
-    `period_id`: required when M is `ArchivedPlayerStats`. Archive rows
-    are partitioned by period (each period has its own upload_id range
-    1..N), so without this filter `max(upload_id)` mixes periods and the
-    `(player_id, upload_id)` join can resolve to a row in a different
-    period — pulling in stale sa/agent attribution and dropping players
-    whose latest in-period row IS in scope. Pass the period being viewed
-    so scope is computed within that period only.
+    `period_id` / `period_ids`: required when M is `ArchivedPlayerStats`.
+    Archive rows are partitioned by period (each period has its own
+    upload_id range 1..N), so without this filter `max(upload_id)` mixes
+    periods and the `(player_id, upload_id)` join can resolve to a row in
+    a different period — pulling in stale sa/agent attribution and dropping
+    players whose latest in-period row IS in scope. Pass the periods being
+    viewed so scope is computed within them only. For a single period use
+    `period_id=`; for a multi-period selection use `period_ids=[p1, p2, ...]`.
+    "Current" is then the latest row WITHIN the union of those periods —
+    i.e., the most recent attribution that's actually visible in the view.
     """
     from app.models import DailyPlayerStats
     from sqlalchemy import func as sqlfunc, and_, or_
@@ -1087,6 +1090,19 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
         M = DailyPlayerStats
 
     has_period = hasattr(M, 'period_id')
+    # Normalize period_id / period_ids to a single clause (or None) so the
+    # subquery and join apply the same predicate.
+    period_clause = None
+    if has_period:
+        pids = []
+        if period_ids:
+            pids = list({p for p in period_ids if p is not None})
+        elif period_id is not None:
+            pids = [period_id]
+        if len(pids) == 1:
+            period_clause = M.period_id == pids[0]
+        elif len(pids) > 1:
+            period_clause = M.period_id.in_(pids)
 
     # Per-player latest upload among rows that actually carry an sa/agent.
     # Rows with sa_id and agent_id both empty/'-' (e.g. master/own-club play
@@ -1098,8 +1114,8 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
     real_sa = and_(M.sa_id.isnot(None), M.sa_id != '', M.sa_id != '-')
     real_ag = and_(M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-')
     subq_filters = [M.role != 'Name Entry', or_(real_sa, real_ag)]
-    if has_period and period_id is not None:
-        subq_filters.append(M.period_id == period_id)
+    if period_clause is not None:
+        subq_filters.append(period_clause)
     latest_uid_subq = M.query.with_entities(
         M.player_id,
         sqlfunc.max(M.upload_id).label('max_uid')
@@ -1109,8 +1125,8 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
     # The sa_id / agent_id recorded in each player's latest real row.
     join_clauses = [M.player_id == latest_uid_subq.c.player_id,
                     M.upload_id == latest_uid_subq.c.max_uid]
-    if has_period and period_id is not None:
-        join_clauses.append(M.period_id == period_id)
+    if period_clause is not None:
+        join_clauses.append(period_clause)
     rows = M.query.with_entities(
         M.player_id, M.sa_id, M.agent_id
     ).join(
@@ -1182,7 +1198,8 @@ def _sas_managing_club(club_name, cid_to_name):
     return out
 
 
-def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
+def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
+                     archive_upload_ids=None, archive_buckets=None):
     """Unified-scope totals for an agent.
 
     Each row (in the given period) is counted exactly ONCE if it belongs to
@@ -1191,16 +1208,34 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     No leakage from external channels and no double-counting of overlap rows.
 
     Returns dict with total_rake, total_pnl, total_hands, player_count.
+
+    `archive_buckets`: list of {'period_id', 'upload_ids'} for multi-period
+    selections. When provided, supersedes the legacy `archive_period_id` /
+    `archive_upload_ids` pair (which can only represent a single period and
+    silently corrupts multi-period queries). Pass it whenever the caller
+    has it (post-`_resolve_date_uploads`); legacy params remain for older
+    callers.
     """
     from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, PlayerAssignment
     from sqlalchemy import func as sqlfunc, or_, and_, not_
 
-    use_archive = bool(archive_period_id and archive_upload_ids)
+    # Prefer archive_buckets when provided (multi-period correct); fall back
+    # to single archive_period_id+archive_upload_ids for legacy callers.
+    if archive_buckets:
+        use_archive = True
+    else:
+        use_archive = bool(archive_period_id and archive_upload_ids)
+        if use_archive:
+            archive_buckets = [{'period_id': archive_period_id,
+                                'upload_ids': list(archive_upload_ids)}]
     M = ArchivedPlayerStats if use_archive else DailyPlayerStats
     time_filters = []
     if use_archive:
-        time_filters = [M.period_id == archive_period_id,
-                        M.upload_id.in_(archive_upload_ids)]
+        from sqlalchemy import and_ as _and, or_ as _or
+        _clauses = [_and(M.period_id == b['period_id'],
+                         M.upload_id.in_(b['upload_ids']))
+                    for b in archive_buckets]
+        time_filters = [_clauses[0] if len(_clauses) == 1 else _or(*_clauses)]
     elif upload_ids:
         time_filters = [M.upload_id.in_(upload_ids)]
 
@@ -1282,13 +1317,13 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None, archive
     # Current-assignment scope: all rows of players whose LATEST row is in
     # this agent's hierarchy. This makes a player's full history follow them
     # when they are re-attached to a new SA (matches ClubGG behaviour).
-    # In archive mode, scope must be evaluated WITHIN the viewed period —
-    # without period_id, max(upload_id) mixes periods and pulls in stale
-    # attributions, dropping players whose latest in-period row IS in scope
-    # but whose globally-max upload_id row sits in another period.
+    # In archive mode, scope must be evaluated WITHIN the viewed period(s) —
+    # without a period filter, max(upload_id) mixes periods and pulls in
+    # stale attributions, dropping players whose latest in-period row IS in
+    # scope but whose globally-max upload_id row sits in another period.
     current_scope_pids = get_players_with_current_scope(
         all_ids, M=M,
-        period_id=archive_period_id if use_archive else None)
+        period_ids=[b['period_id'] for b in archive_buckets] if use_archive else None)
 
     # Rows that belong to OTHER cards — excluded from this agent's
     # current-scope predicate to prevent double-count. A row is "owned"

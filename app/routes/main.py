@@ -71,7 +71,20 @@ def _apply_hide_breakdown(sheets, pct):
 def _resolve_date_uploads(selected_dates):
     """Resolve selected date strings to upload IDs, checking both active and archived data.
 
-    Returns (active_upload_ids, archive_period_id, archive_upload_ids, valid_dates).
+    Returns (active_upload_ids, archive_period_id, archive_upload_ids,
+             valid_dates, archive_buckets).
+
+    `archive_buckets` is a list of dicts `{'period_id': int, 'upload_ids': [int]}`
+    preserving the per-period grouping. A flat `archive_upload_ids` cannot
+    represent multi-period selections — archive `upload_id` only identifies a
+    row within its `period_id`, so filtering by `period_id == X AND upload_id IN
+    [mixed across periods]` silently drops some rows and matches wrong ones in
+    the kept period (period X's upload_id=12 may be a different date than
+    period Y's upload_id=12). Callers that need correctness across cycles
+    should use `archive_buckets` via `_archive_filter()` / `_archive_period_in()`.
+
+    `archive_period_id` / `archive_upload_ids` are kept for legacy callers that
+    only operate on a single archive period.
 
     IMPORTANT: If the caller passed at least one date string but NONE of them
     resolved to an upload, active_upload_ids is returned as [-1] (a sentinel
@@ -82,8 +95,7 @@ def _resolve_date_uploads(selected_dates):
     from app.models import DailyUpload, ArchivedUpload
     from datetime import datetime as dt
     active_upload_ids = []
-    archive_period_id = None
-    archive_upload_ids = []
+    archive_buckets_map = {}   # period_id → ordered list of upload_ids
     valid_dates = []
     for ds in selected_dates:
         try:
@@ -97,15 +109,49 @@ def _resolve_date_uploads(selected_dates):
                 # Check archive
                 archived = ArchivedUpload.query.filter(ArchivedUpload.upload_date == sel).first()
                 if archived:
-                    archive_period_id = archived.period_id
-                    archive_upload_ids.append(archived.original_id)
+                    archive_buckets_map.setdefault(archived.period_id, []).append(archived.original_id)
                     valid_dates.append(ds)
         except ValueError:
             pass
+    archive_buckets = [
+        {'period_id': pid, 'upload_ids': uids}
+        for pid, uids in archive_buckets_map.items()
+    ]
+    archive_period_id = archive_buckets[0]['period_id'] if archive_buckets else None
+    archive_upload_ids = [u for b in archive_buckets for u in b['upload_ids']]
     # Sentinel for "user asked for a filter that matched nothing"
     if selected_dates and not active_upload_ids and not archive_upload_ids:
         active_upload_ids = [-1]
-    return active_upload_ids, archive_period_id, archive_upload_ids, valid_dates
+    return (active_upload_ids, archive_period_id, archive_upload_ids,
+            valid_dates, archive_buckets)
+
+
+def _archive_filter(M, archive_buckets):
+    """Build a single SQLAlchemy clause that matches archive rows in any of
+    the (period_id, upload_ids) buckets. Returns None when there's nothing
+    to match — caller should `if cl is not None: filters.append(cl)`.
+
+    Use this instead of the legacy
+    `[M.period_id == archive_period_id, M.upload_id.in_(archive_upload_ids)]`
+    pattern, which silently produces wrong data when selected dates span
+    multiple archive periods."""
+    if not archive_buckets:
+        return None
+    from sqlalchemy import and_, or_
+    clauses = [and_(M.period_id == b['period_id'],
+                    M.upload_id.in_(b['upload_ids']))
+               for b in archive_buckets]
+    return clauses[0] if len(clauses) == 1 else or_(*clauses)
+
+
+def _archive_period_in(M, archive_buckets):
+    """Build `M.period_id IN (list of periods in buckets)`. Use for lookup
+    queries that scope by period but don't restrict to specific upload_ids
+    (e.g. the player→sa_id lookup). Returns None for empty buckets."""
+    if not archive_buckets:
+        return None
+    pids = list({b['period_id'] for b in archive_buckets})
+    return M.period_id == pids[0] if len(pids) == 1 else M.period_id.in_(pids)
 
 
 def _format_period_label(selected_dates):
@@ -203,18 +249,18 @@ def dashboard():
         use_archive = False
         archive_period_id = None
         archive_upload_ids = []
+        archive_buckets = []
         if selected_dates:
-            upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+            upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
             use_archive = bool(archive_upload_ids)
 
         if club_name:
-            if use_archive and archive_period_id:
+            if use_archive and archive_buckets:
                 # Query from archived data
                 from app.models import ArchivedPlayerStats
                 base_filters = [ArchivedPlayerStats.club == club_name,
                                 ArchivedPlayerStats.role != 'Name Entry',
-                                ArchivedPlayerStats.period_id == archive_period_id,
-                                ArchivedPlayerStats.upload_id.in_(archive_upload_ids)]
+                                _archive_filter(ArchivedPlayerStats, archive_buckets)]
                 StatsModel = ArchivedPlayerStats
             else:
                 # Base query (active data)
@@ -393,8 +439,9 @@ def dashboard():
         use_archive = False
         archive_period_id = None
         archive_upload_ids = []
+        archive_buckets = []
         if selected_dates:
-            upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+            upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
             use_archive = bool(archive_upload_ids)
 
         # Resolve the actual SA/Agent ID for this user
@@ -494,7 +541,7 @@ def dashboard():
         from app.union_data import get_players_with_current_scope
         current_scope_pids = get_players_with_current_scope(
             all_sa_ids, M=SM, exclude_self=sa_id,
-            period_id=archive_period_id if use_archive else None)
+            period_ids=[b['period_id'] for b in archive_buckets] if use_archive else None)
         my_player_id_list = list(current_scope_pids | override_player_ids)
 
         # Step 2: Sum rows of those players — excluding rows whose club is
@@ -526,7 +573,7 @@ def dashboard():
         if _other_owned_clubs:
             base_agent_filters.append(SM.club.notin_(list(_other_owned_clubs)))
         if use_archive and archive_period_id:
-            base_agent_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+            base_agent_filters += [_archive_filter(SM, archive_buckets)]
         elif upload_ids_filter:
             # Active data with date filter — was missing, causing direct players
             # to aggregate across ALL active uploads instead of only the filtered ones
@@ -547,9 +594,8 @@ def dashboard():
         # Build agent structure from DB data
         # First, get actual sa_id per player (for correct direct player filtering)
         _sa_lookup_filters = [or_(SM.sa_id.in_(all_sa_ids), SM.agent_id.in_(all_sa_ids))]
-        if use_archive and archive_period_id:
-            _sa_lookup_filters.append(SM.period_id == archive_period_id)
-            _sa_lookup_filters.append(SM.upload_id.in_(archive_upload_ids))
+        if use_archive and archive_buckets:
+            _sa_lookup_filters.append(_archive_filter(SM, archive_buckets))
         player_sa_lookup = dict(SM.query.with_entities(
             SM.player_id, sqlfunc.max(SM.sa_id)
         ).filter(*_sa_lookup_filters).group_by(SM.player_id).all())
@@ -614,8 +660,7 @@ def dashboard():
                 if managed_club_names_list:
                     _miss_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
-                    _miss_filters.append(SM.period_id == archive_period_id)
-                    _miss_filters.append(SM.upload_id.in_(archive_upload_ids))
+                    _miss_filters.append(_archive_filter(SM, archive_buckets))
                 elif upload_ids_filter:
                     _miss_filters.append(SM.upload_id.in_(upload_ids_filter))
                 missing_players = SM.query.with_entities(
@@ -660,7 +705,7 @@ def dashboard():
                 if managed_club_names_list:
                     _own_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
-                    _own_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                    _own_filters += [_archive_filter(SM, archive_buckets)]
                 elif upload_ids_filter:
                     _own_filters.append(SM.upload_id.in_(upload_ids_filter))
                 own_stats = SM.query.with_entities(
@@ -742,7 +787,7 @@ def dashboard():
             if _self_other_clubs:
                 _self_filters.append(SM.club.notin_(list(_self_other_clubs)))
             if use_archive and archive_period_id:
-                _self_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                _self_filters += [_archive_filter(SM, archive_buckets)]
             elif upload_ids_filter:
                 _self_filters.append(SM.upload_id.in_(upload_ids_filter))
             _self_row = SM.query.with_entities(
@@ -768,7 +813,7 @@ def dashboard():
                 # Find agents in DB that are missing from Excel
                 _cs_filters = [SM.sa_id == sa_id_val, SM.agent_id != '', SM.agent_id != '-', SM.agent_id != sa_id_val]
                 if use_archive and archive_period_id:
-                    _cs_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                    _cs_filters += [_archive_filter(SM, archive_buckets)]
                 elif upload_ids_filter:
                     _cs_filters.append(SM.upload_id.in_(upload_ids_filter))
                 db_agents = SM.query.with_entities(sqlfunc.distinct(SM.agent_id)).filter(*_cs_filters).all()
@@ -790,7 +835,7 @@ def dashboard():
                 if managed_club_names_list:
                     _mem_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
-                    _mem_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                    _mem_filters += [_archive_filter(SM, archive_buckets)]
                 elif upload_ids_filter:
                     _mem_filters.append(SM.upload_id.in_(upload_ids_filter))
                 db_members = SM.query.with_entities(
@@ -820,7 +865,7 @@ def dashboard():
                 if managed_club_names_list:
                     _dir_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
-                    _dir_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                    _dir_filters += [_archive_filter(SM, archive_buckets)]
                 elif upload_ids_filter:
                     _dir_filters.append(SM.upload_id.in_(upload_ids_filter))
                 db_direct = SM.query.with_entities(
@@ -850,7 +895,7 @@ def dashboard():
                     if managed_club_names_list:
                         _csa_filters.append(SM.club.notin_(managed_club_names_list))
                     if use_archive and archive_period_id:
-                        _csa_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                        _csa_filters += [_archive_filter(SM, archive_buckets)]
                     elif upload_ids_filter:
                         _csa_filters.append(SM.upload_id.in_(upload_ids_filter))
                     sa_own = SM.query.with_entities(
@@ -890,7 +935,7 @@ def dashboard():
             # export (otherwise Mamtakk's own -401.98/895.61 is missing).
             cs_current_pids = get_players_with_current_scope(
                 [cs_sa], M=SM,
-                period_id=archive_period_id if use_archive else None) if cs_sa else set()
+                period_ids=[b['period_id'] for b in archive_buckets] if use_archive else None) if cs_sa else set()
             # Union with Excel-discovered / previously-known pids so nothing
             # silently vanishes, but drop anyone whose current SA is no
             # longer this one (they've been moved elsewhere).
@@ -910,7 +955,7 @@ def dashboard():
                 if managed_club_names_list:
                     _cumul_filters.append(SM.club.notin_(managed_club_names_list))
                 if use_archive and archive_period_id:
-                    _cumul_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                    _cumul_filters += [_archive_filter(SM, archive_buckets)]
                 elif upload_ids_filter:
                     _cumul_filters.append(SM.upload_id.in_(upload_ids_filter))
                 sa_stats = SM.query.with_entities(
@@ -1193,7 +1238,7 @@ def dashboard():
                         _po for _po in MANAGED_CLUB_PLAYER_ONLY if _po != sa_id]
                     club_filters.append(SM.player_id.notin_(_exclude_pids))
                 if use_archive and archive_period_id:
-                    club_filters += [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+                    club_filters += [_archive_filter(SM, archive_buckets)]
                 elif upload_ids_filter:
                     club_filters.append(SM.upload_id.in_(upload_ids_filter))
                 club_players_db = SM.query.with_entities(
@@ -1304,6 +1349,7 @@ def dashboard():
             upload_ids=upload_ids_filter or None,
             archive_period_id=archive_period_id,
             archive_upload_ids=archive_upload_ids or None,
+            archive_buckets=archive_buckets or None,
         )
         total_rake = _unified['total_rake']
         total_pnl = _unified['total_pnl']
@@ -1985,9 +2031,10 @@ def export_player(player_id):
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     # Optional ?club=<name> — when a player row is clicked from a managed-club
@@ -1999,22 +2046,20 @@ def export_player(player_id):
     # summary sheet stays accurate per club).
     club_filter = request.args.get('club', '').strip()
 
-    if use_archive and archive_period_id:
+    if use_archive and archive_buckets:
         StatsModel = ArchivedPlayerStats
         SessionModel = ArchivedPlayerSession
         stat_filters = [ArchivedPlayerStats.player_id == player_id,
-                        ArchivedPlayerStats.period_id == archive_period_id,
-                        ArchivedPlayerStats.upload_id.in_(archive_upload_ids)]
+                        _archive_filter(ArchivedPlayerStats, archive_buckets)]
         sess_filters = [ArchivedPlayerSession.player_id == player_id,
-                        ArchivedPlayerSession.period_id == archive_period_id,
-                        ArchivedPlayerSession.upload_id.in_(archive_upload_ids)]
+                        _archive_filter(ArchivedPlayerSession, archive_buckets)]
         if club_filter:
             stat_filters.append(ArchivedPlayerStats.club == club_filter)
             club_upload_ids = [r[0] for r in ArchivedPlayerStats.query.with_entities(
                 ArchivedPlayerStats.upload_id
             ).filter(ArchivedPlayerStats.player_id == player_id,
                      ArchivedPlayerStats.club == club_filter,
-                     ArchivedPlayerStats.period_id == archive_period_id).distinct().all()]
+                     _archive_period_in(ArchivedPlayerStats, archive_buckets)).distinct().all()]
             sess_filters.append(ArchivedPlayerSession.upload_id.in_(club_upload_ids or [-1]))
     else:
         StatsModel = DailyPlayerStats
@@ -2163,14 +2208,15 @@ def export_agent_account():
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     if use_archive and archive_period_id:
         SM = ArchivedPlayerStats
-        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+        scope = [_archive_filter(SM, archive_buckets)]
     else:
         SM = DailyPlayerStats
         scope = []
@@ -2357,15 +2403,15 @@ def export_single_agent(agent_id):
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     if use_archive and archive_period_id:
         StatsModel = ArchivedPlayerStats
-        base_filters = [ArchivedPlayerStats.period_id == archive_period_id,
-                        ArchivedPlayerStats.upload_id.in_(archive_upload_ids),
+        base_filters = [_archive_filter(ArchivedPlayerStats, archive_buckets),
                         ArchivedPlayerStats.role != 'Name Entry']
     else:
         StatsModel = DailyPlayerStats
@@ -2499,14 +2545,15 @@ def export_agent_players():
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     if use_archive and archive_period_id:
         SM = ArchivedPlayerStats
-        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+        scope = [_archive_filter(SM, archive_buckets)]
     else:
         SM = DailyPlayerStats
         scope = []
@@ -2761,14 +2808,15 @@ def export_agent_full_box():
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     if use_archive and archive_period_id:
         SM = ArchivedPlayerStats
-        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+        scope = [_archive_filter(SM, archive_buckets)]
     else:
         SM = DailyPlayerStats
         scope = []
@@ -2892,14 +2940,15 @@ def export_agent_club(club_id):
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     if use_archive and archive_period_id:
         SM = ArchivedPlayerStats
-        scope = [SM.period_id == archive_period_id, SM.upload_id.in_(archive_upload_ids)]
+        scope = [_archive_filter(SM, archive_buckets)]
     else:
         SM = DailyPlayerStats
         scope = []
@@ -3173,16 +3222,16 @@ def export_club_report():
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     use_archive = False
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
         use_archive = bool(archive_upload_ids)
 
     if use_archive and archive_period_id:
         SM = ArchivedPlayerStats
         base_filters = [SM.club == club_name, SM.role != 'Name Entry',
-                        SM.period_id == archive_period_id,
-                        SM.upload_id.in_(archive_upload_ids)]
+                        _archive_filter(SM, archive_buckets)]
     else:
         SM = DailyPlayerStats
         base_filters = [SM.club == club_name, SM.role != 'Name Entry']
@@ -3813,15 +3862,15 @@ def periodic_report_api():
     td = datetime.strptime(to_date, '%Y-%m-%d').date()
 
     # Check active + archive
-    active_ids, arc_pid, arc_ids, _ = _resolve_date_uploads(
+    active_ids, arc_pid, arc_ids, _, arc_buckets = _resolve_date_uploads(
         [(fd + timedelta(days=i)).strftime('%Y-%m-%d') for i in range((td - fd).days + 1)]
     )
     all_upload_ids = active_ids + arc_ids
 
-    if arc_ids and arc_pid:
+    if arc_buckets:
         from app.models import ArchivedPlayerStats
         SM = ArchivedPlayerStats
-        base_filters = [SM.period_id == arc_pid, SM.upload_id.in_(arc_ids), SM.role != 'Name Entry']
+        base_filters = [_archive_filter(SM, arc_buckets), SM.role != 'Name Entry']
     else:
         SM = DailyPlayerStats
         base_filters = [SM.role != 'Name Entry']

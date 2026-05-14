@@ -144,8 +144,9 @@ def build_overview_context():
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
+    archive_buckets = []
     if selected_dates:
-        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates = _resolve_date_uploads(selected_dates)
+        upload_ids_filter, archive_period_id, archive_upload_ids, selected_dates, archive_buckets = _resolve_date_uploads(selected_dates)
 
     # Filtered totals (empty filters → all-time, matches prior behavior)
     ct = get_cumulative_totals(
@@ -179,6 +180,7 @@ def build_overview_context():
             upload_ids=upload_ids_filter or None,
             archive_period_id=archive_period_id,
             archive_upload_ids=archive_upload_ids or None,
+            archive_buckets=archive_buckets or None,
         )
         bal_plus_rake = round(totals['total_pnl'] + totals['total_rake'], 2)
         exp = round(float(expense_totals.get(pid, 0) or 0), 2)
@@ -218,6 +220,7 @@ def build_overview_context():
             upload_ids=upload_ids_filter or None,
             archive_period_id=archive_period_id,
             archive_upload_ids=archive_upload_ids or None,
+            archive_buckets=archive_buckets or None,
         )
         tracked_clubs.append({
             'kind': 'agent',
