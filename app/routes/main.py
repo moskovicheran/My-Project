@@ -164,6 +164,52 @@ def _archive_period_in(M, archive_buckets):
     return M.period_id == pids[0] if len(pids) == 1 else M.period_id.in_(pids)
 
 
+# Columns common to DailyPlayerStats and ArchivedPlayerStats. Used to build a
+# UNION ALL of the two tables so cross-source queries (a date range that spans
+# both the current active cycle AND a previously archived cycle) aggregate
+# from BOTH sources, instead of silently dropping whichever the dashboard's
+# binary `use_archive` flag rejected.
+_STATS_UNION_COLS = ('player_id', 'nickname', 'club', 'agent_id', 'sa_id',
+                     'role', 'pnl', 'rake', 'hands')
+
+
+def _stats_union_subquery(filter_builder, upload_ids_filter, archive_buckets):
+    """Build a UNION-ALL subquery of stats rows across DailyPlayerStats AND
+    ArchivedPlayerStats — exposes the standard player-stats columns so callers
+    can group/aggregate over `sub.c.<col>` regardless of source.
+
+    `filter_builder(M)` returns a list of SQLAlchemy filter clauses bound to
+    model `M`. It MUST NOT include any time-based filter — the helper appends
+    `M.upload_id IN (active_upload_ids)` for the active part and the
+    `_archive_filter()` (period/upload buckets) for the archive part itself.
+
+    Returns:
+      - A subquery covering BOTH sources when both have content (cross-source).
+      - A subquery covering the single non-empty source otherwise.
+      - None when the user's date filter resolved to nothing.
+    """
+    from app.models import DailyPlayerStats, ArchivedPlayerStats
+    from sqlalchemy import union_all
+
+    parts = []
+    if upload_ids_filter:
+        cols_active = [getattr(DailyPlayerStats, c) for c in _STATS_UNION_COLS]
+        flts = list(filter_builder(DailyPlayerStats))
+        flts.append(DailyPlayerStats.upload_id.in_(upload_ids_filter))
+        parts.append(db.session.query(*cols_active).filter(*flts))
+    if archive_buckets:
+        cols_archive = [getattr(ArchivedPlayerStats, c) for c in _STATS_UNION_COLS]
+        flts = list(filter_builder(ArchivedPlayerStats))
+        flts.append(_archive_filter(ArchivedPlayerStats, archive_buckets))
+        parts.append(db.session.query(*cols_archive).filter(*flts))
+
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0].subquery()
+    return union_all(*parts).subquery()
+
+
 def _format_period_label(selected_dates):
     """Human-readable date label for Excel banners.
     Single date → DD/MM/YYYY. Range → DD/MM/YYYY — DD/MM/YYYY. Multiple non-contiguous → list."""
@@ -560,8 +606,6 @@ def dashboard():
         # to that card's totals, not to this SA. Without this carve-out,
         # eliasaf111's POKER GARDEN play (Riko's managed club) would show
         # up on niroha's / Dolar 10's dashboard too.
-        base_agent_filters = [SM.player_id.in_(my_player_id_list),
-                              and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
         # Clubs shown in their own cards (OTHER SAs' managed + OVERVIEW_CLUBS).
         _other_owned_clubs = set(managed_club_names_list)  # start with own (already excluded)
         _clubs_data_co, _ = get_members_hierarchy()
@@ -580,26 +624,40 @@ def dashboard():
                     _other_owned_clubs.add(_nm)
         except Exception:
             pass
-        if _other_owned_clubs:
-            base_agent_filters.append(SM.club.notin_(list(_other_owned_clubs)))
-        if use_archive and archive_period_id:
-            base_agent_filters += [_archive_filter(SM, archive_buckets)]
-        elif upload_ids_filter:
-            # Active data with date filter — was missing, causing direct players
-            # to aggregate across ALL active uploads instead of only the filtered ones
-            base_agent_filters.append(SM.upload_id.in_(upload_ids_filter))
 
-        my_players_db = SM.query.with_entities(
-            SM.player_id,
-            sqlfunc.max(SM.nickname),
-            sqlfunc.max(SM.club),
-            sqlfunc.max(SM.agent_id),
-            sqlfunc.max(SM.role),
-            sqlfunc.sum(SM.pnl),
-            sqlfunc.sum(SM.rake),
-            sqlfunc.sum(SM.hands),
-        ).filter(*base_agent_filters
-        ).group_by(SM.player_id).all()
+        # Cross-source aware: a date range may cover BOTH the current active
+        # cycle (DailyPlayerStats) AND a previously archived cycle
+        # (ArchivedPlayerStats). The legacy `SM = one-or-the-other` flag would
+        # silently drop the other source — `_stats_union_subquery` UNION-ALLs
+        # them so the aggregate covers both. Filters that don't reference
+        # `upload_id`/`period_id` are applied to each part before the union.
+        def _my_players_filter_builder(M):
+            flts = [
+                M.player_id.in_(my_player_id_list),
+                and_(M.role != 'Name Entry', M.role.isnot(None), M.role != ''),
+            ]
+            if _other_owned_clubs:
+                flts.append(M.club.notin_(list(_other_owned_clubs)))
+            return flts
+
+        _my_sub = _stats_union_subquery(
+            _my_players_filter_builder,
+            upload_ids_filter or None,
+            archive_buckets or None,
+        )
+        if _my_sub is None:
+            my_players_db = []
+        else:
+            my_players_db = db.session.query(
+                _my_sub.c.player_id,
+                sqlfunc.max(_my_sub.c.nickname),
+                sqlfunc.max(_my_sub.c.club),
+                sqlfunc.max(_my_sub.c.agent_id),
+                sqlfunc.max(_my_sub.c.role),
+                sqlfunc.sum(_my_sub.c.pnl),
+                sqlfunc.sum(_my_sub.c.rake),
+                sqlfunc.sum(_my_sub.c.hands),
+            ).group_by(_my_sub.c.player_id).all()
 
         # Build agent structure from DB data
         # First, get actual sa_id per player (for correct direct player filtering)
