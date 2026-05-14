@@ -154,6 +154,7 @@ def build_overview_context():
         upload_ids=upload_ids_filter or None,
         archive_period_id=archive_period_id,
         archive_upload_ids=archive_upload_ids or None,
+        archive_buckets=archive_buckets or None,
     )
     meta['period'] = ct['period']
 
@@ -206,6 +207,7 @@ def build_overview_context():
             upload_ids=upload_ids_filter or None,
             archive_period_id=archive_period_id,
             archive_upload_ids=archive_upload_ids or None,
+            archive_buckets=archive_buckets or None,
         )
         tracked_clubs.append({
             'kind': 'club',

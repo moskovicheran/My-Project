@@ -875,21 +875,37 @@ def get_cumulative_stats(player_ids=None):
     return result
 
 
-def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_upload_ids=None):
+def get_cumulative_totals(upload_ids=None, archive_period_id=None,
+                           archive_upload_ids=None, archive_buckets=None):
     """Returns cumulative totals across uploads for dashboard.
 
     Optional filters:
       upload_ids: list of DailyUpload ids → limit to these active uploads
-      archive_period_id + archive_upload_ids: switch to ArchivedPlayerStats for the given archive period
+      archive_period_id + archive_upload_ids: legacy single-period archive
+      archive_buckets: list of {'period_id', 'upload_ids'} for multi-period
+        archive ranges (preferred over the single-period pair when given).
     """
     from app.models import DailyPlayerStats, DailyUpload, ArchivedPlayerStats, ArchivedUpload
-    from sqlalchemy import func
+    from sqlalchemy import func, and_, or_
 
-    use_archive = bool(archive_period_id and archive_upload_ids)
+    # Normalize: archive_buckets supersedes the legacy single-period pair.
+    if archive_buckets:
+        use_archive = True
+    else:
+        use_archive = bool(archive_period_id and archive_upload_ids)
+        if use_archive:
+            archive_buckets = [{'period_id': archive_period_id,
+                                'upload_ids': list(archive_upload_ids)}]
     if use_archive:
         StatsModel = ArchivedPlayerStats
-        base_filters = [ArchivedPlayerStats.period_id == archive_period_id,
-                        ArchivedPlayerStats.upload_id.in_(archive_upload_ids)]
+        # `_archive_filter`-equivalent: one `(period_id == X AND upload_id IN [...])`
+        # clause per bucket, OR'd. Without this, a multi-period range silently
+        # filters only the first period and matches WRONG rows in it (each
+        # archive period has its own 1..N upload_id range).
+        _clauses = [and_(ArchivedPlayerStats.period_id == b['period_id'],
+                         ArchivedPlayerStats.upload_id.in_(b['upload_ids']))
+                    for b in archive_buckets]
+        base_filters = [_clauses[0] if len(_clauses) == 1 else or_(*_clauses)]
     else:
         StatsModel = DailyPlayerStats
         base_filters = []
@@ -905,7 +921,7 @@ def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_uploa
 
     # Uploads count reflects the filtered view
     if use_archive:
-        uploads_count = len(archive_upload_ids or [])
+        uploads_count = sum(len(b['upload_ids']) for b in archive_buckets)
     elif upload_ids:
         uploads_count = len(upload_ids)
     else:
@@ -913,11 +929,13 @@ def get_cumulative_totals(upload_ids=None, archive_period_id=None, archive_uploa
 
     # Date range
     if use_archive:
+        _au_clauses = [and_(ArchivedUpload.period_id == b['period_id'],
+                            ArchivedUpload.original_id.in_(b['upload_ids']))
+                       for b in archive_buckets]
         dr = ArchivedUpload.query.with_entities(
             func.min(ArchivedUpload.upload_date),
             func.max(ArchivedUpload.upload_date),
-        ).filter(ArchivedUpload.period_id == archive_period_id,
-                 ArchivedUpload.original_id.in_(archive_upload_ids)).first()
+        ).filter(_au_clauses[0] if len(_au_clauses) == 1 else or_(*_au_clauses)).first()
     elif upload_ids:
         dr = DailyUpload.query.with_entities(
             func.min(DailyUpload.upload_date),
@@ -1566,7 +1584,8 @@ def get_agent_scope_predicate(sa_id, M=None):
     return or_(*scope_preds)
 
 
-def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_upload_ids=None):
+def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
+                    archive_upload_ids=None, archive_buckets=None):
     """Calculate total rake/pnl/hands/players for a club — filtered by
     DailyPlayerStats.club == <club_name> (not by sa_id/agent_id like agents).
 
@@ -1579,15 +1598,26 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None, archive_up
       player_count — distinct players with activity
       club_name    — resolved club name (empty string if club_id not found)
 
-    Optional filters identical in shape to get_agent_totals()."""
+    Optional filters identical in shape to get_agent_totals(). When the date
+    range spans multiple archive periods, pass `archive_buckets` so each
+    period gets its own `period_id == X AND upload_id IN [...]` clause —
+    the legacy single-period pair silently produces wrong sums across cycles."""
     from app.models import DailyPlayerStats, ArchivedPlayerStats, RakeConfig
-    from sqlalchemy import func as sqlfunc, and_
+    from sqlalchemy import func as sqlfunc, and_, or_
 
-    use_archive = bool(archive_period_id and archive_upload_ids)
+    if archive_buckets:
+        use_archive = True
+    else:
+        use_archive = bool(archive_period_id and archive_upload_ids)
+        if use_archive:
+            archive_buckets = [{'period_id': archive_period_id,
+                                'upload_ids': list(archive_upload_ids)}]
     StatsModel = ArchivedPlayerStats if use_archive else DailyPlayerStats
     if use_archive:
-        scope_filters = [StatsModel.period_id == archive_period_id,
-                         StatsModel.upload_id.in_(archive_upload_ids)]
+        _clauses = [and_(StatsModel.period_id == b['period_id'],
+                         StatsModel.upload_id.in_(b['upload_ids']))
+                    for b in archive_buckets]
+        scope_filters = [_clauses[0] if len(_clauses) == 1 else or_(*_clauses)]
     else:
         scope_filters = []
         if upload_ids:
