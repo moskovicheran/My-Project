@@ -2,7 +2,7 @@ import io
 from datetime import date
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from app.models import db, Transaction
 
 main_bp = Blueprint('main', __name__)
@@ -4344,24 +4344,78 @@ def tournament_players_api():
 @main_bp.route('/api/player-record/<player_id>')
 @login_required
 def player_record_api(player_id):
-    from app.models import PlayerSession, DailyUpload
-    # Read ALL sessions from cumulative DB with upload date
-    db_sessions = (PlayerSession.query
-                   .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
-                   .add_columns(DailyUpload.upload_date)
-                   .filter(PlayerSession.player_id == player_id)
-                   .order_by(DailyUpload.upload_date.asc())
-                   .all())
+    from app.models import (PlayerSession, DailyUpload,
+                             ArchivedPlayerSession, ArchivedUpload)
+    # Date filter — same shape as the dashboard; when present, scope to
+    # active uploads in the range AND archived uploads in the matching
+    # period buckets. Without this, the drill-down only ever shows
+    # active-table sessions and silently hides the archive history that
+    # the parent card is actually summing.
+    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
     sessions = []
-    for s, upload_date in db_sessions:
-        date_fmt = upload_date.strftime('%d/%m/%Y') if upload_date else ''
-        sessions.append({
-            'table': s.table_name,
-            'game': s.game_type,
-            'blinds': s.blinds or '',
-            'date': date_fmt,
-            'pnl': round(s.pnl, 2),
-        })
+
+    if requested_dates:
+        upload_ids_filter, _, _, _, archive_buckets = _resolve_date_uploads(requested_dates)
+
+        # Active sessions in the filtered active uploads
+        if upload_ids_filter:
+            for s, upload_date in (PlayerSession.query
+                                    .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                                    .add_columns(DailyUpload.upload_date)
+                                    .filter(PlayerSession.player_id == player_id,
+                                            PlayerSession.upload_id.in_(upload_ids_filter))
+                                    .order_by(DailyUpload.upload_date.asc())
+                                    .all()):
+                sessions.append({
+                    'table': s.table_name,
+                    'game': s.game_type,
+                    'blinds': s.blinds or '',
+                    'date': upload_date.strftime('%d/%m/%Y') if upload_date else '',
+                    'pnl': round(s.pnl, 2),
+                })
+
+        # Archived sessions across the (period_id, upload_ids) buckets.
+        # Join to ArchivedUpload so we get the original upload_date for display.
+        if archive_buckets:
+            arc_clause = _archive_filter(ArchivedPlayerSession, archive_buckets)
+            au_join = and_(
+                ArchivedUpload.period_id == ArchivedPlayerSession.period_id,
+                ArchivedUpload.original_id == ArchivedPlayerSession.upload_id,
+            )
+            for s, upload_date in (ArchivedPlayerSession.query
+                                    .join(ArchivedUpload, au_join)
+                                    .add_columns(ArchivedUpload.upload_date)
+                                    .filter(ArchivedPlayerSession.player_id == player_id,
+                                            arc_clause)
+                                    .order_by(ArchivedUpload.upload_date.asc())
+                                    .all()):
+                sessions.append({
+                    'table': s.table_name,
+                    'game': s.game_type,
+                    'blinds': s.blinds or '',
+                    'date': upload_date.strftime('%d/%m/%Y') if upload_date else '',
+                    'pnl': round(s.pnl, 2),
+                })
+
+        # Re-sort by date so active + archive interleave chronologically
+        sessions.sort(key=lambda x: x['date'].split('/')[::-1] if x['date'] else [])
+    else:
+        # No filter — keep the legacy all-active behaviour
+        db_sessions = (PlayerSession.query
+                       .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+                       .add_columns(DailyUpload.upload_date)
+                       .filter(PlayerSession.player_id == player_id)
+                       .order_by(DailyUpload.upload_date.asc())
+                       .all())
+        for s, upload_date in db_sessions:
+            sessions.append({
+                'table': s.table_name,
+                'game': s.game_type,
+                'blinds': s.blinds or '',
+                'date': upload_date.strftime('%d/%m/%Y') if upload_date else '',
+                'pnl': round(s.pnl, 2),
+            })
+
     total_pnl = round(sum(s['pnl'] for s in sessions), 2)
     return jsonify({'sessions': sessions, 'total_pnl': total_pnl})
 

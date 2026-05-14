@@ -874,7 +874,8 @@ function toggleRecord(btn, playerId) {
     var container = document.getElementById('record-' + playerId);
     if (container.innerHTML) return;
     container.innerHTML = '<span class="muted small">טוען...</span>';
-    fetch('/api/player-record/' + playerId)
+    var _recQs = window.__selectedDates ? '?dates=' + encodeURIComponent(window.__selectedDates) : '';
+    fetch('/api/player-record/' + playerId + _recQs)
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data.sessions.length) {
