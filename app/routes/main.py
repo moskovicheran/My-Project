@@ -191,6 +191,16 @@ def _stats_union_subquery(filter_builder, upload_ids_filter, archive_buckets):
     from app.models import DailyPlayerStats, ArchivedPlayerStats
     from sqlalchemy import union_all
 
+    # All-time / no-filter case: both args None → query the active table
+    # with no time restriction. This matches the legacy `if use_archive…
+    # elif upload_ids… else (all-time active)` ladder. Returning None here
+    # would silently empty every dashboard the moment the user clears the
+    # date picker.
+    if not upload_ids_filter and not archive_buckets:
+        cols_active = [getattr(DailyPlayerStats, c).label(c) for c in _STATS_UNION_COLS]
+        flts = list(filter_builder(DailyPlayerStats))
+        return db.session.query(*cols_active).filter(*flts).subquery()
+
     parts = []
     if upload_ids_filter:
         # Label each column so the union resolves columns by NAME (not by
