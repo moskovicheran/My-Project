@@ -116,7 +116,8 @@ class CollectionCycle(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     owner_id = db.Column(db.String(20), nullable=False, index=True)  # agent player_id
     label = db.Column(db.String(100), nullable=False)
-    is_closed = db.Column(db.Boolean, default=False)
+    is_closed = db.Column(db.Boolean, default=False)   # agent finished settling it
+    frozen = db.Column(db.Boolean, default=False)      # files were reset — now a snapshot
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     closed_at = db.Column(db.DateTime, nullable=True)
 

@@ -478,6 +478,33 @@ def _archive_and_clear_active():
             logging.getLogger(__name__).error(f'Cycle summary snapshot error: {e}')
             # Non-fatal — continue with reset.
 
+    # Freeze open collection cycles — snapshot their live amounts before the
+    # active data is cleared, so each cycle survives the reset as a standalone
+    # record ('previous cycle'). Non-fatal: a failure here must not block the
+    # reset itself.
+    try:
+        from app.models import CollectionCycle, PlayerPayment
+        from app.routes.main import _collection_live_rows
+        for cyc in CollectionCycle.query.filter_by(frozen=False, is_closed=False).all():
+            live = _collection_live_rows(cyc.owner_id, None, None)
+            existing = {p.player_id: p for p in cyc.payments}
+            for pid, d in live.items():
+                pay = existing.get(pid)
+                if not pay:
+                    pay = PlayerPayment(cycle_id=cyc.id, player_id=pid)
+                    db.session.add(pay)
+                pay.nickname = d['nickname']
+                pay.club = d['club']
+                pay.base_amount = d['base']
+                pay.total_rake = d['rake']
+            cyc.frozen = True
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        import logging
+        logging.getLogger(__name__).error(f'Collection freeze error: {e}')
+        # Non-fatal — continue with reset.
+
     # Delete active data
     TournamentStats.query.delete()
     PlayerSession.query.delete()

@@ -1935,22 +1935,6 @@ def _collection_live_rows(sa_id, start_date, end_date):
     return out
 
 
-def _cycle_window(cycle, cycles_asc):
-    """(start_date, end_date) accumulation window for a cycle. A cycle begins
-    where the previous cycle was opened (None = no lower bound, so the first
-    cycle covers every earlier file) and ends where the next cycle was opened
-    (None = latest cycle, still accumulating daily)."""
-    start = None
-    end = None
-    for c in cycles_asc:
-        if c.created_at < cycle.created_at:
-            start = c.created_at.date()
-        elif c.created_at > cycle.created_at:
-            end = c.created_at.date()
-            break
-    return start, end
-
-
 def _agent_rake_pct(sa_id):
     """The agent's configured rake percentage — caps manual rakeback.
     Highest SARakeConfig row for this agent; 100 when unconfigured."""
@@ -1961,12 +1945,62 @@ def _agent_rake_pct(sa_id):
     return max((float(r.rake_percent or 0) for r in rows), default=100.0)
 
 
+def _collection_current_cycle(sa_id, create=True):
+    """The agent's current (non-frozen, non-closed) collection cycle. Created
+    automatically when missing — the agent never opens one by hand."""
+    from app.models import CollectionCycle
+    from datetime import datetime
+    c = CollectionCycle.query.filter_by(
+        owner_id=sa_id, frozen=False, is_closed=False
+    ).order_by(CollectionCycle.created_at.desc()).first()
+    if not c and create:
+        c = CollectionCycle(owner_id=sa_id,
+                            label='מחזור ' + datetime.now().strftime('%d/%m/%Y'))
+        db.session.add(c)
+        db.session.commit()
+    return c
+
+
+def _collection_cycle_rows(cycle, live, pays, rake_pct):
+    """Build (receive, minus, settled) row lists for one cycle. `live` holds
+    {pid: {nickname, club, base, rake}} for the current cycle (live from the
+    active files); a frozen cycle passes {} and reads its stored snapshot
+    from the PlayerPayment rows. `pays` = {pid: PlayerPayment}."""
+    seen = set()
+    src = []
+    for pid, d in live.items():
+        seen.add(pid)
+        src.append((pid, d['nickname'], d['club'], d['base'], d['rake'], pays.get(pid)))
+    for pid, pay in pays.items():
+        if pid not in seen:
+            src.append((pid, pay.nickname or pid, pay.club or '',
+                        pay.base_amount or 0, pay.total_rake or 0, pay))
+    receive, minus, settled = [], [], []
+    for pid, nick, club, base, rake, pay in src:
+        manual_rake = round((pay.manual_rake or 0) if pay else 0, 2)
+        is_paid = pay.is_paid if pay else False
+        settlement = round(base + manual_rake, 2)
+        row = {
+            'cycle_id': cycle.id, 'player_id': pid, 'nickname': nick, 'club': club,
+            'base': round(base, 2), 'rake': round(rake, 2),
+            'manual_rake': manual_rake, 'settlement': settlement,
+            'is_paid': is_paid, 'paid_at': pay.paid_at if pay else None,
+            'cap': round(rake_pct / 100.0 * rake, 2),
+        }
+        (settled if is_paid else minus if settlement < 0 else receive).append(row)
+    receive.sort(key=lambda x: x['settlement'], reverse=True)
+    minus.sort(key=lambda x: x['settlement'])
+    settled.sort(key=lambda x: x['nickname'])
+    return receive, minus, settled
+
+
 @main_bp.route('/agent/collection', methods=['GET', 'POST'])
 @login_required
 def agent_collection():
-    """Two-week settlement tracker for an agent. Each cycle accumulates live
-    from the daily uploads inside its window: the latest cycle grows every
-    day, and an older cycle freezes once the next cycle opens."""
+    """Settlement tracker for an agent. The current cycle is always shown and
+    accumulates live from the active files. When the admin resets the files
+    the current cycle is frozen into a snapshot ('previous cycle') and a fresh
+    one takes over. Closing a cycle removes it from view."""
     if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
@@ -1975,8 +2009,6 @@ def agent_collection():
 
     sa_id = current_user.player_id
     rake_pct = _agent_rake_pct(sa_id)
-    cycles_asc = CollectionCycle.query.filter_by(owner_id=sa_id).order_by(
-        CollectionCycle.created_at.asc()).all()
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -1984,14 +2016,7 @@ def agent_collection():
         if not (rt.startswith('/') and not rt.startswith('//')):
             rt = url_for('main.agent_collection')
 
-        if action == 'new_cycle':
-            label = (request.form.get('label', '').strip()
-                     or 'מחזור ' + datetime.now().strftime('%d/%m/%Y'))
-            db.session.add(CollectionCycle(owner_id=sa_id, label=label))
-            db.session.commit()
-            flash(f'נפתח מחזור גבייה: {label}.', 'success')
-
-        elif action == 'close_cycle':
+        if action == 'close_cycle':
             cycle = CollectionCycle.query.get(request.form.get('cycle_id'))
             if cycle and cycle.owner_id == sa_id:
                 cycle.is_closed = True
@@ -2002,7 +2027,7 @@ def agent_collection():
         elif action in ('toggle_paid', 'set_rake'):
             cycle = CollectionCycle.query.get(request.form.get('cycle_id'))
             pid = (request.form.get('player_id') or '').strip()
-            if cycle and cycle.owner_id == sa_id and pid:
+            if cycle and cycle.owner_id == sa_id and not cycle.is_closed and pid:
                 pay = PlayerPayment.query.filter_by(
                     cycle_id=cycle.id, player_id=pid).first()
                 if not pay:
@@ -2018,9 +2043,11 @@ def agent_collection():
                     except ValueError:
                         flash('סכום רייק לא תקין.', 'danger')
                         return redirect(rt)
-                    start, end = _cycle_window(cycle, cycles_asc)
-                    total_rake = _collection_live_rows(
-                        sa_id, start, end).get(pid, {}).get('rake', 0)
+                    if cycle.frozen:
+                        total_rake = pay.total_rake or 0
+                    else:
+                        total_rake = _collection_live_rows(
+                            sa_id, None, None).get(pid, {}).get('rake', 0)
                     cap = round(rake_pct / 100.0 * total_rake, 2)
                     if val < 0:
                         flash('רייק לא יכול להיות שלילי.', 'danger')
@@ -2034,45 +2061,42 @@ def agent_collection():
 
         return redirect(rt)
 
+    # ── GET — current cycle (live) + frozen un-closed cycles (snapshot) ──
+    from app.models import DailyUpload
+    from sqlalchemy import func as _sf
+    _dr = db.session.query(_sf.min(DailyUpload.upload_date),
+                           _sf.max(DailyUpload.upload_date)).first()
+    date_from, date_to = (_dr[0], _dr[1]) if _dr else (None, None)
+
     cycles_view = []
-    for c in reversed(cycles_asc):  # newest first
-        start, end = _cycle_window(c, cycles_asc)
-        live = _collection_live_rows(sa_id, start, end)
-        pays = {p.player_id: p for p in c.payments}
-        receive, minus, settled = [], [], []
-        for pid, d in live.items():
-            pay = pays.get(pid)
-            manual_rake = round((pay.manual_rake or 0) if pay else 0, 2)
-            is_paid = pay.is_paid if pay else False
-            settlement = round(d['base'] + manual_rake, 2)
-            row = {
-                'cycle_id': c.id, 'player_id': pid,
-                'nickname': d['nickname'], 'club': d['club'],
-                'base': d['base'], 'rake': d['rake'], 'manual_rake': manual_rake,
-                'settlement': settlement, 'is_paid': is_paid,
-                'paid_at': pay.paid_at if pay else None,
-                'cap': round(rake_pct / 100.0 * d['rake'], 2),
-            }
-            if is_paid:
-                settled.append(row)
-            elif settlement < 0:
-                minus.append(row)
-            else:
-                receive.append(row)
-        receive.sort(key=lambda x: x['settlement'], reverse=True)
-        minus.sort(key=lambda x: x['settlement'])
-        settled.sort(key=lambda x: x['nickname'])
+    current = _collection_current_cycle(sa_id)
+    live = _collection_live_rows(sa_id, None, None)
+    receive, minus, settled = _collection_cycle_rows(
+        current, live, {p.player_id: p for p in current.payments}, rake_pct)
+    cycles_view.append({
+        'cycle': current, 'is_current': True,
+        'date_from': date_from, 'date_to': date_to,
+        'receive': receive, 'minus': minus, 'settled': settled,
+        'total_receive': round(sum(r['settlement'] for r in receive), 2),
+        'total_minus': round(sum(r['settlement'] for r in minus), 2),
+        'done': len(settled), 'pending': len(receive) + len(minus),
+    })
+    for c in CollectionCycle.query.filter_by(
+            owner_id=sa_id, frozen=True, is_closed=False
+    ).order_by(CollectionCycle.created_at.desc()).all():
+        receive, minus, settled = _collection_cycle_rows(
+            c, {}, {p.player_id: p for p in c.payments}, rake_pct)
         cycles_view.append({
-            'cycle': c, 'start': start, 'end': end,
+            'cycle': c, 'is_current': False,
+            'date_from': None, 'date_to': None,
             'receive': receive, 'minus': minus, 'settled': settled,
             'total_receive': round(sum(r['settlement'] for r in receive), 2),
             'total_minus': round(sum(r['settlement'] for r in minus), 2),
             'done': len(settled), 'pending': len(receive) + len(minus),
         })
 
-    has_open = any(not cv['cycle'].is_closed for cv in cycles_view)
     return render_template('main/agent_collection.html',
-                           cycles=cycles_view, rake_pct=rake_pct, has_open=has_open)
+                           cycles=cycles_view, rake_pct=rake_pct)
 
 
 @main_bp.route('/agent/reports')

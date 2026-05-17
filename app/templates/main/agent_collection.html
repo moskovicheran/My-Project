@@ -5,159 +5,99 @@
 <div class="page-header">
     <div>
         <h1>💵 גבייה — מי שילם</h1>
-        <p class="subtitle">מעקב תשלומים לשחקנים שלך. כל מחזור מצטבר חי מהקבצים היומיים שבטווח שלו. תקרת רייק: {{ rake_pct|round(0)|int }}%</p>
+        <p class="subtitle">המחזור הנוכחי מצטבר חי מהקבצים הפעילים. "רייק שייצר" = 100% מהרייק של השחקן; אתה מקבל {{ rake_pct|round(0)|int }}% ממנו ובוחר כמה להחזיר.</p>
     </div>
     <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline">← חזור לדשבורד</a>
 </div>
 
-{# ── New cycle ── #}
-<div class="section" style="margin-bottom:1.2rem;">
-    <form method="POST" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <input type="hidden" name="action" value="new_cycle">
-        <div style="flex:1; min-width:200px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">שם המחזור (לא חובה)</label>
-            <input type="text" name="label" placeholder="מחזור"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-family:inherit;">
-        </div>
-        <button type="submit" class="btn">➕ פתח מחזור גבייה חדש</button>
-    </form>
-    {% if has_open %}
-    <p class="muted small" style="margin-top:0.5rem;">⚠ קיים מחזור פתוח. פתיחת מחזור חדש עוצרת את צבירת הקודם (חלון התאריכים שלו ננעל) ומתחילה מחזור חדש.</p>
-    {% endif %}
-</div>
-
-{% if not cycles %}
-<div class="section" style="text-align:center; padding:2rem;">
-    <p class="muted">עדיין לא נפתח מחזור גבייה. לחץ על "פתח מחזור גבייה חדש" כדי להתחיל.</p>
-</div>
-{% endif %}
+{% macro rake_tables(c, rake_pct, rows, title, color, empty_msg) %}
+<h3 style="color:{{ color }}; font-size:1rem; margin:0.8rem 0 0.3rem;">{{ title }}</h3>
+{% if rows %}
+<table class="table table-sm">
+    <thead><tr>
+        <th>שחקן</th><th>רווח/הפסד</th><th>רייק שייצר (100%)</th>
+        <th>קבלת רייק (מקס׳ {{ rake_pct|round(0)|int }}%)</th><th>להתחשבנות</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+        <tr>
+            <td>
+                <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
+                <span class="muted small">{{ r.club }}</span>
+            </td>
+            <td class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
+            <td class="muted">{{ r.rake|comma }}</td>
+            <td>
+                <form method="POST" style="display:flex; gap:0.3rem; margin:0; align-items:center;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="set_rake">
+                    <input type="hidden" name="cycle_id" value="{{ c.id }}">
+                    <input type="hidden" name="player_id" value="{{ r.player_id }}">
+                    <input type="number" name="manual_rake" value="{{ r.manual_rake }}" min="0" max="{{ r.cap }}" step="0.01"
+                           style="width:80px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
+                    <button type="submit" class="btn btn-sm btn-outline">שמור</button>
+                    <span class="muted small">מתוך {{ r.cap|comma }}</span>
+                </form>
+            </td>
+            <td class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
+            <td>
+                <form method="POST" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="toggle_paid">
+                    <input type="hidden" name="cycle_id" value="{{ c.id }}">
+                    <input type="hidden" name="player_id" value="{{ r.player_id }}">
+                    <button type="submit" class="btn btn-sm">✓ שולם</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}<p class="muted small">{{ empty_msg }}</p>{% endif %}
+{% endmacro %}
 
 {% for cv in cycles %}
 {% set c = cv.cycle %}
-<div class="section" style="margin-bottom:1.4rem; {% if not loop.first and not c.is_closed %}border:2px solid #f0b86e;{% endif %}">
+<div class="section" style="margin-bottom:1.4rem; {% if not cv.is_current %}border:2px solid #f0b86e;{% endif %}">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem; margin-bottom:0.8rem;">
         <h2 class="section-title" style="margin:0;">
             {{ c.label }}
-            <span class="muted small" style="font-weight:400;">
-                ({% if cv.start %}{{ cv.start.strftime('%d/%m/%Y') }}{% else %}מההתחלה{% endif %} — {% if cv.end %}{{ cv.end.strftime('%d/%m/%Y') }}{% else %}היום{% endif %})
-            </span>
-            {% if c.is_closed %}
-                <span class="role-badge" style="background:#888;">סגור ✓</span>
-            {% elif loop.first %}
-                <span class="role-badge role-agent">מחזור נוכחי — מצטבר</span>
+            {% if cv.is_current and cv.date_from %}
+            <span class="muted small" style="font-weight:400;">({{ cv.date_from.strftime('%d/%m/%Y') }} — {{ cv.date_to.strftime('%d/%m/%Y') }})</span>
+            {% endif %}
+            {% if cv.is_current %}
+                <span class="role-badge role-agent">מחזור נוכחי — מצטבר חי</span>
             {% else %}
                 <span class="role-badge" style="background:#e8950c;">מחזור קודם — לא נסגר ⚠</span>
             {% endif %}
         </h2>
         <div style="display:flex; align-items:center; gap:0.6rem;">
             <span class="muted small">שולמו {{ cv.done }} / נותרו {{ cv.pending }}</span>
-            {% if not c.is_closed %}
             <form method="POST" onsubmit="return confirm('לסגור את המחזור {{ c.label }}? לא ניתן לערוך אחרי סגירה.');" style="margin:0;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="close_cycle">
                 <input type="hidden" name="cycle_id" value="{{ c.id }}">
                 <button type="submit" class="btn btn-outline btn-sm">🔒 סגור מחזור</button>
             </form>
-            {% endif %}
         </div>
     </div>
 
-    {# ── Table 1: needs to receive (plus) ── #}
-    <h3 style="color:#2ec4b6; font-size:1rem; margin:0.8rem 0 0.3rem;">📥 צריך לקבל ({{ cv.receive|length }}) — סה״כ {{ cv.total_receive|comma }}</h3>
-    {% if cv.receive %}
-    <table class="table table-sm">
-        <thead><tr><th>שחקן</th><th>רווח/הפסד</th><th>קבלת רייק (מקס׳)</th><th>להתחשבנות</th><th></th></tr></thead>
-        <tbody>
-        {% for r in cv.receive %}
-            <tr>
-                <td>
-                    <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
-                    <span class="muted small">{{ r.club }}</span>
-                </td>
-                <td class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
-                <td>
-                    {% if not c.is_closed %}
-                    <form method="POST" style="display:flex; gap:0.3rem; margin:0;">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="action" value="set_rake">
-                        <input type="hidden" name="cycle_id" value="{{ c.id }}">
-                        <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                        <input type="number" name="manual_rake" value="{{ r.manual_rake }}" min="0" max="{{ r.cap }}" step="0.01"
-                               style="width:80px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
-                        <button type="submit" class="btn btn-sm btn-outline">שמור</button>
-                        <span class="muted small" style="align-self:center;">/ {{ r.cap|comma }}</span>
-                    </form>
-                    {% else %}{{ r.manual_rake|comma }}{% endif %}
-                </td>
-                <td class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
-                <td>
-                    {% if not c.is_closed %}
-                    <form method="POST" style="margin:0;">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="action" value="toggle_paid">
-                        <input type="hidden" name="cycle_id" value="{{ c.id }}">
-                        <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                        <button type="submit" class="btn btn-sm">✓ שולם</button>
-                    </form>
-                    {% endif %}
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    {% else %}<p class="muted small">אין שחקנים שצריך לשלם להם.</p>{% endif %}
+    {{ rake_tables(c, rake_pct, cv.receive,
+        '📥 צריך לקבל (' ~ cv.receive|length ~ ') — סה״כ ' ~ cv.total_receive|comma,
+        '#2ec4b6', 'אין שחקנים שצריך לשלם להם.') }}
 
-    {# ── Table 2: in minus ── #}
-    <h3 style="color:#ef233c; font-size:1rem; margin:1rem 0 0.3rem;">📤 במינוס — חייבים לך ({{ cv.minus|length }}) — סה״כ {{ cv.total_minus|comma }}</h3>
-    {% if cv.minus %}
-    <table class="table table-sm">
-        <thead><tr><th>שחקן</th><th>רווח/הפסד</th><th>קבלת רייק (מקס׳)</th><th>להתחשבנות</th><th></th></tr></thead>
-        <tbody>
-        {% for r in cv.minus %}
-            <tr>
-                <td>
-                    <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
-                    <span class="muted small">{{ r.club }}</span>
-                </td>
-                <td class="amount expense">{{ r.base|comma }}</td>
-                <td>
-                    {% if not c.is_closed %}
-                    <form method="POST" style="display:flex; gap:0.3rem; margin:0;">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="action" value="set_rake">
-                        <input type="hidden" name="cycle_id" value="{{ c.id }}">
-                        <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                        <input type="number" name="manual_rake" value="{{ r.manual_rake }}" min="0" max="{{ r.cap }}" step="0.01"
-                               style="width:80px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
-                        <button type="submit" class="btn btn-sm btn-outline">שמור</button>
-                        <span class="muted small" style="align-self:center;">/ {{ r.cap|comma }}</span>
-                    </form>
-                    {% else %}{{ r.manual_rake|comma }}{% endif %}
-                </td>
-                <td class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
-                <td>
-                    {% if not c.is_closed %}
-                    <form method="POST" style="margin:0;">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="action" value="toggle_paid">
-                        <input type="hidden" name="cycle_id" value="{{ c.id }}">
-                        <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                        <button type="submit" class="btn btn-sm">✓ שולם</button>
-                    </form>
-                    {% endif %}
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    {% else %}<p class="muted small">אין שחקנים במינוס.</p>{% endif %}
+    {{ rake_tables(c, rake_pct, cv.minus,
+        '📤 במינוס — חייבים לך (' ~ cv.minus|length ~ ') — סה״כ ' ~ cv.total_minus|comma,
+        '#ef233c', 'אין שחקנים במינוס.') }}
 
     {# ── Table 3: settled ── #}
     <h3 style="color:#4361ee; font-size:1rem; margin:1rem 0 0.3rem;">✅ תקין — שולם ({{ cv.settled|length }})</h3>
     {% if cv.settled %}
     <table class="table table-sm">
-        <thead><tr><th>שחקן</th><th>רווח/הפסד</th><th>קבלת רייק</th><th>סכום ששולם</th><th>תאריך</th><th></th></tr></thead>
+        <thead><tr>
+            <th>שחקן</th><th>רווח/הפסד</th><th>רייק שייצר (100%)</th>
+            <th>קבלת רייק</th><th>סכום ששולם</th><th>תאריך</th><th></th>
+        </tr></thead>
         <tbody>
         {% for r in cv.settled %}
             <tr>
@@ -166,11 +106,11 @@
                     <span class="muted small">{{ r.club }}</span>
                 </td>
                 <td class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
+                <td class="muted">{{ r.rake|comma }}</td>
                 <td>{{ r.manual_rake|comma }}</td>
                 <td class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
                 <td class="muted small">{{ r.paid_at.strftime('%d/%m/%Y %H:%M') if r.paid_at else '' }}</td>
                 <td>
-                    {% if not c.is_closed %}
                     <form method="POST" style="margin:0;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="toggle_paid">
@@ -178,7 +118,6 @@
                         <input type="hidden" name="player_id" value="{{ r.player_id }}">
                         <button type="submit" class="btn btn-sm btn-outline">↩ בטל</button>
                     </form>
-                    {% endif %}
                 </td>
             </tr>
         {% endfor %}

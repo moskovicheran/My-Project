@@ -168,6 +168,8 @@ def create_app():
                 column_adds = [
                     ('cycle_summary_reports', 'is_current',
                      'BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('collection_cycles', 'frozen',
+                     'BOOLEAN NOT NULL DEFAULT FALSE'),
                 ]
                 for tbl, col, coldef in column_adds:
                     try:
