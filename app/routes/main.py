@@ -1936,13 +1936,16 @@ def _collection_live_rows(sa_id, start_date, end_date):
 
 
 def _agent_rake_pct(sa_id):
-    """The agent's configured rake percentage — caps manual rakeback.
-    Highest SARakeConfig row for this agent; 100 when unconfigured."""
-    from app.models import SARakeConfig
-    rows = SARakeConfig.query.filter_by(sa_id=sa_id).all()
-    if not rows:
-        return 100.0
-    return max((float(r.rake_percent or 0) for r in rows), default=100.0)
+    """The agent's own rake-deal percentage — caps manual rakeback. Read from
+    RakeConfig, the same source as the dashboard's 'הרייק שלי' card. Falls
+    back to 100% when the agent has no rake config, so the cap is the player's
+    full generated rake instead of zero."""
+    from app.models import RakeConfig
+    rc = RakeConfig.query.filter(
+        RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+        RakeConfig.entity_id == sa_id).first()
+    pct = float(rc.rake_percent) if (rc and rc.rake_percent) else 0.0
+    return pct if pct > 0 else 100.0
 
 
 def _collection_current_cycle(sa_id, create=True):
