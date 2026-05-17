@@ -13,7 +13,7 @@
 {% macro rake_tables(c, rake_pct, rows, title, color, empty_msg) %}
 <h3 style="color:{{ color }}; font-size:1rem; margin:0.8rem 0 0.3rem;">{{ title }}</h3>
 {% if rows %}
-<table class="table table-sm">
+<table class="table table-sm coll-table">
     <thead><tr>
         <th>שחקן</th><th>רווח/הפסד</th><th>רייק שייצר (100%)</th>
         <th>קבלת רייק (מקס׳ {{ rake_pct|round(0)|int }}%)</th><th>להתחשבנות</th><th></th>
@@ -21,14 +21,14 @@
     <tbody>
     {% for r in rows %}
         <tr>
-            <td>
+            <td class="coll-name" data-label="שחקן">
                 <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
                 <span class="muted small">{{ r.club }}</span>
             </td>
-            <td class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
-            <td class="muted">{{ r.rake|comma }}</td>
-            <td>
-                <form method="POST" style="display:flex; gap:0.3rem; margin:0; align-items:center;">
+            <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
+            <td data-label="רייק שייצר" class="muted">{{ r.rake|comma }}</td>
+            <td data-label="קבלת רייק" class="coll-form">
+                <form method="POST" style="display:flex; gap:0.3rem; margin:0; align-items:center; flex-wrap:wrap;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="set_rake">
                     <input type="hidden" name="cycle_id" value="{{ c.id }}">
@@ -39,8 +39,8 @@
                     <span class="muted small">מתוך {{ r.cap|comma }}</span>
                 </form>
             </td>
-            <td class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
-            <td>
+            <td data-label="להתחשבנות" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
+            <td class="coll-action">
                 <form method="POST" style="margin:0;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="toggle_paid">
@@ -93,7 +93,7 @@
     {# ── Table 3: settled ── #}
     <h3 style="color:#4361ee; font-size:1rem; margin:1rem 0 0.3rem;">✅ תקין — שולם ({{ cv.settled|length }})</h3>
     {% if cv.settled %}
-    <table class="table table-sm">
+    <table class="table table-sm coll-table">
         <thead><tr>
             <th>שחקן</th><th>רווח/הפסד</th><th>רייק שייצר (100%)</th>
             <th>קבלת רייק</th><th>סכום ששולם</th><th>תאריך</th><th></th>
@@ -101,16 +101,16 @@
         <tbody>
         {% for r in cv.settled %}
             <tr>
-                <td>
+                <td class="coll-name" data-label="שחקן">
                     <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
                     <span class="muted small">{{ r.club }}</span>
                 </td>
-                <td class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
-                <td class="muted">{{ r.rake|comma }}</td>
-                <td>{{ r.manual_rake|comma }}</td>
-                <td class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
-                <td class="muted small">{{ r.paid_at.strftime('%d/%m/%Y %H:%M') if r.paid_at else '' }}</td>
-                <td>
+                <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
+                <td data-label="רייק שייצר" class="muted">{{ r.rake|comma }}</td>
+                <td data-label="קבלת רייק">{{ r.manual_rake|comma }}</td>
+                <td data-label="סכום ששולם" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
+                <td data-label="תאריך" class="muted small">{{ r.paid_at.strftime('%d/%m/%Y %H:%M') if r.paid_at else '' }}</td>
+                <td class="coll-action">
                     <form method="POST" style="margin:0;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="toggle_paid">
@@ -126,4 +126,38 @@
     {% else %}<p class="muted small">עדיין לא סומנו תשלומים.</p>{% endif %}
 </div>
 {% endfor %}
+
+<style>
+/* ── Mobile: turn the wide collection tables into stacked cards ── */
+@media (max-width: 720px) {
+    .coll-table, .coll-table tbody { display: block; width: 100%; }
+    .coll-table thead { display: none; }
+    .coll-table tr {
+        display: block; background: #fff; border: 1px solid #e0e4ef;
+        border-radius: 12px; margin-bottom: 0.7rem; padding: 0.5rem 0.8rem;
+    }
+    .coll-table td {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 0.6rem; padding: 0.32rem 0; border: none; white-space: normal;
+    }
+    .coll-table td::before {
+        content: attr(data-label); font-weight: 600; color: #8a8f9c;
+        font-size: 0.8rem; flex-shrink: 0;
+    }
+    .coll-table td.coll-name {
+        font-size: 1.05rem; font-weight: 700;
+        border-bottom: 1px solid #eee; margin-bottom: 0.25rem;
+        padding-bottom: 0.45rem; display: block;
+    }
+    .coll-table td.coll-name::before { content: ""; }
+    .coll-table td.coll-form { display: block; }
+    .coll-table td.coll-form::before { display: block; margin-bottom: 0.25rem; }
+    .coll-table td.coll-action { padding-top: 0.5rem; }
+    .coll-table td.coll-action::before { content: ""; }
+    .coll-table td.coll-action button { width: 100%; }
+    .coll-table td[data-label="להתחשבנות"],
+    .coll-table td[data-label="סכום ששולם"] { font-size: 1.05rem; }
+    body.dark .coll-table tr { background: #1e1e2e; border-color: #333; }
+}
+</style>
 {% endblock %}
