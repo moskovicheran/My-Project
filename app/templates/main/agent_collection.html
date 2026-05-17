@@ -56,8 +56,21 @@
 {% else %}<p class="muted small">{{ empty_msg }}</p>{% endif %}
 {% endmacro %}
 
+{# ── Cycle tabs (only when there's more than the current cycle) ── #}
+{% if cycles|length > 1 %}
+<div class="cycle-tabs">
+    {% for cv in cycles %}
+    <button type="button" class="cycle-tab{% if not cv.is_current %} cycle-tab-prev{% endif %}{% if loop.first %} active{% endif %}"
+            onclick="switchCycle(this, {{ loop.index0 }})">
+        {% if cv.is_current %}מחזור נוכחי{% else %}⚠ מחזור לא סגור{% endif %}
+    </button>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% for cv in cycles %}
 {% set c = cv.cycle %}
+<div class="cycle-pane" data-idx="{{ loop.index0 }}"{% if not loop.first %} style="display:none;"{% endif %}>
 <div class="section" style="margin-bottom:1.4rem; {% if not cv.is_current %}border:2px solid #f0b86e;{% endif %}">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem; margin-bottom:0.8rem;">
         <h2 class="section-title" style="margin:0;">
@@ -125,9 +138,30 @@
     </table>
     {% else %}<p class="muted small">עדיין לא סומנו תשלומים.</p>{% endif %}
 </div>
+</div>
 {% endfor %}
 
+<script>
+function switchCycle(btn, idx) {
+    document.querySelectorAll('.cycle-tab').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.cycle-pane').forEach(function(p) {
+        p.style.display = (parseInt(p.dataset.idx) === idx) ? '' : 'none';
+    });
+}
+</script>
+
 <style>
+/* ── Cycle tabs ── */
+.cycle-tabs { display:flex; gap:0.4rem; margin-bottom:1rem; flex-wrap:wrap; }
+.cycle-tab { padding:0.5rem 1.1rem; border-radius:10px 10px 0 0; font-size:0.95rem;
+             font-weight:700; background:#eef1f5; border:1px solid #e0e4ef;
+             border-bottom:none; cursor:pointer; color:#555; }
+.cycle-tab:hover { color:#4361ee; }
+.cycle-tab.active { background:#4361ee; color:#fff; border-color:#4361ee; }
+.cycle-tab-prev.active { background:#e8950c; border-color:#e8950c; }
+body.dark .cycle-tab { background:#1e1e2e; border-color:#333; color:#aaa; }
+
 /* ── Mobile: turn the wide collection tables into stacked cards ── */
 @media (max-width: 720px) {
     .coll-table, .coll-table tbody { display: block; width: 100%; }
