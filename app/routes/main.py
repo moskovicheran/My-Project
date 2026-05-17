@@ -1889,12 +1889,13 @@ def agent_top_players():
                            biggest_loser=biggest_loser)
 
 
-def _collection_scope_rows(sa_id):
-    """Per-player aggregate rows for an agent, using the zero-leakage scope
-    (same predicate as agent_top_players / the agent dashboard). Each row:
-    {player_id, nickname, club, base_amount, total_rake}."""
-    from app.models import DailyPlayerStats
-    from app.union_data import get_agent_scope, get_transfer_adjustments
+def _collection_live_rows(sa_id, start_date, end_date):
+    """Per-player {nickname, club, base, rake} for the agent's zero-leakage
+    scope, summed over active uploads with start_date <= upload_date and
+    (when end_date is given) upload_date < end_date. The cycle window
+    accumulates daily as new files are uploaded."""
+    from app.models import DailyPlayerStats, DailyUpload
+    from app.union_data import get_agent_scope
     from sqlalchemy import func as sqlfunc, or_, and_
 
     scope_sa_ids, managed_club_names, po_clubs = get_agent_scope(sa_id)
@@ -1905,30 +1906,49 @@ def _collection_scope_rows(sa_id):
     if po_clubs:
         scope_preds.append(and_(DailyPlayerStats.club.in_(po_clubs),
                                 DailyPlayerStats.player_id == sa_id))
-    rows = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id,
-        sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.club),
-        sqlfunc.sum(DailyPlayerStats.pnl),
-        sqlfunc.sum(DailyPlayerStats.rake),
-    ).filter(
-        or_(*scope_preds),
-        and_(DailyPlayerStats.role != 'Name Entry',
-             DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
-    ).group_by(DailyPlayerStats.player_id).all()
-
-    pids = [r[0] for r in rows]
-    xfer = get_transfer_adjustments(pids)
-    out = []
+    date_filters = []
+    if start_date:
+        date_filters.append(DailyUpload.upload_date >= start_date)
+    if end_date:
+        date_filters.append(DailyUpload.upload_date < end_date)
+    rows = (DailyPlayerStats.query
+            .join(DailyUpload, DailyPlayerStats.upload_id == DailyUpload.id)
+            .with_entities(
+                DailyPlayerStats.player_id,
+                sqlfunc.max(DailyPlayerStats.nickname),
+                sqlfunc.max(DailyPlayerStats.club),
+                sqlfunc.sum(DailyPlayerStats.pnl),
+                sqlfunc.sum(DailyPlayerStats.rake))
+            .filter(or_(*scope_preds),
+                    and_(DailyPlayerStats.role != 'Name Entry',
+                         DailyPlayerStats.role.isnot(None),
+                         DailyPlayerStats.role != ''),
+                    *date_filters)
+            .group_by(DailyPlayerStats.player_id).all())
+    out = {}
     for pid, nick, club, pnl, rake in rows:
-        out.append({
-            'player_id': pid,
-            'nickname': nick or pid,
-            'club': club or '',
-            'base_amount': round(float(pnl or 0) + xfer.get(pid, 0), 2),
-            'total_rake': round(float(rake or 0), 2),
-        })
+        base = round(float(pnl or 0), 2)
+        rk = round(float(rake or 0), 2)
+        if base or rk:
+            out[pid] = {'nickname': nick or pid, 'club': club or '',
+                        'base': base, 'rake': rk}
     return out
+
+
+def _cycle_window(cycle, cycles_asc):
+    """(start_date, end_date) accumulation window for a cycle. A cycle begins
+    where the previous cycle was opened (None = no lower bound, so the first
+    cycle covers every earlier file) and ends where the next cycle was opened
+    (None = latest cycle, still accumulating daily)."""
+    start = None
+    end = None
+    for c in cycles_asc:
+        if c.created_at < cycle.created_at:
+            start = c.created_at.date()
+        elif c.created_at > cycle.created_at:
+            end = c.created_at.date()
+            break
+    return start, end
 
 
 def _agent_rake_pct(sa_id):
@@ -1944,9 +1964,9 @@ def _agent_rake_pct(sa_id):
 @main_bp.route('/agent/collection', methods=['GET', 'POST'])
 @login_required
 def agent_collection():
-    """Two-week settlement tracker for an agent — who has been paid and who
-    has not. Amounts are frozen at cycle creation so an old cycle stays put
-    when new daily data arrives."""
+    """Two-week settlement tracker for an agent. Each cycle accumulates live
+    from the daily uploads inside its window: the latest cycle grows every
+    day, and an older cycle freezes once the next cycle opens."""
     if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
@@ -1955,6 +1975,8 @@ def agent_collection():
 
     sa_id = current_user.player_id
     rake_pct = _agent_rake_pct(sa_id)
+    cycles_asc = CollectionCycle.query.filter_by(owner_id=sa_id).order_by(
+        CollectionCycle.created_at.asc()).all()
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -1963,23 +1985,11 @@ def agent_collection():
             rt = url_for('main.agent_collection')
 
         if action == 'new_cycle':
-            rows = [r for r in _collection_scope_rows(sa_id)
-                    if r['base_amount'] != 0 or r['total_rake'] != 0]
-            if not rows:
-                flash('אין שחקנים עם פעילות לפתיחת מחזור.', 'warning')
-            else:
-                label = (request.form.get('label', '').strip()
-                         or 'מחזור ' + datetime.now().strftime('%d/%m/%Y'))
-                cycle = CollectionCycle(owner_id=sa_id, label=label)
-                db.session.add(cycle)
-                db.session.flush()
-                for r in rows:
-                    db.session.add(PlayerPayment(
-                        cycle_id=cycle.id, player_id=r['player_id'],
-                        nickname=r['nickname'], club=r['club'],
-                        base_amount=r['base_amount'], total_rake=r['total_rake']))
-                db.session.commit()
-                flash(f'נפתח מחזור גבייה: {label} ({len(rows)} שחקנים).', 'success')
+            label = (request.form.get('label', '').strip()
+                     or 'מחזור ' + datetime.now().strftime('%d/%m/%Y'))
+            db.session.add(CollectionCycle(owner_id=sa_id, label=label))
+            db.session.commit()
+            flash(f'נפתח מחזור גבייה: {label}.', 'success')
 
         elif action == 'close_cycle':
             cycle = CollectionCycle.query.get(request.form.get('cycle_id'))
@@ -1989,44 +1999,61 @@ def agent_collection():
                 db.session.commit()
                 flash(f'מחזור "{cycle.label}" נסגר.', 'success')
 
-        elif action == 'toggle_paid':
-            pay = PlayerPayment.query.get(request.form.get('payment_id'))
-            if pay and pay.cycle.owner_id == sa_id:
-                pay.is_paid = not pay.is_paid
-                pay.paid_at = datetime.utcnow() if pay.is_paid else None
-                db.session.commit()
-
-        elif action == 'set_rake':
-            pay = PlayerPayment.query.get(request.form.get('payment_id'))
-            if pay and pay.cycle.owner_id == sa_id:
-                try:
-                    val = float(request.form.get('manual_rake', 0) or 0)
-                except ValueError:
-                    flash('סכום רייק לא תקין.', 'danger')
-                    return redirect(rt)
-                cap = round(rake_pct / 100.0 * (pay.total_rake or 0), 2)
-                if val < 0:
-                    flash('רייק לא יכול להיות שלילי.', 'danger')
-                elif val > cap + 0.001:
-                    flash(f'חריגה! מקסימום הרייק ל{pay.nickname} הוא {cap:.2f} '
-                          f'({rake_pct:.0f}% מתוך {pay.total_rake:.2f}).', 'danger')
-                else:
-                    pay.manual_rake = round(val, 2)
+        elif action in ('toggle_paid', 'set_rake'):
+            cycle = CollectionCycle.query.get(request.form.get('cycle_id'))
+            pid = (request.form.get('player_id') or '').strip()
+            if cycle and cycle.owner_id == sa_id and pid:
+                pay = PlayerPayment.query.filter_by(
+                    cycle_id=cycle.id, player_id=pid).first()
+                if not pay:
+                    pay = PlayerPayment(cycle_id=cycle.id, player_id=pid)
+                    db.session.add(pay)
+                if action == 'toggle_paid':
+                    pay.is_paid = not pay.is_paid
+                    pay.paid_at = datetime.utcnow() if pay.is_paid else None
                     db.session.commit()
-                    flash(f'רייק {val:.2f} נרשם ל{pay.nickname}.', 'success')
+                else:  # set_rake
+                    try:
+                        val = float(request.form.get('manual_rake', 0) or 0)
+                    except ValueError:
+                        flash('סכום רייק לא תקין.', 'danger')
+                        return redirect(rt)
+                    start, end = _cycle_window(cycle, cycles_asc)
+                    total_rake = _collection_live_rows(
+                        sa_id, start, end).get(pid, {}).get('rake', 0)
+                    cap = round(rake_pct / 100.0 * total_rake, 2)
+                    if val < 0:
+                        flash('רייק לא יכול להיות שלילי.', 'danger')
+                    elif val > cap + 0.001:
+                        flash(f'חריגה! מקסימום הרייק הוא {cap:.2f} '
+                              f'({rake_pct:.0f}% מתוך {total_rake:.2f}).', 'danger')
+                    else:
+                        pay.manual_rake = round(val, 2)
+                        db.session.commit()
+                        flash(f'רייק {val:.2f} נרשם.', 'success')
 
         return redirect(rt)
 
-    cycles = CollectionCycle.query.filter_by(owner_id=sa_id).order_by(
-        CollectionCycle.is_closed.asc(), CollectionCycle.created_at.desc()).all()
     cycles_view = []
-    for c in cycles:
+    for c in reversed(cycles_asc):  # newest first
+        start, end = _cycle_window(c, cycles_asc)
+        live = _collection_live_rows(sa_id, start, end)
+        pays = {p.player_id: p for p in c.payments}
         receive, minus, settled = [], [], []
-        for pay in c.payments:
-            settlement = round((pay.base_amount or 0) + (pay.manual_rake or 0), 2)
-            cap = round(rake_pct / 100.0 * (pay.total_rake or 0), 2)
-            row = {'p': pay, 'settlement': settlement, 'cap': cap}
-            if pay.is_paid:
+        for pid, d in live.items():
+            pay = pays.get(pid)
+            manual_rake = round((pay.manual_rake or 0) if pay else 0, 2)
+            is_paid = pay.is_paid if pay else False
+            settlement = round(d['base'] + manual_rake, 2)
+            row = {
+                'cycle_id': c.id, 'player_id': pid,
+                'nickname': d['nickname'], 'club': d['club'],
+                'base': d['base'], 'rake': d['rake'], 'manual_rake': manual_rake,
+                'settlement': settlement, 'is_paid': is_paid,
+                'paid_at': pay.paid_at if pay else None,
+                'cap': round(rake_pct / 100.0 * d['rake'], 2),
+            }
+            if is_paid:
                 settled.append(row)
             elif settlement < 0:
                 minus.append(row)
@@ -2034,15 +2061,16 @@ def agent_collection():
                 receive.append(row)
         receive.sort(key=lambda x: x['settlement'], reverse=True)
         minus.sort(key=lambda x: x['settlement'])
-        settled.sort(key=lambda x: x['p'].nickname)
+        settled.sort(key=lambda x: x['nickname'])
         cycles_view.append({
-            'cycle': c, 'receive': receive, 'minus': minus, 'settled': settled,
+            'cycle': c, 'start': start, 'end': end,
+            'receive': receive, 'minus': minus, 'settled': settled,
             'total_receive': round(sum(r['settlement'] for r in receive), 2),
             'total_minus': round(sum(r['settlement'] for r in minus), 2),
             'done': len(settled), 'pending': len(receive) + len(minus),
         })
 
-    has_open = any(not c['cycle'].is_closed for c in cycles_view)
+    has_open = any(not cv['cycle'].is_closed for cv in cycles_view)
     return render_template('main/agent_collection.html',
                            cycles=cycles_view, rake_pct=rake_pct, has_open=has_open)
 

@@ -726,55 +726,58 @@ def player_detail(player_id):
             _DPS.nickname.isnot(None), _DPS.nickname != ''
         ).scalar() or scope_sa_id
 
-    # Collection-cycle payment status — an agent viewing one of their players
-    # (including themselves, since an SA also plays) gets a "paid" toggle +
-    # rake entry for the current open cycle. None when the viewer is not an
-    # agent or no open cycle exists.
-    from app.models import CollectionCycle, PlayerPayment, SARakeConfig, DailyPlayerStats
+    # Collection-cycle status — live amounts per cycle window. An agent gets an
+    # editable panel for the current cycle; the read-only history shows every
+    # cycle the player was active in. Amounts accumulate from the daily files.
+    from app.models import CollectionCycle, PlayerPayment
+    from app.routes.main import _collection_live_rows, _cycle_window, _agent_rake_pct
     collection_payment = None
     collection_cap = 0.0
-    if current_user.role == 'agent' and current_user.player_id:
-        open_cycle = CollectionCycle.query.filter_by(
-            owner_id=current_user.player_id, is_closed=False
-        ).order_by(CollectionCycle.created_at.desc()).first()
-        if open_cycle:
-            collection_payment = PlayerPayment.query.filter_by(
-                cycle_id=open_cycle.id, player_id=player_id).first()
-            if collection_payment:
-                _rk = SARakeConfig.query.filter_by(sa_id=current_user.player_id).all()
-                _pct = max((float(r.rake_percent or 0) for r in _rk), default=100.0)
-                collection_cap = round(_pct / 100.0 * (collection_payment.total_rake or 0), 2)
-
-    # Collection documentation — every payment row for this player across all
-    # cycles, read-only. Lets an admin (reached via player search) or the
-    # agent see the rake refund + settlement history from the player's record.
     collection_history = []
-    _pay_rows = PlayerPayment.query.filter_by(player_id=player_id).all()
-    if _pay_rows:
-        _cyc_ids = {r.cycle_id for r in _pay_rows}
-        _cycles = {c.id: c for c in CollectionCycle.query.filter(
-            CollectionCycle.id.in_(_cyc_ids)).all()}
-        _owner_nicks = {}
-        for c in _cycles.values():
-            if c.owner_id not in _owner_nicks:
-                _o = DailyPlayerStats.query.filter_by(player_id=c.owner_id).first()
-                _owner_nicks[c.owner_id] = _o.nickname if _o else c.owner_id
-        for r in _pay_rows:
-            c = _cycles.get(r.cycle_id)
-            if not c:
-                continue
-            collection_history.append({
-                'cycle_label': c.label,
-                'is_closed': c.is_closed,
-                'owner': _owner_nicks.get(c.owner_id, c.owner_id),
-                'base_amount': r.base_amount or 0,
-                'manual_rake': r.manual_rake or 0,
-                'settlement': round((r.base_amount or 0) + (r.manual_rake or 0), 2),
-                'is_paid': r.is_paid,
-                'paid_at': r.paid_at,
-                'created_at': c.created_at,
-            })
-        collection_history.sort(key=lambda x: x['created_at'], reverse=True)
+    if current_user.role == 'agent' and current_user.player_id:
+        _owner = current_user.player_id
+        _cycles_asc = CollectionCycle.query.filter_by(owner_id=_owner).order_by(
+            CollectionCycle.created_at.asc()).all()
+        if _cycles_asc:
+            _rake_pct = _agent_rake_pct(_owner)
+            _pays = {p.cycle_id: p for p in PlayerPayment.query.filter(
+                PlayerPayment.player_id == player_id,
+                PlayerPayment.cycle_id.in_([c.id for c in _cycles_asc])).all()}
+            for _c in _cycles_asc:
+                _start, _end = _cycle_window(_c, _cycles_asc)
+                _d = _collection_live_rows(_owner, _start, _end).get(player_id)
+                _pay = _pays.get(_c.id)
+                _mr = (_pay.manual_rake or 0) if _pay else 0
+                if not _d and not _mr:
+                    continue  # player not active in this cycle
+                _base = _d['base'] if _d else 0
+                collection_history.append({
+                    'cycle_label': _c.label, 'is_closed': _c.is_closed,
+                    'owner': current_user.username,
+                    'base_amount': _base, 'manual_rake': _mr,
+                    'settlement': round(_base + _mr, 2),
+                    'is_paid': _pay.is_paid if _pay else False,
+                    'paid_at': _pay.paid_at if _pay else None,
+                    'created_at': _c.created_at,
+                })
+            collection_history.sort(key=lambda x: x['created_at'], reverse=True)
+            # Editable panel — the latest (current) cycle, while still open.
+            _latest = _cycles_asc[-1]
+            if not _latest.is_closed:
+                _start, _end = _cycle_window(_latest, _cycles_asc)
+                _d = _collection_live_rows(_owner, _start, _end).get(player_id)
+                _pay = _pays.get(_latest.id)
+                if _d or _pay:
+                    _base = _d['base'] if _d else 0
+                    _rake = _d['rake'] if _d else 0
+                    collection_cap = round(_rake_pct / 100.0 * _rake, 2)
+                    collection_payment = {
+                        'cycle_id': _latest.id, 'player_id': player_id,
+                        'base_amount': _base,
+                        'manual_rake': (_pay.manual_rake or 0) if _pay else 0,
+                        'is_paid': _pay.is_paid if _pay else False,
+                        'paid_at': _pay.paid_at if _pay else None,
+                    }
 
     return render_template('union/player_detail.html',
                            member=member_info,

@@ -74,7 +74,8 @@
         <form method="POST" action="{{ url_for('main.agent_collection') }}" style="display:flex; gap:0.4rem; align-items:flex-end; margin:0;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="set_rake">
-            <input type="hidden" name="payment_id" value="{{ cp.id }}">
+            <input type="hidden" name="cycle_id" value="{{ cp.cycle_id }}">
+            <input type="hidden" name="player_id" value="{{ cp.player_id }}">
             <input type="hidden" name="redirect_to" value="{{ request.full_path }}">
             <div>
                 <div class="muted small">קבלת רייק (מקס׳ {{ collection_cap|comma }})</div>
@@ -90,7 +91,8 @@
         <form method="POST" action="{{ url_for('main.agent_collection') }}" style="margin:0;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="toggle_paid">
-            <input type="hidden" name="payment_id" value="{{ cp.id }}">
+            <input type="hidden" name="cycle_id" value="{{ cp.cycle_id }}">
+            <input type="hidden" name="player_id" value="{{ cp.player_id }}">
             <input type="hidden" name="redirect_to" value="{{ request.full_path }}">
             {% if cp.is_paid %}
             <button type="submit" class="btn btn-outline">↩ בטל סימון שולם</button>
