@@ -117,9 +117,22 @@ def create_app():
         # SKIP_STARTUP_DB_WORK is set, since the deployed DB doesn't have
         # them yet. Idempotent (checkfirst=True) and very fast on warm DBs.
         try:
-            from app.models import BotSuspectDismissal, ProtectedAgent
-            BotSuspectDismissal.__table__.create(db.engine, checkfirst=True)
-            ProtectedAgent.__table__.create(db.engine, checkfirst=True)
+            from app.models import (BotSuspectDismissal, ProtectedAgent,
+                                     CollectionCycle, PlayerPayment)
+            for _newtbl in (BotSuspectDismissal, ProtectedAgent,
+                            CollectionCycle, PlayerPayment):
+                _newtbl.__table__.create(db.engine, checkfirst=True)
+            # `frozen` was added to collection_cycles after it first shipped.
+            # Ensure it exists here too — the main column-migration block
+            # below is skipped when SKIP_STARTUP_DB_WORK is set (as in prod).
+            from sqlalchemy import text as _text
+            try:
+                db.session.execute(_text(
+                    'ALTER TABLE collection_cycles ADD COLUMN IF NOT EXISTS '
+                    'frozen BOOLEAN NOT NULL DEFAULT FALSE'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         except Exception as e:
             print(f"New-table create warning: {e}")
 
