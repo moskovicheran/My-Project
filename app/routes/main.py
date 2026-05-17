@@ -1495,7 +1495,32 @@ def dashboard():
 
         hide_personal_breakdown = sa_id in AGENTS_HIDE_PERSONAL_BREAKDOWN
 
+        # Manual rake refunds this agent has entered in the collection table —
+        # shown as its own card + drill-down panel on the dashboard.
+        from app.models import CollectionCycle, PlayerPayment
+        _coll_cycles = CollectionCycle.query.filter_by(owner_id=sa_id).all()
+        collection_rake_total = 0.0
+        collection_rake_list = []
+        if _coll_cycles:
+            _cyc_by_id = {c.id: c for c in _coll_cycles}
+            for p in PlayerPayment.query.filter(
+                    PlayerPayment.cycle_id.in_(list(_cyc_by_id.keys()))).all():
+                if p.manual_rake:
+                    _cyc = _cyc_by_id.get(p.cycle_id)
+                    collection_rake_list.append({
+                        'player_id': p.player_id,
+                        'nick': p.nickname or p.player_id,
+                        'cycle': _cyc.label if _cyc else '',
+                        'amount': round(p.manual_rake, 2),
+                        'is_paid': p.is_paid,
+                    })
+            collection_rake_list.sort(key=lambda r: r['amount'], reverse=True)
+            collection_rake_total = round(
+                sum(r['amount'] for r in collection_rake_list), 2)
+
         return render_template('main/agent_dashboard.html',
+                               collection_rake_total=collection_rake_total,
+                               collection_rake_list=collection_rake_list,
                                my_sas=my_sas, child_sas=child_sas,
                                managed_clubs=managed_clubs,
                                total_rake=total_rake, total_pnl=total_pnl,
@@ -1656,11 +1681,15 @@ def dashboard():
         total_wins = sum(g['wins'] for g in game_stats.values())
         total_losses = sum(g['losses'] for g in game_stats.values())
 
+        # Manual rake refund the agent entered for this player in collection cycles
+        collection_rake = _collection_rake_by_player([player_id]).get(player_id, 0)
+
         return render_template('main/player_dashboard.html',
                                player=cs or {'nickname': current_user.username, 'club': '-', 'pnl': 0, 'rake': 0, 'hands': 0},
                                viewing_player_id=player_id,
                                sessions=session_list, transfer_rows=transfer_rows,
                                rake_refund=rake_refund,
+                               collection_rake=collection_rake,
                                rake_refund_pct=(player_rc.rake_percent if player_rc else 0),
                                daily_stats_map=daily_stats_map,
                                active_dates=active_dates,
@@ -1860,6 +1889,164 @@ def agent_top_players():
                            biggest_loser=biggest_loser)
 
 
+def _collection_scope_rows(sa_id):
+    """Per-player aggregate rows for an agent, using the zero-leakage scope
+    (same predicate as agent_top_players / the agent dashboard). Each row:
+    {player_id, nickname, club, base_amount, total_rake}."""
+    from app.models import DailyPlayerStats
+    from app.union_data import get_agent_scope, get_transfer_adjustments
+    from sqlalchemy import func as sqlfunc, or_, and_
+
+    scope_sa_ids, managed_club_names, po_clubs = get_agent_scope(sa_id)
+    scope_preds = [DailyPlayerStats.sa_id.in_(scope_sa_ids),
+                   DailyPlayerStats.agent_id.in_(scope_sa_ids)]
+    if managed_club_names:
+        scope_preds.append(DailyPlayerStats.club.in_(managed_club_names))
+    if po_clubs:
+        scope_preds.append(and_(DailyPlayerStats.club.in_(po_clubs),
+                                DailyPlayerStats.player_id == sa_id))
+    rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id,
+        sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club),
+        sqlfunc.sum(DailyPlayerStats.pnl),
+        sqlfunc.sum(DailyPlayerStats.rake),
+    ).filter(
+        or_(*scope_preds),
+        and_(DailyPlayerStats.role != 'Name Entry',
+             DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
+    ).group_by(DailyPlayerStats.player_id).all()
+
+    pids = [r[0] for r in rows]
+    xfer = get_transfer_adjustments(pids)
+    out = []
+    for pid, nick, club, pnl, rake in rows:
+        out.append({
+            'player_id': pid,
+            'nickname': nick or pid,
+            'club': club or '',
+            'base_amount': round(float(pnl or 0) + xfer.get(pid, 0), 2),
+            'total_rake': round(float(rake or 0), 2),
+        })
+    return out
+
+
+def _agent_rake_pct(sa_id):
+    """The agent's configured rake percentage — caps manual rakeback.
+    Highest SARakeConfig row for this agent; 100 when unconfigured."""
+    from app.models import SARakeConfig
+    rows = SARakeConfig.query.filter_by(sa_id=sa_id).all()
+    if not rows:
+        return 100.0
+    return max((float(r.rake_percent or 0) for r in rows), default=100.0)
+
+
+@main_bp.route('/agent/collection', methods=['GET', 'POST'])
+@login_required
+def agent_collection():
+    """Two-week settlement tracker for an agent — who has been paid and who
+    has not. Amounts are frozen at cycle creation so an old cycle stays put
+    when new daily data arrives."""
+    if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+
+    from app.models import CollectionCycle, PlayerPayment
+    from datetime import datetime
+
+    sa_id = current_user.player_id
+    rake_pct = _agent_rake_pct(sa_id)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        rt = request.form.get('redirect_to') or ''
+        if not (rt.startswith('/') and not rt.startswith('//')):
+            rt = url_for('main.agent_collection')
+
+        if action == 'new_cycle':
+            rows = [r for r in _collection_scope_rows(sa_id)
+                    if r['base_amount'] != 0 or r['total_rake'] != 0]
+            if not rows:
+                flash('אין שחקנים עם פעילות לפתיחת מחזור.', 'warning')
+            else:
+                label = (request.form.get('label', '').strip()
+                         or 'מחזור ' + datetime.now().strftime('%d/%m/%Y'))
+                cycle = CollectionCycle(owner_id=sa_id, label=label)
+                db.session.add(cycle)
+                db.session.flush()
+                for r in rows:
+                    db.session.add(PlayerPayment(
+                        cycle_id=cycle.id, player_id=r['player_id'],
+                        nickname=r['nickname'], club=r['club'],
+                        base_amount=r['base_amount'], total_rake=r['total_rake']))
+                db.session.commit()
+                flash(f'נפתח מחזור גבייה: {label} ({len(rows)} שחקנים).', 'success')
+
+        elif action == 'close_cycle':
+            cycle = CollectionCycle.query.get(request.form.get('cycle_id'))
+            if cycle and cycle.owner_id == sa_id:
+                cycle.is_closed = True
+                cycle.closed_at = datetime.utcnow()
+                db.session.commit()
+                flash(f'מחזור "{cycle.label}" נסגר.', 'success')
+
+        elif action == 'toggle_paid':
+            pay = PlayerPayment.query.get(request.form.get('payment_id'))
+            if pay and pay.cycle.owner_id == sa_id:
+                pay.is_paid = not pay.is_paid
+                pay.paid_at = datetime.utcnow() if pay.is_paid else None
+                db.session.commit()
+
+        elif action == 'set_rake':
+            pay = PlayerPayment.query.get(request.form.get('payment_id'))
+            if pay and pay.cycle.owner_id == sa_id:
+                try:
+                    val = float(request.form.get('manual_rake', 0) or 0)
+                except ValueError:
+                    flash('סכום רייק לא תקין.', 'danger')
+                    return redirect(rt)
+                cap = round(rake_pct / 100.0 * (pay.total_rake or 0), 2)
+                if val < 0:
+                    flash('רייק לא יכול להיות שלילי.', 'danger')
+                elif val > cap + 0.001:
+                    flash(f'חריגה! מקסימום הרייק ל{pay.nickname} הוא {cap:.2f} '
+                          f'({rake_pct:.0f}% מתוך {pay.total_rake:.2f}).', 'danger')
+                else:
+                    pay.manual_rake = round(val, 2)
+                    db.session.commit()
+                    flash(f'רייק {val:.2f} נרשם ל{pay.nickname}.', 'success')
+
+        return redirect(rt)
+
+    cycles = CollectionCycle.query.filter_by(owner_id=sa_id).order_by(
+        CollectionCycle.is_closed.asc(), CollectionCycle.created_at.desc()).all()
+    cycles_view = []
+    for c in cycles:
+        receive, minus, settled = [], [], []
+        for pay in c.payments:
+            settlement = round((pay.base_amount or 0) + (pay.manual_rake or 0), 2)
+            cap = round(rake_pct / 100.0 * (pay.total_rake or 0), 2)
+            row = {'p': pay, 'settlement': settlement, 'cap': cap}
+            if pay.is_paid:
+                settled.append(row)
+            elif settlement < 0:
+                minus.append(row)
+            else:
+                receive.append(row)
+        receive.sort(key=lambda x: x['settlement'], reverse=True)
+        minus.sort(key=lambda x: x['settlement'])
+        settled.sort(key=lambda x: x['p'].nickname)
+        cycles_view.append({
+            'cycle': c, 'receive': receive, 'minus': minus, 'settled': settled,
+            'total_receive': round(sum(r['settlement'] for r in receive), 2),
+            'total_minus': round(sum(r['settlement'] for r in minus), 2),
+            'done': len(settled), 'pending': len(receive) + len(minus),
+        })
+
+    has_open = any(not c['cycle'].is_closed for c in cycles_view)
+    return render_template('main/agent_collection.html',
+                           cycles=cycles_view, rake_pct=rake_pct, has_open=has_open)
+
+
 @main_bp.route('/agent/reports')
 @login_required
 def agent_reports():
@@ -2015,6 +2202,21 @@ def agent_reports():
 
 # ═══════════════════════ EXCEL EXPORTS ═══════════════════════
 
+def _collection_rake_by_player(player_ids=None):
+    """{player_id: total manual rake refund} entered in collection cycles.
+    Pass player_ids to limit the scan; None scans all players."""
+    from app.models import PlayerPayment
+    from sqlalchemy import func as sqlfunc
+    q = PlayerPayment.query.with_entities(
+        PlayerPayment.player_id, sqlfunc.sum(PlayerPayment.manual_rake))
+    if player_ids is not None:
+        if not player_ids:
+            return {}
+        q = q.filter(PlayerPayment.player_id.in_(list(player_ids)))
+    return {pid: round(float(amt or 0), 2)
+            for pid, amt in q.group_by(PlayerPayment.player_id).all() if amt}
+
+
 def _make_excel(sheets_data, filename, period_label=None):
     """Create Excel file from dict of {sheet_name: [{col: val, ...}]}.
 
@@ -2061,7 +2263,7 @@ def _make_excel(sheets_data, filename, period_label=None):
                 val = row_data.get(key, '')
                 cell = ws.cell(row=row_idx, column=col_idx, value=val)
                 # Color P&L values
-                if key in ('P&L', 'נטו שלי') and isinstance(val, (int, float)):
+                if key in ('P&L', 'נטו שלי', 'קבלת רייק', 'סה"כ לתשלום') and isinstance(val, (int, float)):
                     if val > 0:
                         cell.font = green_font
                     elif val < 0:
@@ -2212,6 +2414,17 @@ def export_player(player_id):
                 'P&L': round(t.amount, 2),
             })
 
+    # Manual rake refund from collection cycles — its own row so the total
+    # reflects what the player actually received (all-time view only).
+    rake_refund = 0
+    if not selected_dates and not club_filter:
+        rake_refund = _collection_rake_by_player([player_id]).get(player_id, 0)
+        if rake_refund:
+            session_rows.append({
+                'משחק': 'קבלת רייק', 'סוג': 'רייק', 'בליינדס': '',
+                'P&L': round(rake_refund, 2),
+            })
+
     # Add total row at the end
     total_pnl = sum(r['P&L'] for r in session_rows)
     session_rows.append({
@@ -2253,6 +2466,13 @@ def export_player(player_id):
         else:
             summary = [{'שחקן': cs['nickname'], 'קלאב': cs['club'],
                         'Rake': cs['rake'], 'P&L': cs['pnl']}]
+
+    # Rake-refund columns on the summary sheet — the refund lands on the
+    # total row (or the single row) since it is a player-level amount.
+    for row in summary:
+        rr = rake_refund if (row.get('שחקן') == 'סה"כ' or len(summary) == 1) else 0
+        row['קבלת רייק'] = round(rr, 2)
+        row['סה"כ לתשלום'] = round(row['P&L'] + rr, 2)
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
@@ -2365,9 +2585,18 @@ def export_agent_account():
                      'תאריך': c.created_at.strftime('%d/%m/%Y')} for c in charges]
     total_expenses = round(sum(c.charge_amount for c in charges), 2)
 
+    # Total rake refunds this agent has granted in collection cycles
+    from app.models import CollectionCycle, PlayerPayment
+    _cyc_ids = [c.id for c in CollectionCycle.query.filter_by(owner_id=sa_id).all()]
+    collection_rake_total = 0.0
+    if _cyc_ids:
+        collection_rake_total = round(float(PlayerPayment.query.with_entities(
+            sqlfunc.sum(PlayerPayment.manual_rake)).filter(
+            PlayerPayment.cycle_id.in_(_cyc_ids)).scalar() or 0), 2)
+
     summary = [{'סוכן': current_user.username, 'רייק אישי': personal_rake,
                 'רייק מועדונים (נטו)': total_club_rake, 'הוצאות משותפות': total_expenses,
-                'P&L': personal_pnl}]
+                'P&L': personal_pnl, 'החזר רייק (גבייה)': collection_rake_total}]
 
     # Per-SA summary — one row per child Super Agent under this agent.
     # Uses the same scope as personal rake (excludes managed-club rows so
@@ -2675,6 +2904,7 @@ def export_agent_players():
 
     # Transfers only apply to the unfiltered (all-time) view
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
+    rake_ref = _collection_rake_by_player([p[0] for p in players]) if not had_date_filter else {}
 
     # Group players: by agent, by child SA, or direct
     agent_groups = {}  # agent_name -> [players]
@@ -2685,10 +2915,14 @@ def export_agent_players():
         ag_id = p[4] if p[4] and p[4] != '-' else None
         ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
         raw_pnl = round(float(p[5] or 0), 2)
+        _pnl = round(raw_pnl + xfer_adj.get(p[0], 0), 2)
+        _rr = rake_ref.get(p[0], 0)
         row = {
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
-            'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
+            'P&L': _pnl,
             'Rake': round(float(p[6] or 0), 2),
+            'קבלת רייק': round(_rr, 2),
+            'סה"כ לתשלום': round(_pnl + _rr, 2),
         }
         # Check if player belongs to a child SA (not the parent SA)
         if player_sa in child_sa_ids:
@@ -2719,6 +2953,8 @@ def export_agent_players():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in ag_players), 2),
             'Rake': total_rake,
+            'קבלת רייק': round(sum(r['קבלת רייק'] for r in ag_players), 2),
+            'סה"כ לתשלום': round(sum(r['סה"כ לתשלום'] for r in ag_players), 2),
         })
         ag_pid = nicks_to_id.get(ag_name, '')
         pct = _get_rake_pct(ag_pid) if ag_pid else 0
@@ -2726,6 +2962,7 @@ def export_agent_players():
             ag_players.append({
                 'שחקן': f'נטו סוכן ({pct}%)', 'ID': '', 'קלאב': '',
                 'P&L': '', 'Rake': round(total_rake * pct / 100, 2),
+                'קבלת רייק': '', 'סה"כ לתשלום': '',
             })
         sheets[ag_name[:31]] = ag_players
 
@@ -2738,6 +2975,8 @@ def export_agent_players():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in csa_players), 2),
             'Rake': total_rake,
+            'קבלת רייק': round(sum(r['קבלת רייק'] for r in csa_players), 2),
+            'סה"כ לתשלום': round(sum(r['סה"כ לתשלום'] for r in csa_players), 2),
         })
         csa_pid = nicks_to_id.get(csa_name, '')
         pct = _get_rake_pct(csa_pid) if csa_pid else 0
@@ -2745,6 +2984,7 @@ def export_agent_players():
             csa_players.append({
                 'שחקן': f'נטו סוכן ({pct}%)', 'ID': '', 'קלאב': '',
                 'P&L': '', 'Rake': round(total_rake * pct / 100, 2),
+                'קבלת רייק': '', 'סה"כ לתשלום': '',
             })
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', csa_name)[:31] or 'SA'
         sheets[safe_name] = csa_players
@@ -2756,6 +2996,8 @@ def export_agent_players():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '',
             'P&L': round(sum(r['P&L'] for r in direct_players), 2),
             'Rake': round(sum(r['Rake'] for r in direct_players), 2),
+            'קבלת רייק': round(sum(r['קבלת רייק'] for r in direct_players), 2),
+            'סה"כ לתשלום': round(sum(r['סה"כ לתשלום'] for r in direct_players), 2),
         })
         sheets['שחקנים ישירים'] = direct_players
 
@@ -2931,6 +3173,7 @@ def export_agent_full_box():
     ).group_by(SM.player_id).all()
 
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
+    rake_ref = _collection_rake_by_player([p[0] for p in players]) if not had_date_filter else {}
 
     # Group players by Super Agent so the sheet reads as an organized list:
     # one SA's players in a block, then the next SA's, etc.
@@ -2941,14 +3184,18 @@ def export_agent_full_box():
         sa_pid = p[4] if p[4] and p[4] != '-' else None
         sa_name = all_nicks.get(sa_pid, sa_pid) if sa_pid else ''
         raw_pnl = round(float(p[5] or 0), 2)
+        _pnl = round(raw_pnl + xfer_adj.get(p[0], 0), 2)
+        _rr = rake_ref.get(p[0], 0)
         row = {
             'שחקן': p[1],
             'ID': p[0],
             'קלאב': p[2] or '',
             'Super Agent': sa_name,
             'סוכן': ag_name,
-            'P&L': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
+            'P&L': _pnl,
             'Rake': round(float(p[6] or 0), 2),
+            'קבלת רייק': round(_rr, 2),
+            'סה"כ לתשלום': round(_pnl + _rr, 2),
             'ידיים': int(p[7] or 0),
         }
         sa_groups.setdefault(row['Super Agent'], []).append(row)
@@ -2984,6 +3231,8 @@ def export_agent_full_box():
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'Super Agent': '', 'סוכן': '',
             'P&L': round(sum(r['P&L'] for r in data_rows), 2),
             'Rake': round(sum(r['Rake'] for r in data_rows), 2),
+            'קבלת רייק': round(sum(r['קבלת רייק'] for r in data_rows), 2),
+            'סה"כ לתשלום': round(sum(r['סה"כ לתשלום'] for r in data_rows), 2),
             'ידיים': sum(r['ידיים'] for r in data_rows),
         })
 
@@ -4499,7 +4748,25 @@ def player_record_api(player_id):
             })
 
     total_pnl = round(sum(s['pnl'] for s in sessions), 2)
-    return jsonify({'sessions': sessions, 'total_pnl': total_pnl})
+
+    # Manual rake (rakeback) credited to this player in collection cycles —
+    # shown as extra rows in the record so the total reflects what the
+    # player actually received.
+    from app.models import CollectionCycle, PlayerPayment
+    rake_rows = []
+    for pay in PlayerPayment.query.filter_by(player_id=player_id).all():
+        if pay.manual_rake:
+            cyc = CollectionCycle.query.get(pay.cycle_id)
+            rake_rows.append({
+                'cycle': cyc.label if cyc else '',
+                'date': pay.paid_at.strftime('%d/%m/%Y') if pay.paid_at else '',
+                'amount': round(pay.manual_rake, 2),
+            })
+    rake_total = round(sum(r['amount'] for r in rake_rows), 2)
+    grand_total = round(total_pnl + rake_total, 2)
+    return jsonify({'sessions': sessions, 'total_pnl': total_pnl,
+                    'rake_rows': rake_rows, 'rake_total': rake_total,
+                    'grand_total': grand_total})
 
 
 @main_bp.route('/transactions')

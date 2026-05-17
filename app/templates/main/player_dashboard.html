@@ -19,6 +19,7 @@ var _allSessions = {{ sessions | tojson }};  // active + archived (last 90 days)
 var _activeDates = new Set({{ active_dates | tojson }});
 var _dailyStatsMap = {{ daily_stats_map | tojson }};
 var _rakeRefundPct = {{ rake_refund_pct | default(0) | tojson }};
+var _collectionRake = {{ collection_rake | default(0) | tojson }};
 var _selectedDates = []; // array of 0-2 endpoint dates (range-select like agent dashboard)
 
 var _availableDates = [...new Set(_allSessions.map(s => s.date).filter(d => d))].sort();
@@ -197,13 +198,24 @@ function applyFilter() {
                     '</tr>';
             });
         }
+        // Rake refund the agent entered in the collection table — its own row
+        if (_collectionRake) {
+            rows += '<tr style="background:#eafbf8;">' +
+                '<td></td>' +
+                '<td><strong>קבלת רייק</strong></td>' +
+                '<td><span class="badge badge-game" style="background:#2ec4b6;color:#fff;">רייק</span></td>' +
+                '<td></td>' +
+                '<td class="amount income">+' + _collectionRake.toFixed(2) + '</td>' +
+                '</tr>';
+        }
         tbody.innerHTML = rows;
     }
-    // Totals row — sum of visible rows (sessions + transfers if any)
+    // Totals row — sum of visible rows (sessions + transfers + rake refund)
     var tabPnl = tabFiltered.reduce(function(a,s){ return a + s.pnl; }, 0);
     if (_sessionsTab === 'all' && _transferRows && _transferRows.length) {
         tabPnl += _transferRows.reduce(function(a,t){ return a + t.amount; }, 0);
     }
+    if (tabFiltered.length) tabPnl += _collectionRake;
 
     // Update total row for the sessions table (sum of visible rows in the active tab)
     var totalEl = document.getElementById('sessions-total');
@@ -300,7 +312,10 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 </script>
 
 {# ── Stats Cards ── #}
-<div class="stats-grid stats-{% if rake_refund %}4{% else %}3{% endif %}" style="margin-bottom:1.5rem;">
+{% set _ncards = 3 %}
+{% if rake_refund %}{% set _ncards = _ncards + 1 %}{% endif %}
+{% if collection_rake %}{% set _ncards = _ncards + 1 %}{% endif %}
+<div class="stats-grid stats-{{ _ncards }}" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
         <div class="stat-label">יתרה (רווח/הפסד)</div>
         <div class="stat-value" id="stat-pnl">{% if player.pnl > 0 %}+{% endif %}{{ player.pnl|comma }}</div>
@@ -317,6 +332,12 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
     <div class="stat-card" style="border:2px solid #667eea;">
         <div class="stat-label" style="color:#667eea; font-weight:700;">החזר רייק</div>
         <div class="stat-value" id="stat-rake-refund" style="color:#667eea;">{{ rake_refund|comma }}</div>
+    </div>
+    {% endif %}
+    {% if collection_rake %}
+    <div class="stat-card" style="border:2px solid #2ec4b6;">
+        <div class="stat-label" style="color:#2ec4b6; font-weight:700;">קבלת רייק</div>
+        <div class="stat-value" style="color:#2ec4b6;">{{ collection_rake|comma }}</div>
     </div>
     {% endif %}
 </div>

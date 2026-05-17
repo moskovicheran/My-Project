@@ -726,6 +726,56 @@ def player_detail(player_id):
             _DPS.nickname.isnot(None), _DPS.nickname != ''
         ).scalar() or scope_sa_id
 
+    # Collection-cycle payment status — an agent viewing one of their players
+    # (including themselves, since an SA also plays) gets a "paid" toggle +
+    # rake entry for the current open cycle. None when the viewer is not an
+    # agent or no open cycle exists.
+    from app.models import CollectionCycle, PlayerPayment, SARakeConfig, DailyPlayerStats
+    collection_payment = None
+    collection_cap = 0.0
+    if current_user.role == 'agent' and current_user.player_id:
+        open_cycle = CollectionCycle.query.filter_by(
+            owner_id=current_user.player_id, is_closed=False
+        ).order_by(CollectionCycle.created_at.desc()).first()
+        if open_cycle:
+            collection_payment = PlayerPayment.query.filter_by(
+                cycle_id=open_cycle.id, player_id=player_id).first()
+            if collection_payment:
+                _rk = SARakeConfig.query.filter_by(sa_id=current_user.player_id).all()
+                _pct = max((float(r.rake_percent or 0) for r in _rk), default=100.0)
+                collection_cap = round(_pct / 100.0 * (collection_payment.total_rake or 0), 2)
+
+    # Collection documentation — every payment row for this player across all
+    # cycles, read-only. Lets an admin (reached via player search) or the
+    # agent see the rake refund + settlement history from the player's record.
+    collection_history = []
+    _pay_rows = PlayerPayment.query.filter_by(player_id=player_id).all()
+    if _pay_rows:
+        _cyc_ids = {r.cycle_id for r in _pay_rows}
+        _cycles = {c.id: c for c in CollectionCycle.query.filter(
+            CollectionCycle.id.in_(_cyc_ids)).all()}
+        _owner_nicks = {}
+        for c in _cycles.values():
+            if c.owner_id not in _owner_nicks:
+                _o = DailyPlayerStats.query.filter_by(player_id=c.owner_id).first()
+                _owner_nicks[c.owner_id] = _o.nickname if _o else c.owner_id
+        for r in _pay_rows:
+            c = _cycles.get(r.cycle_id)
+            if not c:
+                continue
+            collection_history.append({
+                'cycle_label': c.label,
+                'is_closed': c.is_closed,
+                'owner': _owner_nicks.get(c.owner_id, c.owner_id),
+                'base_amount': r.base_amount or 0,
+                'manual_rake': r.manual_rake or 0,
+                'settlement': round((r.base_amount or 0) + (r.manual_rake or 0), 2),
+                'is_paid': r.is_paid,
+                'paid_at': r.paid_at,
+                'created_at': c.created_at,
+            })
+        collection_history.sort(key=lambda x: x['created_at'], reverse=True)
+
     return render_template('union/player_detail.html',
                            member=member_info,
                            sessions=sessions,
@@ -741,7 +791,10 @@ def player_detail(player_id):
                            scope_applied=scope_applied,
                            scope_sa_id=scope_sa_id,
                            scope_sa_nick=scope_sa_nick,
-                           club_filter=club_filter)
+                           club_filter=club_filter,
+                           collection_payment=collection_payment,
+                           collection_cap=collection_cap,
+                           collection_history=collection_history)
 
 
 def _build_hierarchy_chain(player_id):

@@ -117,6 +117,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
 {% if hide_personal_breakdown %}{% set base_cards = base_cards - 1 %}{% endif %}
 {% if managed_clubs is defined and managed_clubs %}{% set base_cards = base_cards + 2 %}{% endif %}
 {% if rake_refund_list is defined and rake_refund_list %}{% set base_cards = base_cards + 1 %}{% endif %}
+{% if collection_rake_total is defined and collection_rake_total %}{% set base_cards = base_cards + 1 %}{% endif %}
 {% if my_rake_pct is defined and my_rake_pct %}{% set base_cards = base_cards + 1 %}{% endif %}
 <div class="stats-grid stats-{{ base_cards }}" style="margin-bottom:1.5rem;">
     <div class="stat-card">
@@ -143,6 +144,12 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
     <div class="stat-card" style="cursor:pointer; border:2px solid #667eea;" onclick="toggleRakeRefund()">
         <div class="stat-label" style="color:#667eea;">החזרי רייק</div>
         <div class="stat-value" style="color:#667eea;">{{ total_rake_refund|comma }}</div>
+    </div>
+    {% endif %}
+    {% if collection_rake_total is defined and collection_rake_total %}
+    <div class="stat-card" style="cursor:pointer; border:2px solid #2ec4b6;" onclick="toggleCollectionRake()" title="פירוט החזרי הרייק">
+        <div class="stat-label" style="color:#2ec4b6;">החזר רייק (גבייה)</div>
+        <div class="stat-value" style="color:#2ec4b6;">{{ collection_rake_total|comma }}</div>
     </div>
     {% endif %}
     {# Show the "הרייק שלי" card only when the SA's % is < 100 — at 100%
@@ -194,6 +201,37 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
 <script>
 function toggleRakeRefund() {
     var el = document.getElementById('rakeRefundPanel');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endif %}
+
+{% if collection_rake_total is defined and collection_rake_total %}
+<div id="collectionRakePanel" style="display:none; margin-bottom:1.5rem; border:2px solid #2ec4b6; border-radius:14px; background:linear-gradient(135deg, #f0fdfb, #e8f8f5); overflow:hidden;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; border-bottom:1px solid #c8ede8;">
+        <strong style="color:#2ec4b6;">החזרי רייק שהזנת בגבייה</strong>
+        <span onclick="toggleCollectionRake()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
+    </div>
+    <div style="padding:0.5rem 1rem 0.8rem;">
+        {% for r in collection_rake_list %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <strong>{{ r.nick }}</strong>
+                <span class="muted" style="font-size:0.75rem;">{{ r.cycle }}</span>
+                {% if r.is_paid %}<span style="font-size:0.72rem; color:#2ec4b6; font-weight:700;">שולם ✓</span>{% else %}<span class="muted" style="font-size:0.72rem;">ממתין</span>{% endif %}
+            </div>
+            <span style="color:#2ec4b6; font-weight:700;">{{ r.amount|comma }}</span>
+        </div>
+        {% endfor %}
+        <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:0.95rem; font-weight:700;">
+            <span>סה"כ החזר רייק</span>
+            <span style="color:#2ec4b6;">{{ collection_rake_total|comma }}</span>
+        </div>
+    </div>
+</div>
+<script>
+function toggleCollectionRake() {
+    var el = document.getElementById('collectionRakePanel');
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 </script>
@@ -878,7 +916,8 @@ function toggleRecord(btn, playerId) {
     fetch('/api/player-record/' + playerId + _recQs)
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (!data.sessions.length) {
+            var rakeRows = data.rake_rows || [];
+            if (!data.sessions.length && !rakeRows.length) {
                 container.innerHTML = '<span class="muted small">אין משחקים</span>';
                 return;
             }
@@ -891,10 +930,18 @@ function toggleRecord(btn, playerId) {
                 html += '<td>' + escapeHtml(s.table) + '</td>';
                 html += '<td class="' + cls + '">' + sign + s.pnl.toFixed(2) + '</td></tr>';
             });
-            var totalCls = data.total_pnl >= 0 ? 'rec-plus' : 'rec-minus';
-            var totalSign = data.total_pnl > 0 ? '+' : '';
-            html += '<tr><td colspan="3" class="record-total">סה"כ</td>';
-            html += '<td class="record-total ' + totalCls + '">' + totalSign + data.total_pnl.toFixed(2) + '</td></tr>';
+            rakeRows.forEach(function(r) {
+                html += '<tr style="background:#eafbf8;"><td class="muted" style="font-size:0.78rem;white-space:nowrap;">' + escapeHtml(r.date || '') + '</td>';
+                html += '<td class="muted">💎 רייק</td>';
+                html += '<td>קבלת רייק — ' + escapeHtml(r.cycle) + '</td>';
+                html += '<td class="rec-plus">+' + r.amount.toFixed(2) + '</td></tr>';
+            });
+            var gt = (data.grand_total !== undefined) ? data.grand_total : data.total_pnl;
+            var totalCls = gt >= 0 ? 'rec-plus' : 'rec-minus';
+            var totalSign = gt > 0 ? '+' : '';
+            var totalLabel = data.rake_total ? 'סה"כ (כולל קבלת רייק)' : 'סה"כ';
+            html += '<tr><td colspan="3" class="record-total">' + totalLabel + '</td>';
+            html += '<td class="record-total ' + totalCls + '">' + totalSign + gt.toFixed(2) + '</td></tr>';
             html += '</table>';
             container.innerHTML = html;
         });

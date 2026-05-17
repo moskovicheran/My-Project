@@ -60,6 +60,76 @@
     </div>
 </div>
 
+{# ── Collection cycle: paid toggle + manual rake (agent viewing own player) ── #}
+{% if collection_payment %}
+{% set cp = collection_payment %}
+{% set settlement = cp.base_amount + cp.manual_rake %}
+<div class="section" style="margin-bottom:1.5rem; border:2px solid #2ec4b6;">
+    <h2 class="section-title">💵 גבייה — מחזור נוכחי</h2>
+    <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+            <div class="muted small">רווח/הפסד</div>
+            <div class="amount {% if cp.base_amount >= 0 %}income{% else %}expense{% endif %}" style="font-size:1.2rem;">{{ cp.base_amount|comma }}</div>
+        </div>
+        <form method="POST" action="{{ url_for('main.agent_collection') }}" style="display:flex; gap:0.4rem; align-items:flex-end; margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="set_rake">
+            <input type="hidden" name="payment_id" value="{{ cp.id }}">
+            <input type="hidden" name="redirect_to" value="{{ request.full_path }}">
+            <div>
+                <div class="muted small">קבלת רייק (מקס׳ {{ collection_cap|comma }})</div>
+                <input type="number" name="manual_rake" value="{{ cp.manual_rake }}" min="0" max="{{ collection_cap }}" step="0.01"
+                       style="width:110px; padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:8px;">
+            </div>
+            <button type="submit" class="btn btn-outline btn-sm">שמור קבלת רייק</button>
+        </form>
+        <div>
+            <div class="muted small">סיכום להתחשבנות</div>
+            <div class="amount {% if settlement >= 0 %}income{% else %}expense{% endif %}" style="font-size:1.2rem;"><strong>{{ settlement|comma }}</strong></div>
+        </div>
+        <form method="POST" action="{{ url_for('main.agent_collection') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="toggle_paid">
+            <input type="hidden" name="payment_id" value="{{ cp.id }}">
+            <input type="hidden" name="redirect_to" value="{{ request.full_path }}">
+            {% if cp.is_paid %}
+            <button type="submit" class="btn btn-outline">↩ בטל סימון שולם</button>
+            {% else %}
+            <button type="submit" class="btn">✓ שולם</button>
+            {% endif %}
+        </form>
+        {% if cp.is_paid %}
+        <span class="role-badge" style="background:#2ec4b6;">שולם {{ cp.paid_at.strftime('%d/%m/%Y') if cp.paid_at else '' }}</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{# ── Collection documentation — read-only history, visible to admin too ── #}
+{% if collection_history %}
+<div class="section" style="margin-bottom:1.5rem;">
+    <h2 class="section-title">📒 תיעוד גבייה</h2>
+    <table class="table table-sm">
+        <thead><tr>
+            <th>מחזור</th><th>סוכן</th><th>רווח/הפסד</th><th>קבלת רייק</th><th>סיכום</th><th>סטטוס</th><th>תאריך תשלום</th>
+        </tr></thead>
+        <tbody>
+        {% for h in collection_history %}
+        <tr>
+            <td>{{ h.cycle_label }}{% if h.is_closed %} <span class="muted small">(סגור)</span>{% endif %}</td>
+            <td class="muted">{{ h.owner }}</td>
+            <td class="amount {% if h.base_amount >= 0 %}income{% else %}expense{% endif %}">{{ h.base_amount|comma }}</td>
+            <td>{{ h.manual_rake|comma }}</td>
+            <td class="amount {% if h.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ h.settlement|comma }}</strong></td>
+            <td>{% if h.is_paid %}<span class="role-badge" style="background:#2ec4b6;">שולם ✓</span>{% else %}<span class="muted">ממתין</span>{% endif %}</td>
+            <td class="muted small">{{ h.paid_at.strftime('%d/%m/%Y %H:%M') if h.paid_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 {# ── Per-club breakdown (always shown) ── #}
 {% if club_entries|length > 1 %}
 <div class="section" style="margin-bottom:1.5rem;">
@@ -337,12 +407,22 @@ function toggleBcDetails(cardEl, gameType, blinds) {
                 </td>
             </tr>
             {% endfor %}
+            {% for h in collection_history if h.manual_rake %}
+            <tr style="background:#eafbf8;">
+                <td class="muted" style="font-size:0.82rem; white-space:nowrap;">{{ h.paid_at.strftime('%d/%m/%Y') if h.paid_at else '' }}</td>
+                <td><strong>קבלת רייק — {{ h.cycle_label }}</strong></td>
+                <td><span class="badge" style="background:#2ec4b6; color:#fff;">💎 רייק</span></td>
+                <td class="amount income">+{{ h.manual_rake|comma }}</td>
+            </tr>
+            {% endfor %}
         </tbody>
         <tfoot>
+            {% set rake_total = collection_history|sum(attribute='manual_rake') %}
+            {% set grand_total = total_pnl + rake_total %}
             <tr class="total-row">
-                <td colspan="3"><strong>סה"כ</strong></td>
-                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
+                <td colspan="3"><strong>סה"כ{% if rake_total %} (כולל קבלת רייק){% endif %}</strong></td>
+                <td class="amount {% if grand_total >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if grand_total > 0 %}+{% endif %}{{ grand_total|comma }}</strong>
                 </td>
             </tr>
         </tfoot>

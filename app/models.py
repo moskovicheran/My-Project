@@ -107,6 +107,55 @@ class RakeConfig(db.Model):
         return f'<RakeConfig {self.entity_type}:{self.entity_name} {self.rake_percent}%>'
 
 
+class CollectionCycle(db.Model):
+    """A two-week settlement round owned by one agent. A new cycle can be
+    opened while a previous one is still open ("not closed") — the old cycle's
+    table stays visible until the agent explicitly closes it."""
+    __tablename__ = 'collection_cycles'
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.String(20), nullable=False, index=True)  # agent player_id
+    label = db.Column(db.String(100), nullable=False)
+    is_closed = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    closed_at = db.Column(db.DateTime, nullable=True)
+
+    payments = db.relationship('PlayerPayment', backref='cycle',
+                               cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<CollectionCycle {self.label} owner={self.owner_id}>'
+
+
+class PlayerPayment(db.Model):
+    """One player's settlement row inside a collection cycle. Amounts are a
+    frozen snapshot taken when the cycle is opened, so an old cycle does not
+    change when new daily data is uploaded.
+
+    settlement = base_amount + manual_rake
+      base_amount > 0  -> agent owes the player (needs to receive)
+      base_amount < 0  -> player owes the agent (in minus)
+    manual_rake is rakeback the agent grants the player; it always benefits
+    the player and is capped at the agent's configured rake percentage."""
+    __tablename__ = 'player_payments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cycle_id = db.Column(db.Integer, db.ForeignKey('collection_cycles.id'),
+                         nullable=False, index=True)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
+    nickname = db.Column(db.String(100), default='')
+    club = db.Column(db.String(100), default='')
+    base_amount = db.Column(db.Float, default=0)   # snapshot PnL (+ transfer adj)
+    total_rake = db.Column(db.Float, default=0)    # snapshot rake — caps manual_rake
+    manual_rake = db.Column(db.Float, default=0)   # rakeback granted by the agent
+    is_paid = db.Column(db.Boolean, default=False)
+    paid_at = db.Column(db.DateTime, nullable=True)
+    note = db.Column(db.String(200), default='')
+
+    def __repr__(self):
+        return f'<PlayerPayment {self.player_id} cycle={self.cycle_id} paid={self.is_paid}>'
+
+
 class SharedExpense(db.Model):
     __tablename__ = 'shared_expenses'
 
