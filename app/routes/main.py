@@ -3209,10 +3209,45 @@ def export_agent_full_box():
     # old in-hierarchy row in this report, inflating the total vs the
     # dashboard. Managed-club rows are still claimed by club name.
     from sqlalchemy import and_ as _and
-    from app.union_data import get_players_with_current_scope
+    from app.union_data import (get_players_with_current_scope,
+                                get_managed_clubs_all_cfgs, get_members_hierarchy)
+    from app.models import PlayerAssignment
     _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(sa_id)
     _cur_pids = get_players_with_current_scope(_scope_sa_ids, M=SM) or set()
-    _scope_preds = [SM.player_id.in_(list(_cur_pids))]
+    # Manual overrides (PlayerAssignment) attached to this hierarchy — the same
+    # set get_agent_totals folds in. Without this the report under-counts an
+    # admin-attached player (e.g. Pagsos's 3643-7770/1881-1458 SPC T rows).
+    _known_ag = {r[0] for r in SM.query.with_entities(SM.agent_id).filter(
+        SM.sa_id.in_(_scope_sa_ids), SM.agent_id.isnot(None),
+        SM.agent_id != '', SM.agent_id != '-').distinct().all() if r[0]}
+    _ov_targets = set(_scope_sa_ids) | _known_ag
+    _ov_pids = {pa.player_id for pa in PlayerAssignment.query.all()
+                if (pa.assigned_sa_id in _ov_targets) or (pa.assigned_agent_id in _ov_targets)}
+    _all_pids = list(_cur_pids | _ov_pids)
+    # Carve-out: a scope/override player's rows in a club owned by ANOTHER
+    # card (other SA's managed club OR tracked OVERVIEW_CLUBS) belong to that
+    # card, not here — mirrors get_agent_totals so totals match.
+    _cd_co, _ = get_members_hierarchy()
+    _c2n_co = {c['club_id']: c['name'] for c in _cd_co}
+    _own_mc = set(_mc_names)
+    _other_owned = set()
+    for _c in get_managed_clubs_all_cfgs():
+        if _c.sa_id == sa_id:
+            continue
+        _other_owned.add(_c2n_co.get(_c.managed_club_id) or _c.managed_club_id)
+    try:
+        from app.routes.admin import OVERVIEW_CLUBS as _OVC
+        for _, _cid in _OVC:
+            _nm = _c2n_co.get(_cid) or (_cid if SM.query.filter(SM.club == _cid).first() else None)
+            if _nm:
+                _other_owned.add(_nm)
+    except Exception:
+        pass
+    _other_owned -= _own_mc
+    if _other_owned:
+        _scope_preds = [_and(SM.player_id.in_(_all_pids), SM.club.notin_(list(_other_owned)))]
+    else:
+        _scope_preds = [SM.player_id.in_(_all_pids)]
     if _mc_names:
         _scope_preds.append(SM.club.in_(_mc_names))
     if _po_clubs:
