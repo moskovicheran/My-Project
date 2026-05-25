@@ -708,6 +708,14 @@ def dashboard():
             # Overridden players bypass this check — admin explicitly attached them
             # via /admin/lost-players, so their natural sa_id is irrelevant.
             sa_ok = True if (_is_overridden or not has_child_sas) else (actual_sa in known_ids)
+            # An OVERRIDDEN player whose (overridden) SA is a CHILD SA belongs to
+            # that child SA's card — NOT to our direct My-Agents list. Without
+            # this, the override's agent_id surfaces as a standalone direct
+            # agent at the parent's level (e.g. an admin attaching JimmJim
+            # 5424-5436 to Omaha would make his agent MJordan23 pop up as a
+            # direct agent under Riko). The child_sas section renders him.
+            if _is_overridden and actual_sa in child_sa_ids:
+                sa_ok = False
             if ag_id and ag_id != '-' and ag_id != sa_id and ag_id not in child_sa_ids and sa_ok:
                 if ag_id not in agents_map:
                     agents_map[ag_id] = {'id': ag_id, 'nick': ag_id, 'members': [],
