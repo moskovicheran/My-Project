@@ -1164,14 +1164,14 @@ function _datesQS(withAmp) {
 }
 function showClubExportChoice(clubId, clubName) {
     document.getElementById('exportModalTitle').textContent = 'דוח ' + clubName;
-    document.getElementById('exportFullLink').href = '/export/agent/club/' + clubId + '?mode=full' + _datesQS(true);
-    document.getElementById('exportAgentsLink').href = '/export/agent/club/' + clubId + _datesQS(false);
+    document.getElementById('exportFullLink').href = '/export/agent/club/' + encodeURIComponent(clubId) + '?mode=full' + _datesQS(true);
+    document.getElementById('exportAgentsLink').href = '/export/agent/club/' + encodeURIComponent(clubId) + _datesQS(false);
     document.getElementById('exportModal').classList.add('active');
 }
 function showExportChoice(agentId, agentNick) {
     document.getElementById('exportModalTitle').textContent = 'דוח ' + agentNick;
-    document.getElementById('exportFullLink').href = '/export/agent/single/' + agentId + '?mode=full' + _datesQS(true);
-    document.getElementById('exportAgentsLink').href = '/export/agent/single/' + agentId + _datesQS(false);
+    document.getElementById('exportFullLink').href = '/export/agent/single/' + encodeURIComponent(agentId) + '?mode=full' + _datesQS(true);
+    document.getElementById('exportAgentsLink').href = '/export/agent/single/' + encodeURIComponent(agentId) + _datesQS(false);
     document.getElementById('exportModal').classList.add('active');
 }
 function closeExportModal() {
