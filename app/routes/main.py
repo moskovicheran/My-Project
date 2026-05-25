@@ -3201,10 +3201,18 @@ def export_agent_full_box():
         if upload_ids_filter:
             scope.append(SM.upload_id.in_(upload_ids_filter))
 
-    # Agent scope — zero-leakage rule
+    # Agent scope — zero-leakage rule. Use PER-PLAYER-CURRENT scope (the same
+    # get_players_with_current_scope the dashboard/get_agent_totals use) for
+    # the hierarchy bucket, NOT a per-row sa_id/agent_id match. A player who
+    # MOVED clubs (e.g. 5424-5436: old SPC T row under Omaha, now in a tracked
+    # club) must follow his CURRENT home — the per-row match wrongly kept his
+    # old in-hierarchy row in this report, inflating the total vs the
+    # dashboard. Managed-club rows are still claimed by club name.
     from sqlalchemy import and_ as _and
+    from app.union_data import get_players_with_current_scope
     _scope_sa_ids, _mc_names, _po_clubs = get_agent_scope(sa_id)
-    _scope_preds = [SM.sa_id.in_(_scope_sa_ids), SM.agent_id.in_(_scope_sa_ids)]
+    _cur_pids = get_players_with_current_scope(_scope_sa_ids, M=SM) or set()
+    _scope_preds = [SM.player_id.in_(list(_cur_pids))]
     if _mc_names:
         _scope_preds.append(SM.club.in_(_mc_names))
     if _po_clubs:
@@ -3216,15 +3224,27 @@ def export_agent_full_box():
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).group_by(DailyPlayerStats.player_id).all())
 
+    # Group by (player_id, club) — NOT just player_id — so a player who has
+    # rows in more than one club is shown under EACH real club separately,
+    # with the per-club sa_id/agent_id. The old max(club) collapsed a
+    # multi-club player into one line under an alphabetically-arbitrary club
+    # (e.g. BROziljero's Fredos rake 115.49 shown under "POKER GARDEN"
+    # because his 0-value POKER GARDEN row sorted higher). Totals are
+    # unchanged (same rows, finer grouping); pure-empty (0/0/0) club rows are
+    # dropped below so a stray 0-row club doesn't add a noise line.
     players = SM.query.with_entities(
         SM.player_id, sqlfunc.max(SM.nickname),
-        sqlfunc.max(SM.club), sqlfunc.max(SM.agent_id),
+        SM.club, sqlfunc.max(SM.agent_id),
         sqlfunc.max(SM.sa_id),
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands),
     ).filter(
         _or(*_scope_preds), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope,
-    ).group_by(SM.player_id).all()
+    ).group_by(SM.player_id, SM.club).all()
+    # Drop pure-empty per-club rows (no rake, no pnl, no hands) — e.g. a
+    # player listed as agent in a club where he never played.
+    players = [p for p in players
+               if round(float(p[5] or 0), 2) != 0 or round(float(p[6] or 0), 2) != 0 or int(p[7] or 0) != 0]
 
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
     rake_ref = _collection_rake_by_player([p[0] for p in players]) if not had_date_filter else {}
