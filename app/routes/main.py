@@ -1730,18 +1730,44 @@ def dashboard():
 @main_bp.route('/top-players')
 @login_required
 def agent_top_players():
-    """Top players page for agent/club users — filtered to their own players."""
-    if current_user.role not in ('agent', 'club') or not current_user.player_id:
+    """Top players page for agent/club users — filtered to their own players.
+
+    Admin can view-as any agent/club with ?view_as=<player_id>. Optional
+    ?sa_id=<id> or ?club=<name> narrows the result to a single dashboard
+    "box" (one child SA or one managed club); narrowing is intersected with
+    the agent's allowed scope so the URL can never widen what the agent
+    could otherwise see.
+    """
+    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+
+    if view_as_id:
+        # Resolve the impersonated user's actual role so club users render the
+        # club branch (not the agent hierarchy branch).
+        from app.models import User as _U
+        _va_user = _U.query.filter_by(player_id=view_as_id).first()
+        effective_role = (_va_user.role if _va_user and _va_user.role in ('agent', 'club')
+                          else 'agent')
+        effective_id = view_as_id
+        view_as_username = _va_user.username if _va_user else view_as_id
+    elif current_user.role in ('agent', 'club') and current_user.player_id:
+        effective_role = current_user.role
+        effective_id = current_user.player_id
+        view_as_username = None
+    else:
         return redirect(url_for('main.dashboard'))
+
+    scope_sa_id = (request.args.get('sa_id') or '').strip() or None
+    scope_club = (request.args.get('club') or '').strip() or None
 
     from app.models import DailyPlayerStats, SAHierarchy, SARakeConfig
     from app.union_data import get_transfer_adjustments
     from sqlalchemy import func as sqlfunc, or_, and_
 
     all_players = []
+    box_label = None  # shown in the page heading when narrowed to one box
 
-    if current_user.role == 'agent':
-        sa_id = current_user.player_id
+    if effective_role == 'agent':
+        sa_id = effective_id
         known_ids = {sa_id}
 
         # Resolve actual SA/Agent ID
@@ -1792,13 +1818,31 @@ def agent_top_players():
         # agent_dashboard — prevents cross-channel leakage and double counts.
         from app.union_data import get_agent_scope
         _scope_sa_ids, managed_club_names, _po_clubs = get_agent_scope(sa_id)
-        scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
-                       DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
-        if managed_club_names:
-            scope_preds.append(DailyPlayerStats.club.in_(managed_club_names))
-        if _po_clubs:
-            scope_preds.append(and_(DailyPlayerStats.club.in_(_po_clubs),
-                                    DailyPlayerStats.player_id == sa_id))
+
+        # Per-box narrowing — intersected with the agent's allowed scope so a
+        # crafted URL can't widen visibility beyond what the agent could see.
+        if scope_sa_id and scope_sa_id in _scope_sa_ids:
+            narrow_ids = {scope_sa_id}
+            for h in SAHierarchy.query.filter_by(parent_sa_id=scope_sa_id).all():
+                if h.child_sa_id in _scope_sa_ids:
+                    narrow_ids.add(h.child_sa_id)
+            scope_preds = [DailyPlayerStats.sa_id.in_(narrow_ids),
+                           DailyPlayerStats.agent_id.in_(narrow_ids)]
+            nick_row = DailyPlayerStats.query.with_entities(
+                sqlfunc.max(DailyPlayerStats.nickname)
+            ).filter(DailyPlayerStats.player_id == scope_sa_id).first()
+            box_label = (nick_row[0] if nick_row and nick_row[0] else scope_sa_id)
+        elif scope_club and scope_club in managed_club_names:
+            scope_preds = [DailyPlayerStats.club == scope_club]
+            box_label = scope_club
+        else:
+            scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
+                           DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
+            if managed_club_names:
+                scope_preds.append(DailyPlayerStats.club.in_(managed_club_names))
+            if _po_clubs:
+                scope_preds.append(and_(DailyPlayerStats.club.in_(_po_clubs),
+                                        DailyPlayerStats.player_id == sa_id))
         players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -1836,10 +1880,10 @@ def agent_top_players():
                 'hands': hands, 'hands_total': hands,
             })
 
-    elif current_user.role == 'club':
+    elif effective_role == 'club':
         # Club user — get all players in managed club
         from app.models import SARakeConfig as SRC2
-        club_id = current_user.player_id
+        club_id = effective_id
         from app.union_data import get_members_hierarchy
         clubs_data, _ = get_members_hierarchy()
         club_name = None
@@ -1894,7 +1938,9 @@ def agent_top_players():
                            top_rake=top_rake, top_active=top_active,
                            total_players=len(all_players),
                            biggest_winner=biggest_winner,
-                           biggest_loser=biggest_loser)
+                           biggest_loser=biggest_loser,
+                           box_label=box_label,
+                           view_as_username=view_as_username)
 
 
 def _collection_live_rows(sa_id, start_date, end_date):

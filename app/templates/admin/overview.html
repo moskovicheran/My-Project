@@ -324,7 +324,15 @@ body.dark .dp-reset { color:#ff6b6b; }
                     {% endif %}
                     <strong class="ao-name">{{ ag.username }}</strong>
                 </div>
-                <span class="muted" style="font-size:0.75rem;">{{ ag.player_id }}</span>
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                    {% if not is_locked %}
+                    <button type="button"
+                            onclick="event.stopPropagation(); event.preventDefault(); window.location='{{ url_for('main.agent_top_players', view_as=ag.player_id) }}';"
+                            class="ao-top-btn"
+                            title="טופ שחקנים של {{ ag.username }}">📊 טופ שחקנים</button>
+                    {% endif %}
+                    <span class="muted" style="font-size:0.75rem;">{{ ag.player_id }}</span>
+                </div>
             </div>
             <div class="ao-stats" style="grid-template-columns:repeat(3, 1fr);">
                 <div class="ao-stat">
@@ -359,6 +367,22 @@ body.dark .dp-reset { color:#ff6b6b; }
     overflow: hidden; transition: box-shadow 0.2s; cursor: pointer;
 }
 .agent-overview-card:hover { box-shadow: 0 4px 15px rgba(67,97,238,0.1); }
+
+.ao-top-btn {
+    background: #fff;
+    color: #4361ee;
+    border: 1px solid #c7d2fe;
+    border-radius: 6px;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+}
+.ao-top-btn:hover { background: #eef2ff; border-color: #4361ee; }
+body.dark .ao-top-btn { background: #2a2a3e; color: #93c5fd; border-color: #3b3b55; }
+body.dark .ao-top-btn:hover { background: #1e293b; border-color: #93c5fd; }
 .ao-header {
     display: flex; justify-content: space-between; align-items: center;
     padding: 0.7rem 0.9rem; background: #fafbfc; border-bottom: 1px solid #f0f0f0;
@@ -536,7 +560,13 @@ body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-colo
                     {% endif %}
                     <strong class="ao-name">{{ cl.name }}</strong>
                 </div>
-                <span class="muted" style="font-size:0.75rem;">{{ cl.entity_id }}</span>
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                    <button type="button"
+                            onclick="event.stopPropagation(); event.preventDefault(); window.location='{{ url_for('main.agent_top_players', view_as=cl.entity_id) }}';"
+                            class="ao-top-btn"
+                            title="טופ שחקנים של {{ cl.name }}">📊 טופ שחקנים</button>
+                    <span class="muted" style="font-size:0.75rem;">{{ cl.entity_id }}</span>
+                </div>
             </div>
             <div class="ao-stats" style="grid-template-columns:repeat(3, 1fr);">
                 <div class="ao-stat">

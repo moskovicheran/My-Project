@@ -3,7 +3,10 @@
 
 {% block content %}
 {% if view_as_username %}
-<a href="{{ url_for('admin.overview') }}" class="btn btn-outline btn-sm" style="margin-bottom:0.5rem;">← חזור לסקירה</a>
+<div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.5rem; align-items:flex-start;">
+    <a href="{{ url_for('main.agent_top_players', view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:600;">📊 טופ שחקנים</a>
+    <a href="{{ url_for('admin.overview') }}" class="btn btn-outline btn-sm">← חזור לסקירה</a>
+</div>
 {% endif %}
 <div class="page-header">
     <div>
@@ -324,6 +327,7 @@ function toggleExpenseDetails() {
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
                 <strong style="color:#2e7d32; font-size:1.05rem;">{{ managed_club.name }}</strong>
                 <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showClubExportChoice('{{ managed_club.club_id }}', '{{ managed_club.name }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
+                <a href="{{ url_for('main.agent_top_players', club=managed_club.name, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
             </div>
             <div style="display:flex; gap:0.4rem;">
                 <span class="summary-chip chip-win">R {{ managed_club.total_rake|default(0)|comma }}</span>
@@ -492,6 +496,7 @@ function toggleExpenseDetails() {
             <strong style="font-size:1.05rem;">My Agents</strong>
             <span class="muted small">({{ my_sa.agents|length }})</span>
         </div>
+        <a href="{{ url_for('main.agent_top_players', sa_id=my_sa.sa_id, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
     </div>
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
@@ -634,7 +639,10 @@ function toggleExpenseDetails() {
                     <strong>{{ cs.sa_nick }}</strong>
                     <span class="role-badge role-sa" style="font-size:0.65rem;">SA</span>
                 </div>
-                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showExportChoice('{{ cs.sa_id }}', '{{ cs.sa_nick }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
+                <div style="display:flex; gap:0.3rem; align-items:center;">
+                    <a href="{{ url_for('main.agent_top_players', sa_id=cs.sa_id, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
+                    <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showExportChoice('{{ cs.sa_id }}', '{{ cs.sa_nick }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
+                </div>
             </div>
             <div style="display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.3rem;">
                 <span class="summary-chip chip-win chip-sm">R {{ cs.total_rake|comma }}</span>
