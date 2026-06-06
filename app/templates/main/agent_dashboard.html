@@ -322,14 +322,14 @@ function toggleExpenseDetails() {
     {% for managed_club in managed_clubs %}
     <div class="searchable" data-name="{{ managed_club.name }}" style="margin-bottom:0.5rem; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden;">
         {# Club header - clickable #}
-        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
-            <div style="display:flex; align-items:center; gap:0.5rem;">
+        <div onclick="toggleAccordion(this)" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; padding:0.7rem 1rem; cursor:pointer; background:#fafafa;">
+            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; min-width:0;">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
                 <strong style="color:#2e7d32; font-size:1.05rem;">{{ managed_club.name }}</strong>
                 <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showClubExportChoice('{{ managed_club.club_id }}', '{{ managed_club.name }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
                 <a href="{{ url_for('main.agent_top_players', club=managed_club.name, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
             </div>
-            <div style="display:flex; gap:0.4rem;">
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                 <span class="summary-chip chip-win">R {{ managed_club.total_rake|default(0)|comma }}</span>
                 <span class="summary-chip {% if managed_club.total_pnl|default(0) >= 0 %}chip-win{% else %}chip-lose{% endif %}">
                     רווח/הפסד {% if managed_club.total_pnl|default(0) > 0 %}+{% endif %}{{ managed_club.total_pnl|default(0)|comma }}
