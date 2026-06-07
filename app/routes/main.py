@@ -3421,17 +3421,18 @@ def export_agent_club(club_id):
     from sqlalchemy import func as sqlfunc
     import re
 
-    # Lenient resolution for the "My Clubs" export button: the URL carries
-    # whatever the dashboard rendered for managed_club.club_id (i.e. the raw
-    # SARakeConfig.managed_club_id — which can be an Excel club_id, a
-    # literal DB name, or an alias). resolve_club_name() may still fail in
-    # edge cases (Excel hierarchy lag, SARakeConfig alias mismatch, etc.)
-    # — rather than blocking the export with "מועדון לא נמצא", we trust
-    # the URL and run the query with the raw value. If no rows match,
-    # the user gets an empty / partial report instead of a misleading
-    # error redirect.
+    # Resolve the club name that DailyPlayerStats/ArchivedPlayerStats actually
+    # uses. Priority order:
+    #   1. ?name= — the dashboard tells us the resolved name directly. This
+    #      is the most reliable source because the dashboard rendered the
+    #      card with this exact name; it must match the DB rows.
+    #   2. resolve_club_name(club_id) — fall back to Excel hierarchy / DB /
+    #      SARakeConfig lookup if no name was passed (or the dashboard JS
+    #      is from a stale browser cache that doesn't include the name).
+    #   3. club_id verbatim — last-resort lenient mode so we never block the
+    #      export with "מועדון לא נמצא" for a card the user can clearly see.
     from app.union_data import resolve_club_name
-    club_name = resolve_club_name(club_id) or club_id
+    club_name = request.args.get('name') or resolve_club_name(club_id) or club_id
 
     # Date filter
     requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]

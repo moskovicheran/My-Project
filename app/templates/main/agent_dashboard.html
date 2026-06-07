@@ -326,7 +326,7 @@ function toggleExpenseDetails() {
             <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; min-width:0;">
                 <span class="accordion-arrow" style="transition:transform 0.2s; color:#888; font-size:0.75rem;">▶</span>
                 <strong style="color:#2e7d32; font-size:1.05rem;">{{ managed_club.name }}</strong>
-                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showClubExportChoice('{{ managed_club.club_id }}', '{{ managed_club.name }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
+                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showClubExportChoice('{{ managed_club.club_id }}', '{{ managed_club.name }}', '{{ managed_club.real_name|default(managed_club.name) }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
                 <a href="{{ url_for('main.agent_top_players', club=managed_club.name, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
             </div>
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
@@ -1170,10 +1170,15 @@ function _datesQS(withAmp) {
     if (!d) return '';
     return (withAmp ? '&' : '?') + 'dates=' + encodeURIComponent(d);
 }
-function showClubExportChoice(clubId, clubName) {
+function showClubExportChoice(clubId, clubName, realName) {
+    // realName is the actual DailyPlayerStats.club value — pass it through so
+    // the server can query by name rather than re-resolving from the (possibly
+    // stale) Excel hierarchy. Fixes empty-Excel for clubs whose ID is in
+    // SARakeConfig but no longer maps to a name via the active Excel file.
+    var nameParam = realName ? '&name=' + encodeURIComponent(realName) : '';
     document.getElementById('exportModalTitle').textContent = 'דוח ' + clubName;
-    document.getElementById('exportFullLink').href = '/export/agent/club/' + encodeURIComponent(clubId) + '?mode=full' + _datesQS(true);
-    document.getElementById('exportAgentsLink').href = '/export/agent/club/' + encodeURIComponent(clubId) + _datesQS(false);
+    document.getElementById('exportFullLink').href = '/export/agent/club/' + encodeURIComponent(clubId) + '?mode=full' + nameParam + _datesQS(true);
+    document.getElementById('exportAgentsLink').href = '/export/agent/club/' + encodeURIComponent(clubId) + (nameParam ? '?' + nameParam.substring(1) : '') + _datesQS(nameParam !== '');
     document.getElementById('exportModal').classList.add('active');
 }
 function showExportChoice(agentId, agentNick) {
