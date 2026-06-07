@@ -87,10 +87,18 @@ def resolve_club_name(club_id):
     """Return the club display name for a given club_id.
 
     Matches the Excel Union Member Statistics first, then falls back to
-    treating club_id as a literal club name if rows exist in
-    DailyPlayerStats with club == club_id. Returns None if no such club
-    is known. Used by report/export routes that need to accept either
-    numeric Excel club_ids or DB-only names (e.g. "Spc o").
+    treating club_id as a literal club name if rows exist anywhere in
+    the system for that name (active uploads, the archive, or as a
+    managed club in SARakeConfig). Returns None if no such club is
+    known. Used by report/export routes that need to accept either
+    numeric Excel club_ids or DB-only names (e.g. "Spc o", "SPC TP").
+
+    Why all three fallbacks: a "My Clubs" card can be rendered on the
+    agent dashboard for a managed club that has only archive rows
+    (cycle just rolled), or for one that is administratively configured
+    in SARakeConfig but has no uploads yet. Both cases used to fail
+    the export button with "מועדון לא נמצא" because we only checked the
+    active table.
     """
     if not club_id:
         return None
@@ -98,11 +106,19 @@ def resolve_club_name(club_id):
     for c in clubs_data:
         if c['club_id'] == club_id:
             return c['name']
-    # Fall back to DB — is there any row with this exact club name?
-    from app.models import DailyPlayerStats
-    has_rows = DailyPlayerStats.query.filter(
-        DailyPlayerStats.club == club_id).first() is not None
-    return club_id if has_rows else None
+    # Fall back to DB — accept the literal as a club name if it is known
+    # in any of these sources.
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, SARakeConfig
+    if DailyPlayerStats.query.filter(
+            DailyPlayerStats.club == club_id).first():
+        return club_id
+    if ArchivedPlayerStats.query.filter(
+            ArchivedPlayerStats.club == club_id).first():
+        return club_id
+    if SARakeConfig.query.filter(
+            SARakeConfig.managed_club_id == club_id).first():
+        return club_id
+    return None
 
 
 def get_all_clubs():
