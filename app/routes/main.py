@@ -13,7 +13,7 @@ INCOME_CATEGORIES = ['משכורת', 'פרילנס', 'השקעות', 'מתנה',
 # percentage badge next to "הרייק שלי" — they only see their own earning.
 # Same set also controls Excel exports: Rake column is replaced with
 # "הרייק שלי (X%)" and net/percentage helper columns/rows are stripped.
-AGENTS_HIDE_PERSONAL_BREAKDOWN = {'9319-6677'}  # Shlomi (sarbuvx)
+AGENTS_HIDE_PERSONAL_BREAKDOWN = {'9319-6677', '7622-3272'}  # Shlomi (sarbuvx), BlindersT
 
 
 def _hide_breakdown_pct(sa_id):
