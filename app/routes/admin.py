@@ -1935,7 +1935,7 @@ def agent_view(sa_id):
 @admin_bp.route('/transfers', methods=['GET', 'POST'])
 @admin_required
 def transfers():
-    from app.union_data import get_all_members, get_player_balance, get_all_balances, resolve_transfer
+    from app.union_data import get_all_players_db, get_player_balance, get_all_balances, resolve_transfer
     from app.models import HOUSE_PLAYER_ID, HOUSE_PLAYER_NAME
 
     if request.method == 'POST':
@@ -2034,7 +2034,7 @@ def transfers():
                 flash('העברה נמחקה.', 'success')
         return redirect(url_for('admin.transfers'))
 
-    members = get_all_members()
+    members = get_all_players_db()
     balances = get_all_balances()
     house_balance = get_player_balance(HOUSE_PLAYER_ID)
     all_transfers = MoneyTransfer.query.order_by(MoneyTransfer.created_at.desc()).all()

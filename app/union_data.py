@@ -1917,6 +1917,26 @@ def get_all_balances(player_ids=None):
     return balances
 
 
+def get_all_players_db():
+    """All distinct players from the DB (DailyPlayerStats), not just the current
+    Excel 'Union Member Statistics' sheet. Used by the transfer forms so money
+    can be moved to/from anyone with history or a balance — including players
+    absent from the latest upload (the Excel-vs-DB gap)."""
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func
+    rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id,
+        func.max(DailyPlayerStats.nickname),
+        func.max(DailyPlayerStats.club),
+    ).filter(
+        DailyPlayerStats.player_id.isnot(None),
+        DailyPlayerStats.player_id != '',
+        DailyPlayerStats.player_id != '-',
+    ).group_by(DailyPlayerStats.player_id).all()
+    return [{'player_id': pid, 'nickname': (nk or pid), 'club': (cl or '')}
+            for pid, nk, cl in rows]
+
+
 def resolve_transfer(payer_pid, payer_name, recv_pid, recv_name, amount):
     """Validate a transfer and return how to store it, from the user's
     payer (משלם) / receiver (מקבל) choice.
