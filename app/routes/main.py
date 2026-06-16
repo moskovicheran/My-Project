@@ -377,7 +377,13 @@ def dashboard():
                         sa_id_val = _ov['sa_id']
                     if _ov.get('agent_id'):
                         ag_id_val = _ov['agent_id']
-                p = round(float(pnl_val or 0) + xfer_adj.get(pid, 0), 2)
+                # A club view shows game activity in this club only. Transfers
+                # are player-level (not club activity), so don't apply them here
+                # — otherwise a player who only received a transfer shows up in a
+                # club he never played in. Skip rows with no activity at all.
+                if not (pnl_val or rake_val or hands_val):
+                    continue
+                p = round(float(pnl_val or 0), 2)
                 r = round(float(rake_val or 0), 2)
                 h = int(hands_val or 0)
                 total_rake += r
