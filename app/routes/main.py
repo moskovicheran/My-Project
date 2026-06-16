@@ -3425,53 +3425,44 @@ def export_agent_full_box():
 
     # Group players by Super Agent so the sheet reads as an organized list:
     # one SA's players in a block, then the next SA's, etc.
-    sa_groups = {}  # sa_name -> [row dicts]
+    # Consolidate to ONE row per player (unified across his clubs) — matches the
+    # site's unified card. Sum game P&L/rake/hands across clubs, add the transfer
+    # ONCE → net, and list the clubs he played in.
+    by_player = {}
     for p in players:
-        ag_id = p[3] if p[3] and p[3] != '-' else None
-        ag_name = all_nicks.get(ag_id, ag_id) if ag_id else ''
-        sa_pid = p[4] if p[4] and p[4] != '-' else None
-        sa_name = all_nicks.get(sa_pid, sa_pid) if sa_pid else ''
-        raw_pnl = round(float(p[5] or 0), 2)
-        # Per-(player,club) rows show game P&L only. Transfers are player-level
-        # (not club activity) and are documented in the 'העברות כספים' sheet —
-        # adding them per club misattributes/duplicates them for multi-club
-        # players (matches the site's per-club breakdown now).
-        _pnl = raw_pnl
-        _rr = rake_ref.get(p[0], 0)
+        e = by_player.get(p[0])
+        if e is None:
+            e = by_player[p[0]] = {'nick': p[1], 'clubs': [], 'agent': '', 'sa': '',
+                                   'pnl': 0.0, 'rake': 0.0, 'hands': 0}
+        if p[2] and p[2] not in e['clubs']:
+            e['clubs'].append(p[2])
+        e['pnl'] += float(p[5] or 0)
+        e['rake'] += float(p[6] or 0)
+        e['hands'] += int(p[7] or 0)
+        if p[3] and p[3] != '-':
+            e['agent'] = p[3]
+        if p[4] and p[4] != '-':
+            e['sa'] = p[4]
+
+    sa_groups = {}  # sa_name -> [row dicts]
+    for pid, e in by_player.items():
+        sa_name = all_nicks.get(e['sa'], e['sa']) if e['sa'] else ''
+        ag_name = all_nicks.get(e['agent'], e['agent']) if e['agent'] else ''
+        _pnl = round(e['pnl'] + xfer_adj.get(pid, 0), 2)   # net = game + transfer
+        _rr = rake_ref.get(pid, 0)
         row = {
-            'שחקן': p[1],
-            'ID': p[0],
-            'קלאב': p[2] or '',
+            'שחקן': e['nick'],
+            'ID': pid,
+            'קלאב': ', '.join(e['clubs']),
             'Super Agent': sa_name,
             'סוכן': ag_name,
             'P&L': _pnl,
-            'Rake': round(float(p[6] or 0), 2),
+            'Rake': round(e['rake'], 2),
             'קבלת רייק': round(_rr, 2),
             'סה"כ לתשלום': round(_pnl + _rr, 2),
-            'ידיים': int(p[7] or 0),
+            'ידיים': e['hands'],
         }
-        sa_groups.setdefault(row['Super Agent'], []).append(row)
-
-    # One transfer row per player (not per club): per-club rows stay game-only,
-    # but the player's rows still sum to his net — matching the site's unified
-    # card total (e.g. Mangisto -3,073.68 game + 3,100 = +26.32).
-    _seen_xfer = set()
-    for p in players:
-        pid = p[0]
-        if pid in _seen_xfer:
-            continue
-        _adj = round(xfer_adj.get(pid, 0), 2)
-        if not _adj:
-            continue
-        _seen_xfer.add(pid)
-        _sa_pid = p[4] if p[4] and p[4] != '-' else None
-        _sa_name = all_nicks.get(_sa_pid, _sa_pid) if _sa_pid else ''
-        sa_groups.setdefault(_sa_name, []).append({
-            'שחקן': p[1], 'ID': pid, 'קלאב': '💸 העברות כספים',
-            'Super Agent': _sa_name, 'סוכן': '',
-            'P&L': _adj, 'Rake': 0, 'קבלת רייק': 0,
-            'סה"כ לתשלום': _adj, 'ידיים': 0,
-        })
+        sa_groups.setdefault(sa_name, []).append(row)
 
     # Sort SAs by total rake desc; within each SA sort players by rake desc.
     # Empty-SA bucket is forced to the end so named SAs read as a list first.
