@@ -798,8 +798,8 @@ def dashboard():
         # visible list on the dashboard (the P&L card already nets them in).
         from app.models import MoneyTransfer
         agent_transfers = []
-        if all_my_player_ids:
-            _pids = list(all_my_player_ids)
+        _pids = list(all_my_player_ids | {sa_id})
+        if _pids:
             _xfers = MoneyTransfer.query.filter(
                 db.or_(MoneyTransfer.from_player_id.in_(_pids),
                        MoneyTransfer.to_player_id.in_(_pids))
