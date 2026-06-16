@@ -418,7 +418,7 @@ def dashboard():
 
             # Net rake calculation (club's percentage)
             from app.models import RakeConfig
-            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=club_id).first()
+            club_rc = RakeConfig.query.filter(RakeConfig.entity_type == 'club', db.or_(RakeConfig.entity_id == club_id, RakeConfig.entity_name == club_id)).first()
             rake_pct = club_rc.rake_percent if club_rc else 100
             net_rake = round(total_rake * rake_pct / 100, 2)
 
@@ -1421,7 +1421,7 @@ def dashboard():
                 }
                 total_rake += club_rake
                 total_pnl += club_pnl
-                club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+                club_rc = RakeConfig.query.filter(RakeConfig.entity_type == 'club', db.or_(RakeConfig.entity_id == cfg.managed_club_id, RakeConfig.entity_name == cfg.managed_club_id)).first()
                 keeps_pct = club_rc.rake_percent if club_rc else 0
                 net = round(club_rake * (100 - keeps_pct) / 100, 2)
                 club_net_rake += net
@@ -2748,7 +2748,7 @@ def export_agent_account():
             ).filter(SM.club == name, *scope).first()
             rake = round(float(cr[0] or 0), 2)
             pnl = round(float(cr[1] or 0), 2)
-            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+            club_rc = RakeConfig.query.filter(RakeConfig.entity_type == 'club', db.or_(RakeConfig.entity_id == cfg.managed_club_id, RakeConfig.entity_name == cfg.managed_club_id)).first()
             agent_pct = club_rc.rake_percent if club_rc else 0
             agent_net = round(rake * agent_pct / 100, 2)        # the agent's share
             club_net = round(rake * (100 - agent_pct) / 100, 2)  # the club's share
@@ -3263,7 +3263,7 @@ def export_agent_players():
                 sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
                 sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
             ).filter(SM.club == name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope).first()
-            club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
+            club_rc = RakeConfig.query.filter(RakeConfig.entity_type == 'club', db.or_(RakeConfig.entity_id == cfg.managed_club_id, RakeConfig.entity_name == cfg.managed_club_id)).first()
             agent_pct = club_rc.rake_percent if club_rc else 0
             rake = round(float(cr[1] or 0), 2)
             agent_net = round(rake * agent_pct / 100, 2)         # the agent's share
