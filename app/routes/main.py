@@ -3452,6 +3452,27 @@ def export_agent_full_box():
         }
         sa_groups.setdefault(row['Super Agent'], []).append(row)
 
+    # One transfer row per player (not per club): per-club rows stay game-only,
+    # but the player's rows still sum to his net — matching the site's unified
+    # card total (e.g. Mangisto -3,073.68 game + 3,100 = +26.32).
+    _seen_xfer = set()
+    for p in players:
+        pid = p[0]
+        if pid in _seen_xfer:
+            continue
+        _adj = round(xfer_adj.get(pid, 0), 2)
+        if not _adj:
+            continue
+        _seen_xfer.add(pid)
+        _sa_pid = p[4] if p[4] and p[4] != '-' else None
+        _sa_name = all_nicks.get(_sa_pid, _sa_pid) if _sa_pid else ''
+        sa_groups.setdefault(_sa_name, []).append({
+            'שחקן': p[1], 'ID': pid, 'קלאב': '💸 העברות כספים',
+            'Super Agent': _sa_name, 'סוכן': '',
+            'P&L': _adj, 'Rake': 0, 'קבלת רייק': 0,
+            'סה"כ לתשלום': _adj, 'ידיים': 0,
+        })
+
     # Sort SAs by total rake desc; within each SA sort players by rake desc.
     # Empty-SA bucket is forced to the end so named SAs read as a list first.
     sa_order = sorted(
