@@ -775,9 +775,10 @@ def dashboard():
                         agents_map[target_ag]['total_rake'] += rake
                         agents_map[target_ag]['total_hands'] += hands
 
-        # Adjust PnL by transfers (settlements)
+        # Adjust PnL by transfers (settlements). Include the SA's own player_id
+        # so his own play row reflects transfers where he is the payer/receiver.
         from app.union_data import get_transfer_adjustments
-        xfer_adj = get_transfer_adjustments(all_my_player_ids)
+        xfer_adj = get_transfer_adjustments(all_my_player_ids | {sa_id})
         for m in direct_players:
             m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
         for ag in agents_map.values():

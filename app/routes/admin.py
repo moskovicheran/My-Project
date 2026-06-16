@@ -1590,8 +1590,9 @@ def agent_view(sa_id):
                     agents_map[target_ag]['total_rake'] += rake
                     agents_map[target_ag]['total_hands'] += hands
 
-    # Apply transfer adjustments
-    xfer_adj = get_transfer_adjustments(all_my_player_ids)
+    # Apply transfer adjustments. Include the SA's own player_id so his own
+    # play row reflects transfers where he is the payer/receiver.
+    xfer_adj = get_transfer_adjustments(all_my_player_ids | {sa_id})
     for m in direct_players:
         m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
     for ag in agents_map.values():
