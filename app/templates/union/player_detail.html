@@ -399,6 +399,35 @@ function toggleBcDetails(cardEl, gameType, blinds) {
 </script>
 {% endif %}
 
+{# ── Money transfers for this player (who paid whom) ── #}
+{% if player_xfers is defined and player_xfers %}
+<div class="section" style="margin-bottom:1.5rem; border:2px solid #667eea; border-radius:14px;">
+    <h2 class="section-title">💸 העברות כספים ({{ player_xfers|length }})</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>תאריך</th>
+                <th>משלם</th>
+                <th>מקבל</th>
+                <th>סכום</th>
+                <th>תיאור</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in player_xfers %}
+            <tr>
+                <td class="muted" style="white-space:nowrap;">{{ t.date }}</td>
+                <td><strong>{{ t.from_name }}</strong></td>
+                <td><strong>{{ t.to_name }}</strong></td>
+                <td class="amount" style="color:#667eea; font-weight:700;">{{ t.amount|comma }}</td>
+                <td class="muted">{{ t.desc or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 {# ── Game Sessions ── #}
 <div class="section">
     <h2 class="section-title">רקורד משחקים ({{ sessions|length }})</h2>

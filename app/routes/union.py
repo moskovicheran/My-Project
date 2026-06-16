@@ -671,6 +671,22 @@ def player_detail(player_id):
             'is_transfer': True,
         })
 
+    # Dedicated transfer documentation for this player — always shown (even in
+    # scoped views), listing who paid whom, separate from the game record.
+    _px_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
+    _px_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
+    player_xfers = []
+    for t in (_px_out + _px_in):
+        il = t.created_at + timedelta(hours=3) if t.created_at else None
+        player_xfers.append({
+            'from_name': t.from_name, 'to_name': t.to_name,
+            'amount': round(abs(t.amount), 2),
+            'date': il.strftime('%d/%m/%Y') if il else '',
+            'desc': t.description or '',
+            '_ts': t.created_at,
+        })
+    player_xfers.sort(key=lambda x: x['_ts'].timestamp() if x['_ts'] else 0, reverse=True)
+
     # Sort sessions by date (newest first)
     from datetime import datetime
     def _sort_key(s):
@@ -784,6 +800,7 @@ def player_detail(player_id):
     return render_template('union/player_detail.html',
                            member=member_info,
                            sessions=sessions,
+                           player_xfers=player_xfers,
                            club_entries=club_entries,
                            total_rake=total_rake,
                            total_pnl=total_pnl,
