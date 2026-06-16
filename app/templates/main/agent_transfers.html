@@ -91,7 +91,7 @@
     {% endif %}
 </div>
 
-<script src="{{ url_for('static', filename='js/transfer_form.js') }}"></script>
+<script src="{{ url_for('static', filename='js/transfer_form.js') }}?v={{ asset_v }}"></script>
 <script>
 initTransferForm(
     [

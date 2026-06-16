@@ -97,7 +97,7 @@
 .table-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 </style>
 
-<script src="{{ url_for('static', filename='js/transfer_form.js') }}"></script>
+<script src="{{ url_for('static', filename='js/transfer_form.js') }}?v={{ asset_v }}"></script>
 <script>
 initTransferForm(
     [

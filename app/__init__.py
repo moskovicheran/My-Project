@@ -73,6 +73,17 @@ def create_app():
     app.jinja_env.filters['comma'] = comma_format
 
     @app.context_processor
+    def inject_asset_version():
+        # Cache-busting token for static assets — changes whenever the file is
+        # rewritten (every deploy), so browsers fetch the fresh JS instead of a
+        # stale cached copy.
+        try:
+            _p = os.path.join(os.path.dirname(__file__), 'static', 'js', 'transfer_form.js')
+            return {'asset_v': str(int(os.path.getmtime(_p)))}
+        except Exception:
+            return {'asset_v': '1'}
+
+    @app.context_processor
     def inject_last_upload():
         from datetime import timedelta
         from app.models import DailyUpload

@@ -148,7 +148,7 @@
     {% endif %}
 </div>
 
-<script src="{{ url_for('static', filename='js/transfer_form.js') }}"></script>
+<script src="{{ url_for('static', filename='js/transfer_form.js') }}?v={{ asset_v }}"></script>
 <script>
 var ALL_PLAYERS = [
     {% for m in members %}{% set bal = balances.get(m.player_id, 0) %}
