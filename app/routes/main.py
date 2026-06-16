@@ -34,7 +34,7 @@ def _apply_hide_breakdown(sheets, pct):
     rakeback percentage.
 
     - 'Rake' and 'רייק אישי' columns → 'הרייק שלי (X%)' with value * pct/100
-    - drops helper columns: 'נטו שלי', 'נטו מועדון', 'אחוז הסוכן %',
+    - drops helper columns: 'נטו לבעל המועדון', 'נשאר אצלי', 'אחוז בעל המועדון %',
       'אחוז רייק %', 'רייק מועדונים (נטו)'
     - drops footer rows whose first value starts with 'נטו סוכן'
     """
@@ -42,7 +42,7 @@ def _apply_hide_breakdown(sheets, pct):
         return sheets
     new_col = f'הרייק שלי ({pct}%)'
     factor = pct / 100.0
-    HIDE_COLS = {'נטו שלי', 'נטו מועדון', 'אחוז הסוכן %', 'מועדון מקבל %',
+    HIDE_COLS = {'נטו לבעל המועדון', 'נשאר אצלי', 'אחוז בעל המועדון %', 'מועדון מקבל %',
                  'אחוז רייק %', 'רייק מועדונים (נטו)'}
     out = {}
     for sheet_name, rows in sheets.items():
@@ -1430,7 +1430,7 @@ def dashboard():
                     'name': display_name, 'rake_pct': keeps_pct,
                     'total_rake': club_rake,                                    # ברוטו
                     'refund': round(club_rake * keeps_pct / 100, 2),            # נטו לסוכן
-                    'club_net': round(club_rake * (100 - keeps_pct) / 100, 2),  # נטו מועדון
+                    'club_net': round(club_rake * (100 - keeps_pct) / 100, 2),  # נשאר אצלי
                 })
                 managed_clubs.append(club_obj)
 
@@ -2425,7 +2425,7 @@ def _make_excel(sheets_data, filename, period_label=None, transfer_pids=None):
                 val = row_data.get(key, '')
                 cell = ws.cell(row=row_idx, column=col_idx, value=val)
                 # Color P&L values
-                if key in ('P&L', 'נטו שלי', 'קבלת רייק', 'סה"כ לתשלום') and isinstance(val, (int, float)):
+                if key in ('P&L', 'נטו לבעל המועדון', 'קבלת רייק', 'סה"כ לתשלום') and isinstance(val, (int, float)):
                     if val > 0:
                         cell.font = green_font
                     elif val < 0:
@@ -2753,8 +2753,8 @@ def export_agent_account():
             agent_net = round(rake * agent_pct / 100, 2)        # the agent's share
             club_net = round(rake * (100 - agent_pct) / 100, 2)  # the club's share
             club_rows.append({'מועדון': name, 'Rake': rake, 'P&L': pnl,
-                              'אחוז הסוכן %': agent_pct,
-                              'נטו שלי': agent_net, 'נטו מועדון': club_net})
+                              'אחוז בעל המועדון %': agent_pct,
+                              'נטו לבעל המועדון': agent_net, 'נשאר אצלי': club_net})
             total_club_rake += agent_net
 
     # Expenses — not date-bound to uploads, always included
@@ -2847,9 +2847,9 @@ def export_agent_account():
             'מועדון': 'סה"כ',
             'Rake': round(sum(r['Rake'] for r in club_rows), 2),
             'P&L': round(sum(r['P&L'] for r in club_rows), 2),
-            'אחוז הסוכן %': '',
-            'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
-            'נטו מועדון': round(sum(r.get('נטו מועדון', 0) for r in club_rows), 2),
+            'אחוז בעל המועדון %': '',
+            'נטו לבעל המועדון': round(sum(r['נטו לבעל המועדון'] for r in club_rows), 2),
+            'נשאר אצלי': round(sum(r.get('נשאר אצלי', 0) for r in club_rows), 2),
         })
     if expense_rows:
         expense_rows.append({
@@ -3271,7 +3271,7 @@ def export_agent_players():
             club_rows.append({
                 'מועדון': name, 'שחקנים': int(cr[3] or 0),
                 'P&L': round(float(cr[0] or 0), 2), 'Rake': rake,
-                'אחוז הסוכן %': agent_pct, 'נטו שלי': agent_net, 'נטו מועדון': club_net,
+                'אחוז בעל המועדון %': agent_pct, 'נטו לבעל המועדון': agent_net, 'נשאר אצלי': club_net,
             })
         club_rows.sort(key=lambda x: x['Rake'], reverse=True)
         if club_rows:
@@ -3279,8 +3279,8 @@ def export_agent_players():
                 'מועדון': 'סה"כ', 'שחקנים': sum(r['שחקנים'] for r in club_rows),
                 'P&L': round(sum(r['P&L'] for r in club_rows), 2),
                 'Rake': round(sum(r['Rake'] for r in club_rows), 2),
-                'אחוז הסוכן %': '', 'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
-                'נטו מועדון': round(sum(r.get('נטו מועדון', 0) for r in club_rows), 2),
+                'אחוז בעל המועדון %': '', 'נטו לבעל המועדון': round(sum(r['נטו לבעל המועדון'] for r in club_rows), 2),
+                'נשאר אצלי': round(sum(r.get('נשאר אצלי', 0) for r in club_rows), 2),
             })
         sheets['מועדונים'] = club_rows
 
