@@ -3432,7 +3432,11 @@ def export_agent_full_box():
         sa_pid = p[4] if p[4] and p[4] != '-' else None
         sa_name = all_nicks.get(sa_pid, sa_pid) if sa_pid else ''
         raw_pnl = round(float(p[5] or 0), 2)
-        _pnl = round(raw_pnl + xfer_adj.get(p[0], 0), 2)
+        # Per-(player,club) rows show game P&L only. Transfers are player-level
+        # (not club activity) and are documented in the 'העברות כספים' sheet —
+        # adding them per club misattributes/duplicates them for multi-club
+        # players (matches the site's per-club breakdown now).
+        _pnl = raw_pnl
         _rr = rake_ref.get(p[0], 0)
         row = {
             'שחקן': p[1],
