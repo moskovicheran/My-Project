@@ -160,13 +160,27 @@
             {% endfor %}
         </tbody>
         <tfoot>
+            {% set game_total = club_entries | sum(attribute='pnl_total') %}
             <tr class="total-row">
-                <td colspan="3"><strong>סה"כ כל הקלאבים</strong></td>
+                <td colspan="3"><strong>סה"כ משחקים</strong></td>
                 <td class="amount income"><strong>{{ club_entries | sum(attribute='rake_total')|comma }}</strong></td>
-                <td class="amount {% if club_entries | sum(attribute='pnl_total') >= 0 %}income{% else %}expense{% endif %}">
-                    <strong>{% if club_entries | sum(attribute='pnl_total') > 0 %}+{% endif %}{{ club_entries | sum(attribute='pnl_total')|comma }}</strong>
+                <td class="amount {% if game_total >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if game_total > 0 %}+{% endif %}{{ game_total|comma }}</strong>
                 </td>
             </tr>
+            {% if total_pnl is defined and (total_pnl - game_total)|abs > 0.01 %}
+            {% set xfer = (total_pnl - game_total) | round(2) %}
+            <tr>
+                <td colspan="4" class="muted">💸 העברות כספים</td>
+                <td class="amount {% if xfer >= 0 %}income{% else %}expense{% endif %}">{% if xfer > 0 %}+{% endif %}{{ xfer|comma }}</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="4"><strong>נטו (כולל העברות)</strong></td>
+                <td class="amount {% if total_pnl >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if total_pnl > 0 %}+{% endif %}{{ total_pnl|comma }}</strong>
+                </td>
+            </tr>
+            {% endif %}
         </tfoot>
     </table>
 </div>
