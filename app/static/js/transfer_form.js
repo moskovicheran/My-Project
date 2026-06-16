@@ -17,6 +17,20 @@
         });
     }
 
+    // Rank matches so names that START with the query come first (then any
+    // substring match), so a wanted player isn't buried past the cap when a
+    // short query hits many names. Caps at 15.
+    function matchPlayers(players, q) {
+        q = (q || '').trim().toLowerCase();
+        var pre = [], sub = [];
+        for (var i = 0; i < players.length; i++) {
+            var at = players[i].label.toLowerCase().indexOf(q);
+            if (at === 0) pre.push(players[i]);
+            else if (at > 0) sub.push(players[i]);
+        }
+        return pre.concat(sub).slice(0, 15);
+    }
+
     function wire(prefix, players) {
         var search = document.getElementById(prefix + 'Search');
         var hidden = document.getElementById(prefix + 'Key');
@@ -32,9 +46,7 @@
             selected[prefix] = null;
             updateLimits();
             if (q.length < 2) { close(); return; }
-            var matches = players.filter(function (p) {
-                return p.label.toLowerCase().indexOf(q) >= 0;
-            }).slice(0, 10);
+            var matches = matchPlayers(players, q);
             if (!matches.length) { close(); return; }
             dd.innerHTML = matches.map(function (p) {
                 return '<div class="sa-item" data-key="' + esc(p.key) +
@@ -124,9 +136,7 @@
             if (hint) hint.innerHTML = '';
             if (capFromBalance && amt) amt.removeAttribute('max');
             if (q.length < 2) { close(); return; }
-            var matches = players.filter(function (p) {
-                return p.label.toLowerCase().indexOf(q) >= 0;
-            }).slice(0, 10);
+            var matches = matchPlayers(players, q);
             if (!matches.length) { close(); return; }
             dd.innerHTML = matches.map(function (p) {
                 return '<div class="sa-item" data-key="' + esc(p.key) +
