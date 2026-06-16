@@ -34,16 +34,16 @@ def _apply_hide_breakdown(sheets, pct):
     rakeback percentage.
 
     - 'Rake' and 'רייק אישי' columns → 'הרייק שלי (X%)' with value * pct/100
-    - drops helper columns: 'נטו שלי', 'מועדון מקבל %', 'אחוז רייק %',
-      'רייק מועדונים (נטו)'
+    - drops helper columns: 'נטו שלי', 'נטו מועדון', 'אחוז הסוכן %',
+      'אחוז רייק %', 'רייק מועדונים (נטו)'
     - drops footer rows whose first value starts with 'נטו סוכן'
     """
     if pct is None:
         return sheets
     new_col = f'הרייק שלי ({pct}%)'
     factor = pct / 100.0
-    HIDE_COLS = {'נטו שלי', 'מועדון מקבל %', 'אחוז רייק %',
-                 'רייק מועדונים (נטו)'}
+    HIDE_COLS = {'נטו שלי', 'נטו מועדון', 'אחוז הסוכן %', 'מועדון מקבל %',
+                 'אחוז רייק %', 'רייק מועדונים (נטו)'}
     out = {}
     for sheet_name, rows in sheets.items():
         new_rows = []
@@ -787,6 +787,23 @@ def dashboard():
                 ag['total_pnl'] += m['pnl']
             ag['total_pnl'] = round(ag['total_pnl'], 2)
 
+        # Money transfers touching this agent's players — surfaced as a
+        # visible list on the dashboard (the P&L card already nets them in).
+        from app.models import MoneyTransfer
+        agent_transfers = []
+        if all_my_player_ids:
+            _pids = list(all_my_player_ids)
+            _xfers = MoneyTransfer.query.filter(
+                db.or_(MoneyTransfer.from_player_id.in_(_pids),
+                       MoneyTransfer.to_player_id.in_(_pids))
+            ).order_by(MoneyTransfer.created_at.desc()).all()
+            agent_transfers = [{
+                'date': t.created_at.strftime('%d/%m/%Y'),
+                'from_name': t.from_name, 'to_name': t.to_name,
+                'amount': round(abs(t.amount), 2),
+                'description': t.description or '',
+            } for t in _xfers]
+
         # Add agent's own game stats if not already in members (for agents who also play)
         for ag_id, ag in agents_map.items():
             existing_pids = set(m['player_id'] for m in ag['members'])
@@ -1268,6 +1285,10 @@ def dashboard():
         managed_clubs = []
         club_net_rake = 0
         club_keeps_pct = 0
+        # Net club rake breakdown for the responsible SA — one row per managed
+        # club: gross rake, the SA's net (rake × pct/100, same logic as the
+        # player/agent refund), and the club's net (the remainder).
+        club_rake_refund_list = []
         # PLAYER_ONLY SAs: their SARakeConfig entries don't render as
         # separate cards on their own dashboard — own play folds into
         # the self-row above (see _self_other_clubs handling). Attribution
@@ -1405,6 +1426,12 @@ def dashboard():
                 net = round(club_rake * (100 - keeps_pct) / 100, 2)
                 club_net_rake += net
                 club_keeps_pct = keeps_pct
+                club_rake_refund_list.append({
+                    'name': display_name, 'rake_pct': keeps_pct,
+                    'total_rake': club_rake,                                    # ברוטו
+                    'refund': round(club_rake * keeps_pct / 100, 2),            # נטו לסוכן
+                    'club_net': round(club_rake * (100 - keeps_pct) / 100, 2),  # נטו מועדון
+                })
                 managed_clubs.append(club_obj)
 
         # Sort managed clubs by rake (high to low)
@@ -1425,6 +1452,7 @@ def dashboard():
 
         personal_rake = round(my_sa_combined['total_rake'] + child_sas_rake, 2)
         clubs_total_rake = round(sum(c.get('total_rake', 0) for c in managed_clubs), 2)
+        club_rake_refund_total = round(sum(r['refund'] for r in club_rake_refund_list), 2)
         sa_net_rake = round(personal_rake * rake_pct / 100, 2) if rake_pct else 0
         net_rake = round(sa_net_rake + club_net_rake, 2)
 
@@ -1540,6 +1568,8 @@ def dashboard():
                                expense_charges=expense_charges,
                                rake_refund_list=rake_refund_list,
                                total_rake_refund=total_rake_refund,
+                               club_rake_refund_list=club_rake_refund_list,
+                               club_rake_refund_total=club_rake_refund_total,
                                my_rake_pct=my_rake_pct,
                                my_rake_earning=my_rake_earning,
                                rake_pct=rake_pct, player_count=player_count,
@@ -1549,6 +1579,7 @@ def dashboard():
                                selected_dates=selected_dates,
                                view_as_username=view_as_username,
                                self_other_clubs=self_other_clubs_for_template,
+                               agent_transfers=agent_transfers,
                                hide_personal_breakdown=hide_personal_breakdown)
 
     # Admin preview of any player's dashboard via ?view_player=<player_id>
@@ -1649,11 +1680,13 @@ def dashboard():
         transfer_rows = []
         for t in player_transfers:
             if t.from_player_id == player_id:
+                # Player sent money → balance/P&L goes down.
                 transfer_rows.append({'label': f'תשלום ל-{t.to_name}',
-                                      'amount': round(t.amount, 2)})
-            else:
-                transfer_rows.append({'label': f'קבלת תשלום מ-{t.from_name}',
                                       'amount': round(-t.amount, 2)})
+            else:
+                # Player received money → balance/P&L goes up.
+                transfer_rows.append({'label': f'קבלת תשלום מ-{t.from_name}',
+                                      'amount': round(t.amount, 2)})
 
         # Check if player has rake refund config
         from app.models import RakeConfig
@@ -2325,13 +2358,34 @@ def _collection_rake_by_player(player_ids=None):
             for pid, amt in q.group_by(PlayerPayment.player_id).all() if amt}
 
 
-def _make_excel(sheets_data, filename, period_label=None):
+def _make_excel(sheets_data, filename, period_label=None, transfer_pids=None):
     """Create Excel file from dict of {sheet_name: [{col: val, ...}]}.
 
     When period_label is given (e.g. "01/04/2026 — 05/04/2026"), a banner row
     is added at the top of every sheet so the reader can see which dates the
     export covers.
+
+    When transfer_pids is given, a "העברות כספים" sheet is appended listing
+    every money transfer that touches any of those players — so transfers are
+    traceable in every report, regardless of any date filter. ("מ-" is the side
+    whose balance went down, "אל-" the side it went up.)
     """
+    if transfer_pids:
+        from app.models import MoneyTransfer
+        _pids = list({p for p in transfer_pids if p})
+        if _pids:
+            _xf = (MoneyTransfer.query
+                   .filter(db.or_(MoneyTransfer.from_player_id.in_(_pids),
+                                  MoneyTransfer.to_player_id.in_(_pids)))
+                   .order_by(MoneyTransfer.created_at.desc()).all())
+            if _xf:
+                sheets_data = dict(sheets_data)  # don't mutate the caller's dict
+                sheets_data['העברות כספים'] = [{
+                    'תאריך': (t.created_at.strftime('%d/%m/%Y') if t.created_at else ''),
+                    'מ-': t.from_name, 'אל-': t.to_name,
+                    'סכום': round(abs(t.amount), 2),
+                    'תיאור': t.description or '',
+                } for t in _xf]
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
     wb = openpyxl.Workbook()
@@ -2587,7 +2641,8 @@ def export_player(player_id):
     return _make_excel({
         'סיכום': summary,
         'רקורד משחקים': session_rows,
-    }, f'{cs["nickname"]}{suffix}_report.xlsx', period_label=period_label)
+    }, f'{cs["nickname"]}{suffix}_report.xlsx', period_label=period_label,
+       transfer_pids=[player_id])
 
 
 @main_bp.route('/export/agent/account')
@@ -2656,15 +2711,28 @@ def export_agent_account():
     ).filter(*personal_filters, *scope).first()
     personal_rake = round(float(personal[0] or 0), 2)
     personal_pnl = round(float(personal[1] or 0), 2)
-    # Transfers only apply to the unfiltered (all-time) view
+    # Transfers only apply to the unfiltered (all-time) view. Besides the
+    # personal top line, attribute each player's adjustment to its child-SA
+    # and agent buckets so those summary rows reconcile with this total.
+    xfer_by_sa = {}      # sa_id -> summed transfer adjustment
+    xfer_by_agent = {}   # agent_id -> summed transfer adjustment
     if not had_date_filter:
-        all_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
-            sqlfunc.distinct(DailyPlayerStats.player_id)
+        scope_rows = DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, DailyPlayerStats.sa_id, DailyPlayerStats.agent_id
         ).filter(or_(DailyPlayerStats.sa_id.in_(_scope_sa_ids),
-                     DailyPlayerStats.agent_id.in_(_scope_sa_ids))).all()]
+                     DailyPlayerStats.agent_id.in_(_scope_sa_ids))).distinct().all()
+        all_pids = list({r[0] for r in scope_rows})
         if all_pids:
             xfer_adj = get_transfer_adjustments(all_pids)
             personal_pnl = round(personal_pnl + sum(xfer_adj.values()), 2)
+            for pid, sa, ag in scope_rows:
+                adj = xfer_adj.get(pid, 0)
+                if not adj:
+                    continue
+                if sa:
+                    xfer_by_sa[sa] = round(xfer_by_sa.get(sa, 0) + adj, 2)
+                if ag and ag not in ('', '-'):
+                    xfer_by_agent[ag] = round(xfer_by_agent.get(ag, 0) + adj, 2)
 
     # Club rakes
     rake_cfgs = SARakeConfig.query.filter_by(sa_id=sa_id).filter(SARakeConfig.managed_club_id.isnot(None)).all()
@@ -2681,11 +2749,13 @@ def export_agent_account():
             rake = round(float(cr[0] or 0), 2)
             pnl = round(float(cr[1] or 0), 2)
             club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
-            keeps = club_rc.rake_percent if club_rc else 0
-            net = round(rake * (100 - keeps) / 100, 2)
+            agent_pct = club_rc.rake_percent if club_rc else 0
+            agent_net = round(rake * agent_pct / 100, 2)        # the agent's share
+            club_net = round(rake * (100 - agent_pct) / 100, 2)  # the club's share
             club_rows.append({'מועדון': name, 'Rake': rake, 'P&L': pnl,
-                              'מועדון מקבל %': keeps, 'נטו שלי': net})
-            total_club_rake += net
+                              'אחוז הסוכן %': agent_pct,
+                              'נטו שלי': agent_net, 'נטו מועדון': club_net})
+            total_club_rake += agent_net
 
     # Expenses — not date-bound to uploads, always included
     charges = ExpenseCharge.query.filter_by(agent_player_id=sa_id).all()
@@ -2723,7 +2793,7 @@ def export_agent_account():
             sqlfunc.count(sqlfunc.distinct(SM.player_id)),
         ).filter(*csa_filters, *scope).first()
         rake = round(float(csa[0] or 0), 2)
-        pnl = round(float(csa[1] or 0), 2)
+        pnl = round(float(csa[1] or 0) + xfer_by_sa.get(csa_id, 0), 2)
         if rake or pnl or (csa[2] or 0):
             sa_summary_rows.append({
                 'Super Agent': nick_map.get(csa_id, csa_id),
@@ -2755,7 +2825,7 @@ def export_agent_account():
     agent_summary_rows = []
     for ag in agent_stats:
         rake = round(float(ag[1] or 0), 2)
-        pnl = round(float(ag[2] or 0), 2)
+        pnl = round(float(ag[2] or 0) + xfer_by_agent.get(ag[0], 0), 2)
         agent_summary_rows.append({
             'סוכן': nick_map.get(ag[0], ag[0]),
             'ID': ag[0],
@@ -2777,8 +2847,9 @@ def export_agent_account():
             'מועדון': 'סה"כ',
             'Rake': round(sum(r['Rake'] for r in club_rows), 2),
             'P&L': round(sum(r['P&L'] for r in club_rows), 2),
-            'מועדון מקבל %': '',
+            'אחוז הסוכן %': '',
             'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
+            'נטו מועדון': round(sum(r.get('נטו מועדון', 0) for r in club_rows), 2),
         })
     if expense_rows:
         expense_rows.append({
@@ -2800,8 +2871,12 @@ def export_agent_account():
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
+    _acct_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id).filter(or_(
+        DailyPlayerStats.sa_id.in_(_scope_sa_ids),
+        DailyPlayerStats.agent_id.in_(_scope_sa_ids))).distinct().all()]
     return _make_excel(sheets, f'{current_user.username}{suffix}_account.xlsx',
-                       period_label=period_label)
+                       period_label=period_label, transfer_pids=_acct_pids)
 
 
 @main_bp.route('/export/agent/single/<agent_id>')
@@ -2930,7 +3005,8 @@ def export_single_agent(agent_id):
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
-    return _make_excel(sheets, f'{agent_nick}{suffix}_players.xlsx', period_label=period_label)
+    return _make_excel(sheets, f'{agent_nick}{suffix}_players.xlsx', period_label=period_label,
+                       transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/export/agent/players')
@@ -3188,13 +3264,14 @@ def export_agent_players():
                 sqlfunc.sum(SM.hands), sqlfunc.count(sqlfunc.distinct(SM.player_id)),
             ).filter(SM.club == name, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope).first()
             club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=cfg.managed_club_id).first()
-            keeps = club_rc.rake_percent if club_rc else 0
+            agent_pct = club_rc.rake_percent if club_rc else 0
             rake = round(float(cr[1] or 0), 2)
-            net = round(rake * (100 - keeps) / 100, 2)
+            agent_net = round(rake * agent_pct / 100, 2)         # the agent's share
+            club_net = round(rake * (100 - agent_pct) / 100, 2)  # the club's share
             club_rows.append({
                 'מועדון': name, 'שחקנים': int(cr[3] or 0),
                 'P&L': round(float(cr[0] or 0), 2), 'Rake': rake,
-                'מועדון מקבל %': keeps, 'נטו שלי': net,
+                'אחוז הסוכן %': agent_pct, 'נטו שלי': agent_net, 'נטו מועדון': club_net,
             })
         club_rows.sort(key=lambda x: x['Rake'], reverse=True)
         if club_rows:
@@ -3202,7 +3279,8 @@ def export_agent_players():
                 'מועדון': 'סה"כ', 'שחקנים': sum(r['שחקנים'] for r in club_rows),
                 'P&L': round(sum(r['P&L'] for r in club_rows), 2),
                 'Rake': round(sum(r['Rake'] for r in club_rows), 2),
-                'מועדון מקבל %': '', 'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
+                'אחוז הסוכן %': '', 'נטו שלי': round(sum(r['נטו שלי'] for r in club_rows), 2),
+                'נטו מועדון': round(sum(r.get('נטו מועדון', 0) for r in club_rows), 2),
             })
         sheets['מועדונים'] = club_rows
 
@@ -3210,7 +3288,7 @@ def export_agent_players():
     period_label = _format_period_label(selected_dates)
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{current_user.username}{suffix}_players.xlsx',
-                       period_label=period_label)
+                       period_label=period_label, transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/export/agent/full_box')
@@ -3404,7 +3482,7 @@ def export_agent_full_box():
     sheets = _apply_hide_breakdown({'קופסא מלאה': rows}, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets,
                        f'{current_user.username}{suffix}_full_box.xlsx',
-                       period_label=period_label)
+                       period_label=period_label, transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/export/agent/club/<club_id>')
@@ -3561,7 +3639,7 @@ def export_agent_club(club_id):
     if current_user.role == 'agent' and current_user.player_id:
         sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(current_user.player_id))
     return _make_excel(sheets, f'{club_name}{suffix}_report.xlsx',
-                       period_label=period_label)
+                       period_label=period_label, transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/export/agent/period')
@@ -3692,7 +3770,8 @@ def export_agent_period():
 
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else current_user.username
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
-    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx',
+                       transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/export/club/report')
@@ -3820,7 +3899,7 @@ def export_club_report():
     filename_suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
     return _make_excel(sheets, f'{club_name}_report{filename_suffix}.xlsx',
-                       period_label=period_label)
+                       period_label=period_label, transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/club/reports')
@@ -3929,7 +4008,8 @@ def export_club_period():
             sheets['משחקים'] = sess_rows
 
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else club_name
-    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx',
+                       transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/club/transfers', methods=['GET', 'POST'])
@@ -3938,7 +4018,7 @@ def club_transfers():
     if not hasattr(current_user, 'role') or current_user.role != 'club' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.union_data import get_player_balance, get_all_balances, get_members_hierarchy
+    from app.union_data import get_player_balance, get_all_balances, get_members_hierarchy, resolve_transfer
     from app.models import MoneyTransfer, DailyPlayerStats
     from sqlalchemy import func as sqlfunc
 
@@ -3989,20 +4069,14 @@ def club_transfers():
                 if from_pid not in my_player_ids or to_pid not in my_player_ids:
                     flash('אין הרשאה להעביר לשחקן שלא שייך למועדון.', 'danger')
                 else:
-                    from_balance = get_player_balance(from_pid)
-                    to_balance = get_player_balance(to_pid)
-                    max_transfer = min(abs(from_balance), to_balance)
-                    if from_balance >= 0:
-                        flash(f'{from_name} לא במינוס.', 'danger')
-                    elif to_balance <= 0:
-                        flash(f'{to_name} לא בפלוס.', 'danger')
-                    elif amount > max_transfer:
-                        flash(f'חריגה! מקסימום: {max_transfer:.2f}', 'danger')
+                    ok, fp, fn, tp, tn, store_amt, msg = resolve_transfer(from_pid, from_name, to_pid, to_name, amount)
+                    if not ok:
+                        flash(msg, 'danger')
                     else:
                         t = MoneyTransfer(user_id=current_user.id,
-                                          from_player_id=from_pid, from_name=from_name,
-                                          to_player_id=to_pid, to_name=to_name,
-                                          amount=amount, description=description)
+                                          from_player_id=fp, from_name=fn,
+                                          to_player_id=tp, to_name=tn,
+                                          amount=store_amt, description=description)
                         db.session.add(t)
                         db.session.commit()
                         flash(f'העברה של {amount} מ-{from_name} ל-{to_name} בוצעה.', 'success')
@@ -4034,7 +4108,7 @@ def agent_transfers():
     if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.union_data import get_super_agent_tables, get_player_balance, get_all_balances
+    from app.union_data import get_super_agent_tables, get_player_balance, get_all_balances, resolve_transfer
     from app.models import MoneyTransfer, SAHierarchy
 
     sa_id = current_user.player_id
@@ -4083,20 +4157,14 @@ def agent_transfers():
                 if from_pid not in my_player_ids or to_pid not in my_player_ids:
                     flash('אין הרשאה להעביר לשחקן שלא שייך אליך.', 'danger')
                 else:
-                    from_balance = get_player_balance(from_pid)
-                    to_balance = get_player_balance(to_pid)
-                    max_transfer = min(abs(from_balance), to_balance)
-                    if from_balance >= 0:
-                        flash(f'{from_name} לא במינוס.', 'danger')
-                    elif to_balance <= 0:
-                        flash(f'{to_name} לא בפלוס.', 'danger')
-                    elif amount > max_transfer:
-                        flash(f'חריגה! מקסימום: {max_transfer:.2f}', 'danger')
+                    ok, fp, fn, tp, tn, store_amt, msg = resolve_transfer(from_pid, from_name, to_pid, to_name, amount)
+                    if not ok:
+                        flash(msg, 'danger')
                     else:
                         t = MoneyTransfer(user_id=current_user.id,
-                                          from_player_id=from_pid, from_name=from_name,
-                                          to_player_id=to_pid, to_name=to_name,
-                                          amount=amount, description=description)
+                                          from_player_id=fp, from_name=fn,
+                                          to_player_id=tp, to_name=tn,
+                                          amount=store_amt, description=description)
                         db.session.add(t)
                         db.session.commit()
                         flash(f'העברה של {amount} מ-{from_name} ל-{to_name} בוצעה.', 'success')
@@ -4191,7 +4259,8 @@ def export_admin_period():
             sheets['משחקים'] = sess_rows
 
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else 'all'
-    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx',
+                       transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/reports/periodic')
@@ -4339,7 +4408,8 @@ def export_periodic():
     if xfer_rows:
         sheets['העברות'] = xfer_rows
 
-    return _make_excel(sheets, f'periodic_{from_date}_{to_date}.xlsx')
+    return _make_excel(sheets, f'periodic_{from_date}_{to_date}.xlsx',
+                       transfer_pids=[p[0] for p in players])
 
 
 @main_bp.route('/api/periodic-report')

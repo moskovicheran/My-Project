@@ -1833,8 +1833,8 @@ def apply_player_overrides(rows, sa_key='sa_id', agent_key='agent_id',
 
 def get_transfer_adjustments(player_ids):
     """Returns dict of player_id → adjustment amount for PnL.
-    Settlements: payer (from, minus) pays → their PnL goes up (+out);
-    receiver (to, plus) gets paid → their PnL goes down (-inc)."""
+    A transfer moves balance from sender to receiver: sender (from) sent money
+    → PnL goes down (−out); receiver (to) got money → PnL goes up (+inc)."""
     from app.models import MoneyTransfer, db
     from sqlalchemy import func
     if not player_ids:
@@ -1852,7 +1852,7 @@ def get_transfer_adjustments(player_ids):
     for pid in set(list(t_out.keys()) + list(t_in.keys())):
         inc = float(t_in.get(pid, 0))
         out = float(t_out.get(pid, 0))
-        adj = round(-inc + out, 2)
+        adj = round(inc - out, 2)
         if adj != 0:
             adjustments[pid] = adj
     return adjustments
@@ -1864,7 +1864,9 @@ def apply_transfer_adjustment(pnl, player_id, adjustments):
 
 
 def get_player_balance(player_id):
-    """Returns current balance: cumulative P&L + incoming transfers - outgoing transfers."""
+    """Returns current balance: cumulative P&L − money sent + money received.
+    A transfer moves balance from sender (from) to receiver (to): the sender's
+    balance goes down by the amount, the receiver's goes up."""
     from app.models import MoneyTransfer
     from sqlalchemy import func
 
@@ -1881,7 +1883,7 @@ def get_player_balance(player_id):
         func.coalesce(func.sum(MoneyTransfer.amount), 0)
     ).filter_by(from_player_id=player_id).scalar()
 
-    return round(pnl - float(incoming) + float(outgoing), 2)
+    return round(pnl + float(incoming) - float(outgoing), 2)
 
 
 def get_all_balances(player_ids=None):
@@ -1910,9 +1912,55 @@ def get_all_balances(player_ids=None):
         pnl = pnl_map.get(pid, 0)
         inc = float(transfers_in.get(pid, 0))
         out = float(transfers_out.get(pid, 0))
-        balances[pid] = round(pnl - inc + out, 2)
+        balances[pid] = round(pnl + inc - out, 2)
 
     return balances
+
+
+def resolve_transfer(payer_pid, payer_name, recv_pid, recv_name, amount):
+    """Validate a transfer and return how to store it, from the user's
+    payer (משלם) / receiver (מקבל) choice.
+
+    One smart rule that never lets anyone end up in minus:
+      • payer in PLUS  → gives money away: payer's balance drops, receiver's
+        rises. Max = payer's balance.
+      • payer in MINUS → settles his debt against a creditor: payer's debt
+        shrinks toward 0, the creditor's credit shrinks. Receiver must be in
+        plus. Max = min(|payer debt|, receiver credit).
+
+    The payer is ALWAYS stored as from_player_id and the receiver as
+    to_player_id (so every screen reads "payer → receiver" correctly). The
+    direction of the balance move is carried by the SIGN of the stored amount:
+    get_player_balance is `pnl + incoming − outgoing`, so a positive amount
+    sends balance from payer to receiver (the plus/"give" case) and a negative
+    amount settles a debt (payer's balance rises, receiver's drops).
+
+    Returns (ok, from_pid, from_name, to_pid, to_name, store_amount, error).
+    """
+    payer_bal = get_player_balance(payer_pid)
+    recv_bal = get_player_balance(recv_pid)
+    if payer_bal > 0:
+        if amount > payer_bal:
+            return (False, None, None, None, None, 0,
+                    f'חריגה! מקסימום להעברה: {payer_bal:.2f} (היתרה של {payer_name}).')
+        # Give: payer's balance drops, receiver's rises → positive amount.
+        return (True, payer_pid, payer_name, recv_pid, recv_name, amount, '')
+    elif payer_bal < 0:
+        if recv_bal <= 0:
+            return (False, None, None, None, None, 0,
+                    f'לא ניתן להעביר ממינוס למינוס — {recv_name} אינו בפלוס. '
+                    f'שחקן בחוב יכול להעביר רק לשחקן בפלוס (להסדרת חוב).')
+        cap = round(min(abs(payer_bal), recv_bal), 2)
+        if amount > cap:
+            return (False, None, None, None, None, 0,
+                    f'חריגה! מקסימום: {cap:.2f} (חוב {payer_name}: {abs(payer_bal):.2f}, '
+                    f'זכות {recv_name}: {recv_bal:.2f}).')
+        # Debt settlement: payer's debt shrinks (balance rises), receiver's
+        # credit shrinks → negative amount carries that direction.
+        return (True, payer_pid, payer_name, recv_pid, recv_name, -amount, '')
+    else:
+        return (False, None, None, None, None, 0,
+                f'{payer_name} ביתרה 0 — אין מה להעביר.')
 
 
 def _num(val):

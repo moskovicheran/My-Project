@@ -1935,10 +1935,66 @@ def agent_view(sa_id):
 @admin_bp.route('/transfers', methods=['GET', 'POST'])
 @admin_required
 def transfers():
-    from app.union_data import get_all_members, get_player_balance, get_all_balances
+    from app.union_data import get_all_members, get_player_balance, get_all_balances, resolve_transfer
+    from app.models import HOUSE_PLAYER_ID, HOUSE_PLAYER_NAME
 
     if request.method == 'POST':
         action = request.form.get('action')
+        if action == 'return_house':
+            # Pull money from a player back into the house pot (e.g. reversing a
+            # wrong tournament). Works for ANY player — plus or minus — since
+            # it's a correction; the player's balance simply drops by the amount
+            # (it may go negative), and the house pot rises by it.
+            rh_key = request.form.get('rh_key', '').strip()
+            description = request.form.get('description', '').strip()
+            try:
+                amount = float(request.form.get('rh_amount', 0))
+            except ValueError:
+                flash('סכום לא תקין.', 'danger')
+                return redirect(url_for('admin.transfers'))
+            if not rh_key or '|' not in rh_key:
+                flash('יש לבחור שחקן.', 'danger')
+            elif amount <= 0:
+                flash('הסכום חייב להיות חיובי.', 'danger')
+            else:
+                pid, pname = rh_key.split('|', 1)
+                t = MoneyTransfer(user_id=current_user.id,
+                                  from_player_id=pid, from_name=pname,
+                                  to_player_id=HOUSE_PLAYER_ID, to_name=HOUSE_PLAYER_NAME,
+                                  amount=amount,
+                                  description=description or 'החזרת כסף לבית')
+                db.session.add(t)
+                db.session.commit()
+                flash(f'הוחזרו {amount} מ-{pname} לקופת הבית.', 'success')
+            return redirect(url_for('admin.transfers'))
+        if action == 'distribute_house':
+            # Pay money out of the house pot to a player who should receive it.
+            # Capped at what the house holds, so giving back balances taking.
+            dh_key = request.form.get('dh_key', '').strip()
+            description = request.form.get('description', '').strip()
+            try:
+                amount = float(request.form.get('dh_amount', 0))
+            except ValueError:
+                flash('סכום לא תקין.', 'danger')
+                return redirect(url_for('admin.transfers'))
+            house_bal = get_player_balance(HOUSE_PLAYER_ID)
+            if not dh_key or '|' not in dh_key:
+                flash('יש לבחור שחקן.', 'danger')
+            elif amount <= 0:
+                flash('הסכום חייב להיות חיובי.', 'danger')
+            elif amount > house_bal:
+                flash(f'חריגה! בקופת הבית יש {house_bal:.2f} בלבד.', 'danger')
+            else:
+                pid, pname = dh_key.split('|', 1)
+                t = MoneyTransfer(user_id=current_user.id,
+                                  from_player_id=HOUSE_PLAYER_ID, from_name=HOUSE_PLAYER_NAME,
+                                  to_player_id=pid, to_name=pname,
+                                  amount=amount,
+                                  description=description or 'חלוקה מקופת הבית')
+                db.session.add(t)
+                db.session.commit()
+                flash(f'חולקו {amount} מקופת הבית ל-{pname}.', 'success')
+            return redirect(url_for('admin.transfers'))
         if action == 'add':
             from_key = request.form.get('from_key', '').strip()
             to_key = request.form.get('to_key', '').strip()
@@ -1958,20 +2014,14 @@ def transfers():
             else:
                 from_pid, from_name = from_key.split('|', 1)
                 to_pid, to_name = to_key.split('|', 1)
-                from_balance = get_player_balance(from_pid)
-                to_balance = get_player_balance(to_pid)
-                max_transfer = min(abs(from_balance), to_balance)
-                if from_balance >= 0:
-                    flash(f'{from_name} לא במינוס - אין חוב להעביר.', 'danger')
-                elif to_balance <= 0:
-                    flash(f'{to_name} לא בפלוס - אין זכות לקבל.', 'danger')
-                elif amount > max_transfer:
-                    flash(f'חריגה! מקסימום להעברה: {max_transfer:.2f} (חוב: {abs(from_balance):.2f}, זכות: {to_balance:.2f}).', 'danger')
+                ok, fp, fn, tp, tn, store_amt, msg = resolve_transfer(from_pid, from_name, to_pid, to_name, amount)
+                if not ok:
+                    flash(msg, 'danger')
                 else:
                     t = MoneyTransfer(user_id=current_user.id,
-                                      from_player_id=from_pid, from_name=from_name,
-                                      to_player_id=to_pid, to_name=to_name,
-                                      amount=amount, description=description)
+                                      from_player_id=fp, from_name=fn,
+                                      to_player_id=tp, to_name=tn,
+                                      amount=store_amt, description=description)
                     db.session.add(t)
                     db.session.commit()
                     flash(f'העברה של {amount} מ-{from_name} ל-{to_name} בוצעה.', 'success')
@@ -1986,9 +2036,11 @@ def transfers():
 
     members = get_all_members()
     balances = get_all_balances()
+    house_balance = get_player_balance(HOUSE_PLAYER_ID)
     all_transfers = MoneyTransfer.query.order_by(MoneyTransfer.created_at.desc()).all()
     return render_template('admin/transfers.html',
-                           transfers=all_transfers, members=members, balances=balances)
+                           transfers=all_transfers, members=members, balances=balances,
+                           house_balance=house_balance)
 
 
 @admin_bp.route('/notes', methods=['GET', 'POST'])

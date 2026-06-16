@@ -55,6 +55,13 @@ class AdminNote(db.Model):
     user = db.relationship('User', backref='notes')
 
 
+# Synthetic "house" account that money is returned to (e.g. reversing a wrong
+# tournament). It isn't a real player — it only ever appears as the to_player_id
+# of a MoneyTransfer, so its balance equals the total returned to the house.
+HOUSE_PLAYER_ID = '__house__'
+HOUSE_PLAYER_NAME = 'הבית'
+
+
 class MoneyTransfer(db.Model):
     __tablename__ = 'money_transfers'
 

@@ -471,6 +471,23 @@ input[type="radio"]#type_expense:checked + label.expense-label {
     gap: 1.5rem;
 }
 
+/* Type-to-search dropdown (transfer forms, agents page). The wrapper must be
+   position:relative so the panel anchors to the input below it. */
+.sa-autocomplete {
+    position: absolute; top: 100%; right: 0; left: 0;
+    background: #fff; border: 1px solid #ddd; border-radius: 0 0 8px 8px;
+    max-height: 200px; overflow-y: auto; z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.sa-autocomplete .sa-item {
+    padding: 0.45rem 0.8rem; cursor: pointer; font-size: 0.85rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+.sa-autocomplete .sa-item:hover { background: #eef0ff; }
+body.dark .sa-autocomplete { background: #1e1e2e; border-color: #444; }
+body.dark .sa-autocomplete .sa-item { border-bottom-color: #333; color: #ddd; }
+body.dark .sa-autocomplete .sa-item:hover { background: #252545; }
+
 @media (max-width: 900px) {
     .members-grid { grid-template-columns: 1fr; }
     .stats-8 { grid-template-columns: repeat(4, 1fr); }

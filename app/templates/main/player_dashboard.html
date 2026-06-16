@@ -185,19 +185,9 @@ function applyFilter() {
                 '<td class="amount ' + cls + '">' + sign + s.pnl.toFixed(2) + '</td>' +
                 '</tr>';
         });
-        // Transfers always shown on the "all" tab; hidden in current-cycle view
-        if (_sessionsTab === 'all' && _transferRows && _transferRows.length) {
-            _transferRows.forEach(function(t) {
-                var cls = t.amount >= 0 ? 'income' : 'expense';
-                var sign = t.amount > 0 ? '+' : '';
-                rows += '<tr style="background:linear-gradient(90deg, #f8f9ff, #f0f3ff);">' +
-                    '<td><strong>' + t.label + '</strong></td>' +
-                    '<td><span class="badge badge-game" style="background:#667eea;color:#fff;">העברה</span></td>' +
-                    '<td></td>' +
-                    '<td class="amount ' + cls + '">' + sign + t.amount.toFixed(2) + '</td>' +
-                    '</tr>';
-            });
-        }
+        // Money transfers live in their own always-visible "העברות כספים"
+        // section below (they aren't date-bound, so they must not be folded
+        // into a cycle's game total).
         // Rake refund the agent entered in the collection table — its own row
         if (_collectionRake) {
             rows += '<tr style="background:#eafbf8;">' +
@@ -210,11 +200,9 @@ function applyFilter() {
         }
         tbody.innerHTML = rows;
     }
-    // Totals row — sum of visible rows (sessions + transfers + rake refund)
+    // Totals row — sum of visible game rows (+ rake refund). Transfers are
+    // shown separately and excluded here so the cycle total stays game-only.
     var tabPnl = tabFiltered.reduce(function(a,s){ return a + s.pnl; }, 0);
-    if (_sessionsTab === 'all' && _transferRows && _transferRows.length) {
-        tabPnl += _transferRows.reduce(function(a,t){ return a + t.amount; }, 0);
-    }
     if (tabFiltered.length) tabPnl += _collectionRake;
 
     // Update total row for the sessions table (sum of visible rows in the active tab)
@@ -649,6 +637,36 @@ function toggleBcDetails(cardEl, gameType, blinds) {
     </div>
     {% endif %}
 </div>
+
+{# ── Money transfers (settlements) — always visible, not date-bound ── #}
+{% if transfer_rows %}
+<div class="section">
+    <h2 class="section-title">💸 העברות כספים</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>תיאור</th>
+                <th>סכום</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in transfer_rows %}
+            <tr style="background:linear-gradient(90deg,#f8f9ff,#f0f3ff);">
+                <td><strong>{{ t.label }}</strong></td>
+                <td class="amount {% if t.amount >= 0 %}income{% else %}expense{% endif %}">{% if t.amount > 0 %}+{% endif %}{{ t.amount|comma }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            {% set xfer_total = transfer_rows | sum(attribute='amount') %}
+            <tr class="total-row">
+                <td><strong>סה"כ העברות</strong></td>
+                <td class="amount {% if xfer_total >= 0 %}income{% else %}expense{% endif %}"><strong>{% if xfer_total > 0 %}+{% endif %}{{ xfer_total|round(2)|comma }}</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endif %}
 
 <style>
 .sessions-tabs { display:flex; gap:0.4rem; margin-bottom:1rem; flex-wrap:wrap; }
