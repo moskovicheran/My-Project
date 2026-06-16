@@ -1601,6 +1601,20 @@ def agent_view(sa_id):
             ag['total_pnl'] += m['pnl']
         ag['total_pnl'] = round(ag['total_pnl'], 2)
 
+    # Money transfers touching this SA's players or the SA himself — surfaced
+    # for documentation (the SA can be the receiver/payer of a transfer too).
+    _av_pids = list(all_my_player_ids | {sa_id})
+    _av_xfers = MoneyTransfer.query.filter(
+        db.or_(MoneyTransfer.from_player_id.in_(_av_pids),
+               MoneyTransfer.to_player_id.in_(_av_pids))
+    ).order_by(MoneyTransfer.created_at.desc()).all() if _av_pids else []
+    agent_transfers = [{
+        'date': t.created_at.strftime('%d/%m/%Y') if t.created_at else '',
+        'from_name': t.from_name, 'to_name': t.to_name,
+        'amount': round(abs(t.amount), 2),
+        'description': t.description or '',
+    } for t in _av_xfers]
+
     # Add agent's own game stats if not already in members (for agents who also play)
     for ag_id, ag in agents_map.items():
         existing_pids = set(m['player_id'] for m in ag['members'])
@@ -1929,7 +1943,8 @@ def agent_view(sa_id):
                            total_rake=round(total_rake, 2),
                            total_pnl=round(total_pnl, 2),
                            total_hands=int(total_hands),
-                           player_count=player_count)
+                           player_count=player_count,
+                           agent_transfers=agent_transfers)
 
 
 @admin_bp.route('/transfers', methods=['GET', 'POST'])

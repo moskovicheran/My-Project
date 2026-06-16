@@ -54,6 +54,31 @@ var _allPlayers = [
     </div>
 </div>
 
+{# ── Money transfers touching this SA's players ── #}
+{% if agent_transfers is defined and agent_transfers %}
+<div style="margin-bottom:1.5rem; border:2px solid #667eea; border-radius:14px; background:linear-gradient(135deg, #f8f9ff, #f0f3ff); overflow:hidden;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; border-bottom:1px solid #e0e4ef;">
+        <strong style="color:#667eea;">💸 העברות כספים ({{ agent_transfers|length }})</strong>
+    </div>
+    <div style="padding:0.3rem 1rem 0.7rem;">
+        {% for t in agent_transfers %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0; border-bottom:1px solid #eee; font-size:0.9rem; gap:0.5rem; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                <strong>{{ t.from_name }}</strong>
+                <span class="muted" style="font-size:0.8rem;">שילם ל־</span>
+                <strong>{{ t.to_name }}</strong>
+                {% if t.description %}<span class="muted" style="font-size:0.75rem;">({{ t.description }})</span>{% endif %}
+            </div>
+            <div style="display:flex; gap:1rem; align-items:center;">
+                <span class="muted" style="font-size:0.78rem;">{{ t.date }}</span>
+                <span style="color:#667eea; font-weight:700;">{{ t.amount|comma }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {# ── My Agents ── #}
 {% if my_sa.agents or my_sa.direct %}
 <div class="section accordion-section" style="margin-bottom:1.5rem;">
