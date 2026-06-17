@@ -212,6 +212,16 @@ function applyFilter() {
         totalEl.innerHTML = '<strong>' + _fmt(Math.round(tabPnl*100)/100) + '</strong>';
     }
 
+    // Net after money transfers — the games total ± what the player paid/received.
+    var netEl = document.getElementById('sessions-net');
+    if (netEl) {
+        var xferSum = (_transferRows || []).reduce(function(a, t){ return a + t.amount; }, 0);
+        var net = Math.round((tabPnl + xferSum) * 100) / 100;
+        netEl.className = 'amount ' + (net >= 0 ? 'income' : 'expense');
+        netEl.style.color = '';
+        netEl.innerHTML = '<strong>' + _fmt(net) + '</strong>';
+    }
+
 }
 
 // ── Calendar logic ──
@@ -629,6 +639,13 @@ function toggleBcDetails(cardEl, gameType, blinds) {
                 <td colspan="4"><strong>סה"כ</strong></td>
                 <td class="amount" id="sessions-total"><strong>0</strong></td>
             </tr>
+            {% if transfer_rows %}
+            <tr class="total-row" style="font-size:0.9rem;">
+                <td colspan="4" style="color:#667eea;"><strong>סה"כ אחרי העברות</strong>
+                    <span class="muted" style="font-weight:400; font-size:0.78rem;">(כולל תשלומים/קבלות)</span></td>
+                <td class="amount" id="sessions-net" style="color:#667eea;"><strong></strong></td>
+            </tr>
+            {% endif %}
         </tfoot>
     </table>
     {% else %}
