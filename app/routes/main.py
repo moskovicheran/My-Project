@@ -4154,14 +4154,16 @@ def agent_transfers():
     sa_id = current_user.player_id
     sa_tables = get_super_agent_tables()
 
-    # Collect all player IDs under this agent
+    # Collect the player IDs in this agent's OWN box only — their direct
+    # players plus their sub-agents' members. Child super-agents are NOT
+    # included: each one has its own transfer page, and an agent may only
+    # move money "within themselves" (inside their own box), never across
+    # into a child SA's box.
     my_player_ids = set()
     my_players = []  # [{player_id, nickname, club}]
     my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
-    child_sa_ids = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=sa_id).all()]
-    child_sas = [sa for sa in sa_tables if sa['sa_id'] in child_sa_ids]
 
-    for sa in my_sas + child_sas:
+    for sa in my_sas:
         for m in sa['direct']:
             my_player_ids.add(m['player_id'])
             my_players.append({'player_id': m['player_id'], 'nickname': m['nickname'], 'club': sa['club']})
@@ -4169,6 +4171,8 @@ def agent_transfers():
             for m in ag['members']:
                 my_player_ids.add(m['player_id'])
                 my_players.append({'player_id': m['player_id'], 'nickname': m['nickname'], 'club': sa['club']})
+    # The agent himself is always part of his own box.
+    my_player_ids.add(sa_id)
 
     if request.method == 'POST':
         action = request.form.get('action')
