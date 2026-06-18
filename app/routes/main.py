@@ -2082,6 +2082,9 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
             'manual_rake': manual_rake, 'settlement': settlement,
             'is_paid': is_paid, 'paid_at': pay.paid_at if pay else None,
             'cap': round(rake_pct / 100.0 * rake, 2),
+            # The refund expressed as a % of the player's generated rake, so the
+            # agent enters a percentage and the amount is derived from it.
+            'rake_pct_val': round(manual_rake / rake * 100, 2) if rake else 0,
         }
         (settled if is_paid else minus if settlement < 0 else receive).append(row)
     receive.sort(key=lambda x: x['settlement'], reverse=True)
@@ -2134,17 +2137,36 @@ def agent_collection():
                     pay.paid_at = datetime.utcnow() if pay.is_paid else None
                     db.session.commit()
                 else:  # set_rake
-                    try:
-                        val = float(request.form.get('manual_rake', 0) or 0)
-                    except ValueError:
-                        flash('סכום רייק לא תקין.', 'danger')
-                        return redirect(rt)
                     if cycle.frozen:
                         total_rake = pay.total_rake or 0
                     else:
                         total_rake = _collection_live_rows(
                             sa_id, None, None).get(pid, {}).get('rake', 0)
                     cap = round(rake_pct / 100.0 * total_rake, 2)
+                    # The agent now enters a PERCENTAGE of the player's generated
+                    # rake; the refund amount is derived from it (e.g. 50% of 100
+                    # = 50). Fall back to the legacy absolute-amount field if a
+                    # percentage wasn't sent.
+                    _pct_raw = request.form.get('rake_pct_input', None)
+                    if _pct_raw is not None:
+                        try:
+                            pct = float(_pct_raw or 0)
+                        except ValueError:
+                            flash('אחוז לא תקין.', 'danger')
+                            return redirect(rt)
+                        if pct < 0:
+                            flash('אחוז לא יכול להיות שלילי.', 'danger')
+                            return redirect(rt)
+                        if pct > rake_pct + 0.001:
+                            flash(f'חריגה! מקסימום האחוז הוא {rake_pct:.0f}%.', 'danger')
+                            return redirect(rt)
+                        val = round(pct / 100.0 * total_rake, 2)
+                    else:
+                        try:
+                            val = float(request.form.get('manual_rake', 0) or 0)
+                        except ValueError:
+                            flash('סכום רייק לא תקין.', 'danger')
+                            return redirect(rt)
                     if val < 0:
                         flash('רייק לא יכול להיות שלילי.', 'danger')
                     elif val > cap + 0.001:
@@ -2153,7 +2175,7 @@ def agent_collection():
                     else:
                         pay.manual_rake = round(val, 2)
                         db.session.commit()
-                        flash(f'רייק {val:.2f} נרשם.', 'success')
+                        flash(f'הוחזר {val:.2f}.', 'success')
 
         return redirect(rt)
 

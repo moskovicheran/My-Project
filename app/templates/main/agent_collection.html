@@ -33,10 +33,12 @@
                     <input type="hidden" name="action" value="set_rake">
                     <input type="hidden" name="cycle_id" value="{{ c.id }}">
                     <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                    <input type="number" name="manual_rake" value="{{ r.manual_rake }}" min="0" max="{{ r.cap }}" step="0.01"
-                           style="width:80px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
+                    <input type="number" name="rake_pct_input" value="{{ r.rake_pct_val }}" min="0" max="{{ rake_pct|round(0)|int }}" step="0.01"
+                           data-rake="{{ r.rake }}" oninput="collCalc(this)"
+                           style="width:64px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
+                    <span class="muted small">%</span>
                     <button type="submit" class="btn btn-sm btn-outline">שמור</button>
-                    <span class="muted small">מתוך {{ r.cap|comma }}</span>
+                    <span class="muted small coll-amt">= {{ r.manual_rake|comma }}</span>
                 </form>
             </td>
             <td data-label="להתחשבנות" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
@@ -148,6 +150,16 @@ function switchCycle(btn, idx) {
     document.querySelectorAll('.cycle-pane').forEach(function(p) {
         p.style.display = (parseInt(p.dataset.idx) === idx) ? '' : 'none';
     });
+}
+// Live-compute the refund amount from the percentage the agent types
+// (amount = pct% of the player's generated rake).
+function collCalc(inp) {
+    var rake = parseFloat(inp.dataset.rake) || 0;
+    var pct = parseFloat(inp.value) || 0;
+    var amt = Math.round(pct / 100 * rake * 100) / 100;
+    var span = inp.parentElement.querySelector('.coll-amt');
+    if (span) span.textContent = '= ' + amt.toLocaleString(undefined,
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 </script>
 
