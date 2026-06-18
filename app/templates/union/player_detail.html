@@ -463,6 +463,27 @@ function toggleBcDetails(cardEl, gameType, blinds) {
         </tbody>
         <tfoot>
             {% set rake_total = collection_history|sum(attribute='manual_rake') %}
+            {% set xfer = player_xfer_net|default(0) %}
+            {% if xfer|abs > 0.01 %}
+            {% set games_disp = pnl_games + rake_total %}
+            <tr class="total-row">
+                <td colspan="3"><strong>סה"כ משחקים{% if rake_total %} (כולל קבלת רייק){% endif %}</strong></td>
+                <td class="amount {% if games_disp >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if games_disp > 0 %}+{% endif %}{{ games_disp|comma }}</strong>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="3" class="muted">💸 העברות כספים</td>
+                <td class="amount {% if xfer >= 0 %}income{% else %}expense{% endif %}">{% if xfer > 0 %}+{% endif %}{{ xfer|comma }}</td>
+            </tr>
+            {% set net_disp = pnl_games + xfer + rake_total %}
+            <tr class="total-row">
+                <td colspan="3"><strong>נטו (כולל העברות)</strong></td>
+                <td class="amount {% if net_disp >= 0 %}income{% else %}expense{% endif %}">
+                    <strong>{% if net_disp > 0 %}+{% endif %}{{ net_disp|comma }}</strong>
+                </td>
+            </tr>
+            {% else %}
             {% set grand_total = total_pnl + rake_total %}
             <tr class="total-row">
                 <td colspan="3"><strong>סה"כ{% if rake_total %} (כולל קבלת רייק){% endif %}</strong></td>
@@ -470,6 +491,7 @@ function toggleBcDetails(cardEl, gameType, blinds) {
                     <strong>{% if grand_total > 0 %}+{% endif %}{{ grand_total|comma }}</strong>
                 </td>
             </tr>
+            {% endif %}
         </tfoot>
     </table>
     {% else %}

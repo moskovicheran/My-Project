@@ -555,7 +555,7 @@ def player_detail(player_id):
                             'agent_nick': member_info.get('agent_nick', '-')}]
     else:
         total_rake = sum(s['rake'] for s in sessions)
-        total_pnl = sum(s['pnl'] for s in sessions)
+        total_pnl = round(sum(s['pnl'] for s in sessions) + xfer_adj.get(player_id, 0), 2)
         total_hands = sum(s['hands'] for s in sessions)
 
     # Load sessions from DB (cumulative, all uploads).
@@ -670,6 +670,13 @@ def player_detail(player_id):
             'pnl': round(t.amount, 2),
             'is_transfer': True,
         })
+
+    # Signed transfer total (incoming +, outgoing −); 0 in scoped view where
+    # transfers are suppressed. Lets the record-table footer split its total
+    # into games subtotal + transfers + net (instead of one opaque "סה"כ").
+    player_xfer_net = round(sum(t.amount for t in transfers_in)
+                            - sum(t.amount for t in transfers_out), 2)
+    pnl_games = round(total_pnl - player_xfer_net, 2)
 
     # Dedicated transfer documentation for this player — always shown (even in
     # scoped views), listing who paid whom, separate from the game record.
@@ -804,6 +811,8 @@ def player_detail(player_id):
                            club_entries=club_entries,
                            total_rake=total_rake,
                            total_pnl=total_pnl,
+                           player_xfer_net=player_xfer_net,
+                           pnl_games=pnl_games,
                            total_hands=total_hands,
                            game_stats=game_stats,
                            total_sessions=total_sessions,
