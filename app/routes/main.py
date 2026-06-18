@@ -3097,6 +3097,23 @@ def export_agent_players():
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
     rake_ref = _collection_rake_by_player([p[0] for p in players]) if not had_date_filter else {}
 
+    # Per-entity transfer sums so the agent/SA/club rollup sheets net transfers
+    # the same way the per-player sheets do — otherwise the same player shows a
+    # raw number in the rollup but a net number in their own sheet. Keyed off the
+    # already-computed xfer_adj (player_id -> adjustment).
+    _agent_xfer, _sa_xfer, _club_xfer = {}, {}, {}
+    for _p in players:
+        _adj = xfer_adj.get(_p[0], 0)
+        if not _adj:
+            continue
+        _aid = _p[4] if _p[4] and _p[4] != '-' else None
+        if _aid:
+            _agent_xfer[_aid] = round(_agent_xfer.get(_aid, 0) + _adj, 2)
+        if _p[3]:
+            _sa_xfer[_p[3]] = round(_sa_xfer.get(_p[3], 0) + _adj, 2)
+        if _p[2]:
+            _club_xfer[_p[2]] = round(_club_xfer.get(_p[2], 0) + _adj, 2)
+
     # Group players: by agent, by child SA, or direct
     agent_groups = {}  # agent_name -> [players]
     child_sa_groups = {}  # child_sa_name -> [players]
@@ -3213,7 +3230,7 @@ def export_agent_players():
         rake = round(float(ag[2] or 0), 2)
         agent_rows.append({
             'סוכן': ag_name, 'ID': ag[0], 'שחקנים': int(ag[4] or 0),
-            'P&L': round(float(ag[1] or 0), 2), 'Rake': rake,
+            'P&L': round(float(ag[1] or 0) + _agent_xfer.get(ag[0], 0), 2), 'Rake': rake,
             'אחוז רייק %': rake_pct,
         })
     agent_rows.sort(key=lambda x: x['Rake'], reverse=True)
@@ -3242,7 +3259,7 @@ def export_agent_players():
         rake = round(float(sa_data[1] or 0), 2)
         sa_rows.append({
             'Super Agent': sa_name, 'ID': csa_id, 'שחקנים': int(sa_data[3] or 0),
-            'P&L': round(float(sa_data[0] or 0), 2), 'Rake': rake,
+            'P&L': round(float(sa_data[0] or 0) + _sa_xfer.get(csa_id, 0), 2), 'Rake': rake,
             'אחוז רייק %': rake_pct,
         })
     sa_rows.sort(key=lambda x: x['Rake'], reverse=True)
@@ -3277,7 +3294,7 @@ def export_agent_players():
             club_net = round(rake * (100 - agent_pct) / 100, 2)  # the club's share
             club_rows.append({
                 'מועדון': name, 'שחקנים': int(cr[3] or 0),
-                'P&L': round(float(cr[0] or 0), 2), 'Rake': rake,
+                'P&L': round(float(cr[0] or 0) + _club_xfer.get(name, 0), 2), 'Rake': rake,
                 'אחוז בעל המועדון %': agent_pct, 'נטו לבעל המועדון': agent_net, 'נשאר אצלי': club_net,
             })
         club_rows.sort(key=lambda x: x['Rake'], reverse=True)
