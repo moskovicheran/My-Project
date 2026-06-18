@@ -4148,31 +4148,46 @@ def agent_transfers():
     if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
         return redirect(url_for('main.dashboard'))
 
-    from app.union_data import get_super_agent_tables, get_player_balance, get_all_balances, resolve_transfer
-    from app.models import MoneyTransfer, SAHierarchy
+    from app.union_data import (get_player_balance, get_all_balances,
+                                 resolve_transfer, get_players_with_current_scope)
+    from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats
 
     sa_id = current_user.player_id
-    sa_tables = get_super_agent_tables()
 
-    # Collect the player IDs in this agent's OWN box only — their direct
-    # players plus their sub-agents' members. Child super-agents are NOT
-    # included: each one has its own transfer page, and an agent may only
-    # move money "within themselves" (inside their own box), never across
-    # into a child SA's box.
-    my_player_ids = set()
-    my_players = []  # [{player_id, nickname, club}]
-    my_sas = [sa for sa in sa_tables if sa['sa_id'] == sa_id]
+    # The agent's OWN box, complete: every player whose CURRENT attribution
+    # (their latest upload row's sa_id/agent_id) is this agent — i.e. their
+    # direct players plus their sub-agents' members. Child super-agents are
+    # naturally excluded (their players' current sa_id is the child, not this
+    # agent), so the agent can only move money "within themselves". This is
+    # the same current-scope source the dashboard uses; the old
+    # get_super_agent_tables box was missing most of the agent's players.
+    box_pids = set(get_players_with_current_scope({sa_id}))
+    # Manual overrides that attach a player directly to this agent.
+    for a in PlayerAssignment.query.filter(
+            db.or_(PlayerAssignment.assigned_sa_id == sa_id,
+                   PlayerAssignment.assigned_agent_id == sa_id)).all():
+        if a.player_id:
+            box_pids.add(a.player_id)
+    box_pids.add(sa_id)  # the agent himself is part of his own box
 
-    for sa in my_sas:
-        for m in sa['direct']:
-            my_player_ids.add(m['player_id'])
-            my_players.append({'player_id': m['player_id'], 'nickname': m['nickname'], 'club': sa['club']})
-        for ag in sa['agents'].values():
-            for m in ag['members']:
-                my_player_ids.add(m['player_id'])
-                my_players.append({'player_id': m['player_id'], 'nickname': m['nickname'], 'club': sa['club']})
-    # The agent himself is always part of his own box.
-    my_player_ids.add(sa_id)
+    my_player_ids = set(box_pids)
+    # Resolve a nickname + club for each player from their latest row.
+    my_players = []
+    if box_pids:
+        latest = {}
+        for pid, nick, club, uid in DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id, DailyPlayerStats.nickname,
+                DailyPlayerStats.club, DailyPlayerStats.upload_id).filter(
+                DailyPlayerStats.player_id.in_(list(box_pids))).all():
+            cur = latest.get(pid)
+            if cur is None or (uid or 0) > cur[2]:
+                latest[pid] = (nick, club, uid or 0)
+        for pid in box_pids:
+            info = latest.get(pid)
+            my_players.append({'player_id': pid,
+                               'nickname': info[0] if info and info[0] else pid,
+                               'club': info[1] if info else ''})
+    my_players.sort(key=lambda r: (r['nickname'] or '').lower())
 
     if request.method == 'POST':
         action = request.form.get('action')
