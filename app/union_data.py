@@ -283,7 +283,8 @@ def get_union_overview():
                 'active_players': _num(row.iloc[6]),
                 'total_hands': _num(row.iloc[7]),
                 'total_fee': _num(row.iloc[8]),
-                'pnl': _num(row.iloc[20]),
+                'pnl': (_num(row.iloc[20]) if len(row) > 20
+                        else (_num(row.iloc[17]) if len(row) > 17 else 0)),
             }
             break
         clubs.append({
@@ -295,7 +296,8 @@ def get_union_overview():
             'active_players': _num(row.iloc[6]),
             'total_hands': _num(row.iloc[7]),
             'total_fee': _num(row.iloc[8]),
-            'pnl': _num(row.iloc[20]),
+            'pnl': (_num(row.iloc[20]) if len(row) > 20
+                    else (_num(row.iloc[17]) if len(row) > 17 else 0)),
         })
     else:
         total = {}
