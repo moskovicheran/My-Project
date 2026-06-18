@@ -211,6 +211,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
         {% for r in rake_refund_list %}
         <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid #eee; font-size:0.9rem;">
             <div style="display:flex; align-items:center; gap:0.5rem;">
+                {% if r.get('paid') %}<span title="שולם בגבייה" style="color:#2ec4b6; font-weight:700;">✓</span>{% endif %}
                 <strong>{{ r.nick }}</strong>
                 <span class="rake-split-badge">{{ r.rake_pct|int }}%</span>
                 {% if r.type == 'player' %}<span class="muted" style="font-size:0.75rem;">שחקן</span>{% endif %}

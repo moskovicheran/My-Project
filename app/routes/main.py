@@ -1207,6 +1207,7 @@ def dashboard():
                 if pct:
                     refund = round(m['rake'] * pct / 100, 2)
                     players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
+                                              'player_id': m['player_id'],
                                               'total_rake': m['rake'], 'refund': refund})
 
         # Combined rake refund list (agents + players + child SAs)
@@ -1228,19 +1229,21 @@ def dashboard():
             return round(s, 2)
 
         rake_refund_list = []
-        for ag in agents_map.values():
+        for ag_id, ag in agents_map.items():
             if ag.get('rake_pct'):
                 gross = ag['agent_net_rake']
                 paid_to_players = _player_refunds_in(ag.get('members', []))
                 net = round(gross - paid_to_players, 2)
                 rake_refund_list.append({
                     'nick': ag['nick'], 'rake_pct': ag['rake_pct'],
+                    'player_id': ag_id,
                     'total_rake': ag['total_rake'], 'refund': net,
                     'gross': gross, 'paid_to_players': paid_to_players,
                     'type': 'agent',
                 })
         for p in players_with_rake:
             rake_refund_list.append({'nick': p['nick'], 'rake_pct': p['rake_pct'],
+                                     'player_id': p.get('player_id'),
                                      'total_rake': p['total_rake'], 'refund': p['refund'],
                                      'type': 'player'})
         # Child SAs with their own RakeConfig — same net-of-downstream-refunds
@@ -1265,6 +1268,7 @@ def dashboard():
                 rake_refund_list.append({
                     'nick': cs.get('sa_nick') or cs.get('sa_id'),
                     'rake_pct': pct,
+                    'player_id': cs.get('sa_id'),
                     'total_rake': cs_rake,
                     'refund': net,
                     'gross': gross, 'paid_to_players': paid_to_players,
@@ -1560,6 +1564,21 @@ def dashboard():
             collection_rake_list.sort(key=lambda r: r['amount'], reverse=True)
             collection_rake_total = round(
                 sum(r['amount'] for r in collection_rake_list), 2)
+
+        # Mark rake-refund rows whose player was already paid their rake in the
+        # collection screen (✓ in the dashboard panel). "Paid" = marked שולם in
+        # an open cycle with a rake refund entered.
+        _open_cycle_ids = [c.id for c in _coll_cycles if not c.is_closed]
+        _paid_rake_pids = set()
+        if _open_cycle_ids:
+            _paid_rake_pids = {p.player_id for p in PlayerPayment.query.filter(
+                PlayerPayment.cycle_id.in_(_open_cycle_ids),
+                PlayerPayment.is_paid.is_(True),
+                PlayerPayment.manual_rake.isnot(None),
+                PlayerPayment.manual_rake != 0).all()}
+        for _r in rake_refund_list:
+            if _r.get('player_id') and _r.get('player_id') in _paid_rake_pids:
+                _r['paid'] = True
 
         return render_template('main/agent_dashboard.html',
                                collection_rake_total=collection_rake_total,
