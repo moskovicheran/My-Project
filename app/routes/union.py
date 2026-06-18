@@ -641,13 +641,14 @@ def player_detail(player_id):
             else:
                 total_pnl = round(sess_pnl + xfer_adj.get(player_id, 0), 2)
 
-    # Add money transfers as special session entries — only in full view
-    # (transfers aren't tied to a specific card, so in scoped view we
-    # suppress them to avoid misattribution).
+    # Add money transfers as special session entries. Transfers are a player's
+    # own money movement (not tied to a specific card), so they are shown even
+    # in a scoped view — consistent with the always-shown transfer
+    # documentation section below — and the footer reflects them in the net.
     from app.models import MoneyTransfer
     from datetime import timedelta
-    transfers_out = [] if scope_applied else MoneyTransfer.query.filter_by(from_player_id=player_id).all()
-    transfers_in = [] if scope_applied else MoneyTransfer.query.filter_by(to_player_id=player_id).all()
+    transfers_out = MoneyTransfer.query.filter_by(from_player_id=player_id).all()
+    transfers_in = MoneyTransfer.query.filter_by(to_player_id=player_id).all()
     for t in transfers_out:
         il_time = t.created_at + timedelta(hours=3) if t.created_at else None
         sessions.append({
@@ -671,12 +672,14 @@ def player_detail(player_id):
             'is_transfer': True,
         })
 
-    # Signed transfer total (incoming +, outgoing −); 0 in scoped view where
-    # transfers are suppressed. Lets the record-table footer split its total
-    # into games subtotal + transfers + net (instead of one opaque "סה"כ").
+    # Signed transfer total (incoming +, outgoing −). Lets the record-table
+    # footer split its total into games subtotal + transfers + net.
     player_xfer_net = round(sum(t.amount for t in transfers_in)
                             - sum(t.amount for t in transfers_out), 2)
-    pnl_games = round(total_pnl - player_xfer_net, 2)
+    # Games-only subtotal for the split. In scoped view total_pnl is already
+    # games-only (transfers aren't folded into the scoped slice); in the full
+    # view total_pnl is net, so back the transfers out.
+    pnl_games = total_pnl if scope_applied else round(total_pnl - player_xfer_net, 2)
 
     # Dedicated transfer documentation for this player — always shown (even in
     # scoped views), listing who paid whom, separate from the game record.
