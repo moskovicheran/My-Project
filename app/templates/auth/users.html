@@ -330,6 +330,12 @@
 <div class="section">
     <h2 class="section-title">משתמשים ({{ users|length }})</h2>
 
+    <div style="margin-bottom:0.8rem; position:relative; max-width:340px;">
+        <input type="text" id="userTableSearch" placeholder="🔍 חיפוש לפי שם משתמש או Player ID..."
+               class="field-input" autocomplete="off" oninput="filterUsersTable()">
+        <span id="userTableCount" class="muted small" style="display:none; margin-top:0.3rem;"></span>
+    </div>
+
     <table class="table">
         <thead>
             <tr>
@@ -342,7 +348,7 @@
         </thead>
         <tbody>
             {% for user in users %}
-            <tr>
+            <tr class="user-row" data-search="{{ (user.username ~ ' ' ~ (user.player_id or ''))|lower }}">
                 <td><strong>{{ user.username }}</strong></td>
                 <td class="muted">{{ user.player_id or '-' }}</td>
                 <td>
@@ -402,6 +408,31 @@
 function togglePasswordForm(userId) {
     var row = document.getElementById('pw-row-' + userId);
     row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+/* ── Filter the existing-users table by username / Player ID ── */
+function filterUsersTable() {
+    var q = document.getElementById('userTableSearch').value.trim().toLowerCase();
+    var rows = document.querySelectorAll('tr.user-row');
+    var shown = 0;
+    rows.forEach(function(row) {
+        var match = q === '' || (row.getAttribute('data-search') || '').indexOf(q) >= 0;
+        row.style.display = match ? '' : 'none';
+        // Keep each user's hidden password row in sync: when a user is filtered
+        // out, collapse any open password form sitting in the next row.
+        var sibling = row.nextElementSibling;
+        if (!match && sibling && sibling.id && sibling.id.indexOf('pw-row-') === 0) {
+            sibling.style.display = 'none';
+        }
+        if (match) shown++;
+    });
+    var counter = document.getElementById('userTableCount');
+    if (q === '') {
+        counter.style.display = 'none';
+    } else {
+        counter.style.display = 'block';
+        counter.textContent = shown + ' תוצאות';
+    }
 }
 
 /* ── Tab switching (member / club) ── */
