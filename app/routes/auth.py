@@ -370,13 +370,34 @@ def users():
 
         return redirect(url_for('auth.users'))
 
-    from app.union_data import get_all_members, get_all_clubs
+    from app.union_data import (get_all_members, get_all_clubs,
+                                 get_all_players_db)
     from app.models import ProtectedAgent
     from app.routes.admin import (OVERVIEW_MANAGERS, OVERVIEW_EXTERNAL_AGENTS,
                                    ADMIN_PANEL_GATE_KEY, ACTIVE_CLUBS_GATE_KEY)
     all_users = User.query.order_by(User.created_at.desc()).all()
     members = get_all_members()
     clubs = get_all_clubs()
+
+    # Augment the Excel-derived roster with EVERY player known to the DB
+    # (all uploads), so an account can be created for anyone — not just the
+    # players present in the latest 'Union Member Statistics' sheet. This
+    # closes the Excel-vs-DB gap: a player who had no activity in the current
+    # period (or whose row was deduped under an SA/Agent) is otherwise missing
+    # from the search even though they exist in the system.
+    seen_pids = {m['player_id'] for m in members}
+    for p in get_all_players_db():
+        if p['player_id'] not in seen_pids:
+            seen_pids.add(p['player_id'])
+            members.append({
+                'player_id': p['player_id'],
+                'nickname': p['nickname'],
+                'role': 'Player',
+                'club': p.get('club', ''),
+                'sa_nick': '-', 'agent_nick': '-',
+            })
+    members.sort(key=lambda m: (m['nickname'] or '').lower())
+
     existing_pids = {u.player_id for u in all_users if u.player_id}
     available_members = [m for m in members if m['player_id'] not in existing_pids]
     available_clubs = [c for c in clubs if c['club_id'] not in existing_pids]
