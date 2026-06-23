@@ -395,7 +395,8 @@ def reset_all():
 
 def _archive_and_clear_active():
     from app.models import (db, DailyUpload, DailyPlayerStats, ActiveExcelData,
-                            PlayerSession, TournamentStats, ArchivePeriod)
+                            PlayerSession, TournamentStats, ArchivePeriod,
+                            MoneyTransfer)
     from sqlalchemy import func as sqlfunc, text
 
     # Archive data before deleting
@@ -511,6 +512,13 @@ def _archive_and_clear_active():
     ActiveExcelData.query.delete()
     DailyPlayerStats.query.delete()
     DailyUpload.query.delete()
+    # Money transfers belong to the cycle that's being reset: they adjust
+    # per-card PnL but not the top box, so leaving them behind after a reset
+    # produces a phantom DELTA on the health page (one-sided settlements from
+    # the old cycle keep counting). Clear them with the rest of the active data
+    # — the frozen collection-cycle snapshots already preserve the settlement
+    # record for history.
+    MoneyTransfer.query.delete()
     db.session.commit()
 
     session.pop('uploaded_file', None)
