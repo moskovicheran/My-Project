@@ -4191,9 +4191,14 @@ def agent_transfers():
 
     from app.union_data import (get_player_balance, get_all_balances,
                                  resolve_transfer, get_players_with_current_scope)
-    from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats
+    from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats, HOUSE_PLAYER_NAME
 
     sa_id = current_user.player_id
+    # Per-agent synthetic "house" (inner box). Unlike the admin's single global
+    # __house__, each agent gets their own so pots never leak between agents. The
+    # id has no DailyPlayerStats rows, so it stays out of every dashboard/overview
+    # aggregation — its (possibly negative) balance surfaces ONLY on this page.
+    house_id = f'__house__{sa_id}'
 
     # The agent's OWN box, complete: every player whose CURRENT attribution
     # (their latest upload row's sa_id/agent_id) is this agent — i.e. their
@@ -4230,8 +4235,69 @@ def agent_transfers():
                                'club': info[1] if info else ''})
     my_players.sort(key=lambda r: (r['nickname'] or '').lower())
 
+    # Ledger scope: real players for counterparty validation; +house for the
+    # transfers list and delete permission (house rows carry the house id).
+    ledger_ids = set(my_player_ids) | {house_id}
+
     if request.method == 'POST':
         action = request.form.get('action')
+        if action == 'return_house':
+            # Pull money from one of the agent's players into their inner box
+            # (e.g. reversing a wrong tournament). Player balance drops, box rises.
+            rh_key = request.form.get('rh_key', '').strip()
+            description = request.form.get('description', '').strip()
+            try:
+                amount = float(request.form.get('rh_amount', 0))
+            except ValueError:
+                flash('סכום לא תקין.', 'danger')
+                return redirect(url_for('main.agent_transfers'))
+            if not rh_key or '|' not in rh_key:
+                flash('יש לבחור שחקן.', 'danger')
+            elif amount <= 0:
+                flash('הסכום חייב להיות חיובי.', 'danger')
+            else:
+                pid, pname = rh_key.split('|', 1)
+                if pid not in my_player_ids:
+                    flash('אין הרשאה לשחקן שלא שייך אליך.', 'danger')
+                else:
+                    t = MoneyTransfer(user_id=current_user.id,
+                                      from_player_id=pid, from_name=pname,
+                                      to_player_id=house_id, to_name=HOUSE_PLAYER_NAME,
+                                      amount=amount,
+                                      description=description or 'החזרת כסף לבית')
+                    db.session.add(t)
+                    db.session.commit()
+                    flash(f'הוחזרו {amount} מ-{pname} לקופסא הפנימית.', 'success')
+            return redirect(url_for('main.agent_transfers'))
+        if action == 'distribute_house':
+            # Pay from the inner box to a player — e.g. settling a player's debt.
+            # NOT capped (unlike admin): the box may go negative, and that minus
+            # is the agent's float, hidden from every external view.
+            dh_key = request.form.get('dh_key', '').strip()
+            description = request.form.get('description', '').strip()
+            try:
+                amount = float(request.form.get('dh_amount', 0))
+            except ValueError:
+                flash('סכום לא תקין.', 'danger')
+                return redirect(url_for('main.agent_transfers'))
+            if not dh_key or '|' not in dh_key:
+                flash('יש לבחור שחקן.', 'danger')
+            elif amount <= 0:
+                flash('הסכום חייב להיות חיובי.', 'danger')
+            else:
+                pid, pname = dh_key.split('|', 1)
+                if pid not in my_player_ids:
+                    flash('אין הרשאה לשחקן שלא שייך אליך.', 'danger')
+                else:
+                    t = MoneyTransfer(user_id=current_user.id,
+                                      from_player_id=house_id, from_name=HOUSE_PLAYER_NAME,
+                                      to_player_id=pid, to_name=pname,
+                                      amount=amount,
+                                      description=description or 'חלוקה מהבית')
+                    db.session.add(t)
+                    db.session.commit()
+                    flash(f'חולקו {amount} מהקופסא הפנימית ל-{pname}.', 'success')
+            return redirect(url_for('main.agent_transfers'))
         if action == 'add':
             from_key = request.form.get('from_key', '').strip()
             to_key = request.form.get('to_key', '').strip()
@@ -4271,24 +4337,27 @@ def agent_transfers():
         elif action == 'delete':
             tid = request.form.get('transfer_id')
             t = MoneyTransfer.query.get(tid)
-            if t and (t.from_player_id in my_player_ids or t.to_player_id in my_player_ids):
+            if t and (t.from_player_id in ledger_ids or t.to_player_id in ledger_ids):
                 db.session.delete(t)
                 db.session.commit()
                 flash('העברה נמחקה.', 'success')
         return redirect(url_for('main.agent_transfers'))
 
     balances = get_all_balances(my_player_ids)
-    # Get transfers for my players only
+    # The inner box's true balance (may be negative). This is the ONLY place the
+    # minus is shown — every other view excludes the synthetic house entirely.
+    house_balance = get_player_balance(house_id)
+    # Transfers touching my players or my inner box.
     my_transfers = MoneyTransfer.query.filter(
         db.or_(
-            MoneyTransfer.from_player_id.in_(my_player_ids),
-            MoneyTransfer.to_player_id.in_(my_player_ids)
+            MoneyTransfer.from_player_id.in_(ledger_ids),
+            MoneyTransfer.to_player_id.in_(ledger_ids)
         )
     ).order_by(MoneyTransfer.created_at.desc()).all()
 
     return render_template('main/agent_transfers.html',
                            players=my_players, balances=balances,
-                           transfers=my_transfers)
+                           transfers=my_transfers, house_balance=house_balance)
 
 
 @main_bp.route('/export/admin/period')
