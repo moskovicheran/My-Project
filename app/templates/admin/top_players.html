@@ -19,6 +19,30 @@
 
 <div class="top-grid">
 
+    {# Daily Ring-Game Top — biggest ring winners of the latest uploaded file #}
+    <div class="section">
+        <h2 class="section-title" style="color:#f59e0b;">🎯 טופ Ring יומי{% if ring_date %} <span style="font-size:0.72rem;font-weight:400;color:#94a3b8;">({{ ring_date.strftime('%d/%m/%Y') }})</span>{% endif %}</h2>
+        <table class="table table-sm top-table">
+            <thead><tr><th>#</th><th>שחקן</th><th class="top-hide-mobile">קלאב</th><th>רווח Ring</th></tr></thead>
+            <tbody>
+                {% for p in top_ring %}
+                <tr>
+                    <td><strong>{{ loop.index }}</strong></td>
+                    <td>
+                        <a href="{{ url_for('union.player_detail', player_id=p.member_id) }}" class="player-link">{{ p.nickname }}</a>
+                        <span class="top-club-inline muted">{{ p.club }}</span>
+                    </td>
+                    <td class="muted top-hide-mobile">{{ p.club }}</td>
+                    <td class="amount {{ 'income' if p.ring_pnl >= 0 else 'expense' }}"><strong>{{ '+' if p.ring_pnl > 0 else '' }}{{ p.ring_pnl|comma }}</strong></td>
+                </tr>
+                {% endfor %}
+                {% if not top_ring %}
+                <tr><td colspan="4" class="muted" style="text-align:center;">אין נתוני Ring בקובץ האחרון</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
     {# Top Winners #}
     <div class="section">
         <h2 class="section-title winners">🏆 טופ מרוויחים</h2>

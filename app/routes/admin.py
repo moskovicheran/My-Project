@@ -2699,12 +2699,40 @@ def top_players():
     top_rake = sorted(all_players, key=lambda x: x['rake'], reverse=True)[:10]
     top_active = sorted(all_players, key=lambda x: x['hands'], reverse=True)[:10]
 
+    # Daily Ring-game top — biggest ring-game winners of the most recent
+    # uploaded file only (game_type != 'MTT'), across all clubs.
+    from app.models import DailyUpload, PlayerSession
+    from sqlalchemy import func as sqlfunc
+    top_ring = []
+    ring_date = DailyUpload.query.with_entities(
+        sqlfunc.max(DailyUpload.upload_date)).scalar()
+    if ring_date is not None:
+        latest_ids = [u[0] for u in DailyUpload.query.with_entities(
+            DailyUpload.id).filter(DailyUpload.upload_date == ring_date).all()]
+        info = {p['player_id']: p for p in all_players}
+        ring_rows = (PlayerSession.query.with_entities(
+                PlayerSession.player_id, sqlfunc.sum(PlayerSession.pnl))
+            .filter(PlayerSession.upload_id.in_(latest_ids),
+                    PlayerSession.game_type != 'MTT')
+            .group_by(PlayerSession.player_id)
+            .order_by(sqlfunc.sum(PlayerSession.pnl).desc())
+            .limit(10).all())
+        for pid, rpnl in ring_rows:
+            base = info.get(pid, {})
+            top_ring.append({
+                'player_id': pid, 'member_id': pid,
+                'nickname': base.get('nickname', pid),
+                'club': base.get('club', ''),
+                'ring_pnl': round(float(rpnl or 0), 2),
+            })
+
     biggest_winner = top_winners[0]['pnl'] if top_winners else 0
     biggest_loser = top_losers[0]['pnl'] if top_losers else 0
 
     return render_template('admin/top_players.html',
                            top_winners=top_winners, top_losers=top_losers,
                            top_rake=top_rake, top_active=top_active,
+                           top_ring=top_ring, ring_date=ring_date,
                            total_players=len(all_players),
                            biggest_winner=biggest_winner,
                            biggest_loser=biggest_loser)
