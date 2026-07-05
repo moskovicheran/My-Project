@@ -1989,26 +1989,42 @@ def agent_top_players():
     top_rake = sorted(all_players, key=lambda x: x['rake'], reverse=True)[:10]
     top_active = sorted(all_players, key=lambda x: x['hands'], reverse=True)[:10]
 
-    # Daily Ring-game top — biggest ring-game winners of the most recent
-    # uploaded file only (game_type != 'MTT'), scoped to this agent/club's
-    # players. Uses PlayerSession (per-session ring/MTT breakdown) rather than
-    # the cumulative DailyPlayerStats, and only the latest upload_date's rows.
+    # Daily Ring-game top — biggest ring-game winners of a single uploaded
+    # day (game_type != 'MTT'), scoped to this agent/club's players. Uses
+    # PlayerSession (per-session ring/MTT breakdown) rather than cumulative
+    # DailyPlayerStats. A specific day can be picked via ?ring_date=YYYY-MM-DD;
+    # defaults to the most recent upload. ring_dates drives the day picker.
     from app.models import DailyUpload, PlayerSession
+    from datetime import datetime as _dt
     top_ring = []
-    ring_date = DailyUpload.query.with_entities(
-        sqlfunc.max(DailyUpload.upload_date)).scalar()
+    ring_dates = [r[0] for r in DailyUpload.query.with_entities(
+        DailyUpload.upload_date).distinct().order_by(
+        DailyUpload.upload_date.desc()).all()]
+    ring_date = ring_dates[0] if ring_dates else None
+    _req_rd = (request.args.get('ring_date') or '').strip()
+    if _req_rd:
+        try:
+            _p = _dt.strptime(_req_rd, '%Y-%m-%d').date()
+            if _p in ring_dates:
+                ring_date = _p
+        except ValueError:
+            pass
+    # 'winners' (biggest ring profit) or 'losers' (biggest ring loss) tab.
+    ring_side = 'losers' if (request.args.get('ring_side') == 'losers') else 'winners'
     scoped_pids = {p['player_id'] for p in all_players}
     if ring_date is not None and scoped_pids:
         latest_ids = [u[0] for u in DailyUpload.query.with_entities(
             DailyUpload.id).filter(DailyUpload.upload_date == ring_date).all()]
         info = {p['player_id']: p for p in all_players}
+        _pnl_sum = sqlfunc.sum(PlayerSession.pnl)
         ring_rows = (PlayerSession.query.with_entities(
-                PlayerSession.player_id, sqlfunc.sum(PlayerSession.pnl))
+                PlayerSession.player_id, _pnl_sum)
             .filter(PlayerSession.upload_id.in_(latest_ids),
                     PlayerSession.game_type != 'MTT',
                     PlayerSession.player_id.in_(scoped_pids))
             .group_by(PlayerSession.player_id)
-            .order_by(sqlfunc.sum(PlayerSession.pnl).desc())
+            .having(_pnl_sum < 0 if ring_side == 'losers' else _pnl_sum > 0)
+            .order_by(_pnl_sum.asc() if ring_side == 'losers' else _pnl_sum.desc())
             .limit(10).all())
         for pid, rpnl in ring_rows:
             base = info.get(pid, {})
@@ -2027,6 +2043,7 @@ def agent_top_players():
                            top_winners=top_winners, top_losers=top_losers,
                            top_rake=top_rake, top_active=top_active,
                            top_ring=top_ring, ring_date=ring_date,
+                           ring_dates=ring_dates, ring_side=ring_side,
                            total_players=len(all_players),
                            biggest_winner=biggest_winner,
                            biggest_loser=biggest_loser,

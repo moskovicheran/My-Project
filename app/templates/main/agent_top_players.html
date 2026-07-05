@@ -29,9 +29,25 @@
 
     {# Daily Ring-Game Top — biggest ring winners of the latest uploaded file #}
     <div class="section">
-        <h2 class="section-title" style="color:#f59e0b;">🎯 טופ Ring יומי{% if ring_date %} <span style="font-size:0.72rem;font-weight:400;color:#94a3b8;">({{ ring_date.strftime('%d/%m/%Y') }})</span>{% endif %}</h2>
+        <h2 class="section-title" style="color:#f59e0b;">🎯 טופ Ring יומי</h2>
+        <div class="ring-side-tabs">
+            {% for side, lbl in [('winners','מרוויחים'), ('losers','מפסידים')] %}
+            {% set _t = request.args.to_dict() %}
+            {% set _ = _t.update({'ring_side': side}) %}
+            <a class="ring-tab ring-tab-{{ side }}{% if ring_side == side %} active{% endif %}" href="{{ request.path }}?{{ _t|urlencode }}">{{ lbl }}</a>
+            {% endfor %}
+        </div>
+        {% if ring_dates %}
+        <div class="ring-date-chips">
+            {% for d in ring_dates %}
+            {% set _q = request.args.to_dict() %}
+            {% set _ = _q.update({'ring_date': d.isoformat()}) %}
+            <a class="ring-chip{% if d == ring_date %} active{% endif %}" href="{{ request.path }}?{{ _q|urlencode }}">{{ d.strftime('%d/%m/%Y') }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
         <table class="table table-sm top-table">
-            <thead><tr><th>#</th><th>שחקן</th><th class="top-hide-mobile">סוכן</th><th>רווח Ring</th></tr></thead>
+            <thead><tr><th>#</th><th>שחקן</th><th class="top-hide-mobile">סוכן</th><th>{{ 'הפסד' if ring_side == 'losers' else 'רווח' }} Ring</th></tr></thead>
             <tbody>
                 {% for p in top_ring %}
                 <tr>
@@ -45,7 +61,7 @@
                 </tr>
                 {% endfor %}
                 {% if not top_ring %}
-                <tr><td colspan="4" class="muted" style="text-align:center;">אין נתוני Ring בקובץ האחרון</td></tr>
+                <tr><td colspan="4" class="muted" style="text-align:center;">אין {{ 'מפסידי' if ring_side == 'losers' else 'מרוויחי' }} Ring ליום זה</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -143,6 +159,14 @@
 
 <style>
 .top-club-inline { display: none; }
+.ring-side-tabs { display: inline-flex; margin: 0 0 0.7rem; border: 1px solid #d1d5db; border-radius: 999px; overflow: hidden; }
+.ring-tab { padding: 0.25rem 1.1rem; font-size: 0.8rem; font-weight: 700; text-decoration: none; color: #64748b; background: transparent; }
+.ring-tab.active.ring-tab-winners { background: #10b981; color: #fff; }
+.ring-tab.active.ring-tab-losers { background: #ef233c; color: #fff; }
+.ring-date-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0 0 0.7rem; }
+.ring-chip { display: inline-block; text-decoration: none; font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem; border: 1px solid #f59e0b; border-radius: 999px; background: transparent; color: #f59e0b; cursor: pointer; white-space: nowrap; transition: background .12s, color .12s; }
+.ring-chip:hover { background: rgba(245,158,11,0.14); }
+.ring-chip.active { background: #f59e0b; color: #fff; }
 .top-table { min-width: 0 !important; width: 100%; }
 .top-table td, .top-table th { white-space: nowrap; padding: 0.45rem 0.5rem; font-size: 0.88rem; }
 
