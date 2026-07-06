@@ -18,7 +18,7 @@
 var _allSessions = {{ sessions | tojson }};  // active + archived (last 90 days)
 var _activeDates = new Set({{ active_dates | tojson }});
 var _dailyStatsMap = {{ daily_stats_map | tojson }};
-var _rakeRefundPct = {{ rake_refund_pct | default(0) | tojson }};
+var _rakeRefundPct = {{ (0 if current_user.username == 'יבגני' else rake_refund_pct | default(0)) | tojson }};
 var _collectionRake = {{ collection_rake | default(0) | tojson }};
 var _selectedDates = []; // array of 0-2 endpoint dates (range-select like agent dashboard)
 
@@ -310,8 +310,11 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 </script>
 
 {# ── Stats Cards ── #}
+{# Yevgeni still receives the rake refund (RakeConfig untouched) but must not
+   see the amount — hide the "החזר רייק" card only for his own login. #}
+{% set show_rake_refund = rake_refund and current_user.username != 'יבגני' %}
 {% set _ncards = 3 %}
-{% if rake_refund %}{% set _ncards = _ncards + 1 %}{% endif %}
+{% if show_rake_refund %}{% set _ncards = _ncards + 1 %}{% endif %}
 {% if collection_rake %}{% set _ncards = _ncards + 1 %}{% endif %}
 <div class="stats-grid stats-{{ _ncards }}" style="margin-bottom:1.5rem;">
     <div class="stat-card {% if player.pnl >= 0 %}income{% else %}expense{% endif %}">
@@ -326,7 +329,7 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
         <div class="stat-label">Hands</div>
         <div class="stat-value" id="stat-hands">{{ "{:,}".format(player.hands|int) }}</div>
     </div>
-    {% if rake_refund %}
+    {% if show_rake_refund %}
     <div class="stat-card" style="border:2px solid #667eea;">
         <div class="stat-label" style="color:#667eea; font-weight:700;">החזר רייק</div>
         <div class="stat-value" id="stat-rake-refund" style="color:#667eea;">{{ rake_refund|comma }}</div>
