@@ -20,7 +20,7 @@
     <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
         <a href="{{ url_for('main.export_agent_account', dates=selected_dates|join(',') if selected_dates else None, view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">📥 דוח חשבון</a>
         <a href="{{ url_for('main.export_agent_players', dates=selected_dates|join(',') if selected_dates else None, view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">📥 דוח שחקנים</a>
-        <a href="{{ url_for('main.export_agent_full_box', dates=selected_dates|join(',') if selected_dates else None, view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">📦 דוח קופסא מלאה</a>
+        <button type="button" onclick="showFullBoxChoice()" class="btn btn-outline btn-sm">📦 דוח קופסא מלאה</button>
     </div>
 </div>
 
@@ -1236,6 +1236,34 @@ body.dark .dp-reset { color:#ff6b6b; }
         </div>
     </div>
 </div>
+
+{# ── Full-Box Report: choose Excel vs A4 print version ── #}
+<div class="export-modal-overlay" id="fullBoxModal" onclick="if(event.target===this)closeFullBoxModal()">
+    <div class="export-modal">
+        <h3>📦 דוח קופסא מלאה</h3>
+        <p>בחר גרסה:</p>
+        <div class="export-modal-btns">
+            <a id="fullBoxExcelLink" href="#" class="export-btn-full">📊 גרסת אקסל (הורדה)</a>
+            <a id="fullBoxPrintLink" href="#" target="_blank" class="export-btn-agents">🖨️ גרסת הדפסה A4 — פונטים גדולים</a>
+            <a href="#" onclick="closeFullBoxModal(); return false;" class="export-btn-cancel">ביטול</a>
+        </div>
+    </div>
+</div>
+
+<script>
+var _fullBoxBase = {{ url_for('main.export_agent_full_box', view_as=request.args.get('view_as'))|tojson }};
+function showFullBoxChoice() {
+    var d = window.__selectedDates || '';
+    var sep = _fullBoxBase.indexOf('?') >= 0 ? '&' : '?';
+    var xls = _fullBoxBase + (d ? sep + 'dates=' + encodeURIComponent(d) : '');
+    var prn = _fullBoxBase + sep + 'format=print' + (d ? '&dates=' + encodeURIComponent(d) : '');
+    document.getElementById('fullBoxExcelLink').href = xls;
+    document.getElementById('fullBoxPrintLink').href = prn;
+    document.getElementById('fullBoxModal').classList.add('active');
+}
+function closeFullBoxChoice() { closeFullBoxModal(); }
+function closeFullBoxModal() { document.getElementById('fullBoxModal').classList.remove('active'); }
+</script>
 
 <script>
 function _datesQS(withAmp) {

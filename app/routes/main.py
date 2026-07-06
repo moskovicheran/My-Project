@@ -3610,6 +3610,20 @@ def export_agent_full_box():
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
     sheets = _apply_hide_breakdown({'קופסא מלאה': rows}, _hide_breakdown_pct(sa_id))
+
+    # Print-friendly A4 version (large fonts) — identical data to the Excel,
+    # rendered as a standalone HTML page the agent can print. Triggered from the
+    # same "דוח קופסא מלאה" button via ?format=print.
+    if request.args.get('format') == 'print':
+        from datetime import datetime as _dt
+        print_rows = sheets.get('קופסא מלאה', [])
+        columns = list(print_rows[0].keys()) if print_rows else []
+        return render_template('main/full_box_print.html',
+                               rows=print_rows, columns=columns,
+                               agent_name=current_user.username,
+                               period_label=period_label,
+                               generated=_dt.now().strftime('%d/%m/%Y %H:%M'))
+
     return _make_excel(sheets,
                        f'{current_user.username}{suffix}_full_box.xlsx',
                        period_label=period_label, transfer_pids=[p[0] for p in players])
