@@ -3808,20 +3808,24 @@ def export_agent_full_box():
             for _r in pdf_rows:
                 _is_total = str(_r.get('שחקן', '')).startswith('סה"כ')
                 if _is_total:
-                    _rb = round(_rb_sum, 2)
+                    _rb, _pct = round(_rb_sum, 2), None
                 else:
-                    _rb = round(float(_r.get('Rake') or 0) * _pct_for(_r.get('ID')) / 100.0, 2)
+                    _pct = _pct_for(_r.get('ID'))
+                    _rb = round(float(_r.get('Rake') or 0) * _pct / 100.0, 2)
                     _rb_sum += _rb
                 _after = round(float(_r.get('P&L') or 0) + _rb, 2)
                 _nr = {}
                 for _k, _v in _r.items():
                     if _k in ('ידיים', 'קלאב'):
                         continue
-                    if _k == 'Rake' and _rb:
-                        # rake, with the rakeback he actually receives in a small
-                        # green line below it (markup rendered by the cell Paragraph)
+                    if _k == 'Rake' and _rb and not _is_total:
+                        # rake, with the % he receives shown in a small green line
+                        # below it (markup rendered by the cell Paragraph)
                         _nr[_k] = (f'{_money(_v)}<br/>'
-                                   f'<font size="8" color="#1a7f37">({_money(_rb)})</font>')
+                                   f'<font size="8" color="#1a7f37">({_pct:g}%)</font>')
+                    elif _k == 'קבלת רייק' and _rb:
+                        # the net rakeback amount he actually receives (was 0)
+                        _nr[_k] = _rb
                     else:
                         _nr[_k] = _v
                     if _k == 'סה"כ לתשלום':
