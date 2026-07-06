@@ -3424,7 +3424,7 @@ def _full_box_pdf(rows, columns, agent_name, period_label, generated):
     from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
                                     Paragraph, Spacer)
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
     try:
         from bidi.algorithm import get_display
     except Exception:                       # newer python-bidi exposes it at top level
@@ -3436,15 +3436,19 @@ def _full_box_pdf(rows, columns, agent_name, period_label, generated):
         pdfmetrics.registerFont(TTFont('DejaVu-Bold', os.path.join(font_dir, 'DejaVuSans-Bold.ttf')))
 
     def rtl(v):
-        return get_display(str(v if v is not None else ''))
+        # bidi-reorder for LTR drawing, then escape reportlab's markup chars
+        # (& < >) so a value like the 'P&L' header isn't parsed as an entity.
+        s = get_display(str(v if v is not None else ''))
+        return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
     # Columns that hold text (right-aligned). Everything else is treated as a
     # number (centred, comma-formatted). 'Rake' may have been renamed to
     # 'הרייק שלי (X%)' by hide-breakdown — anything not in this set is numeric.
     TEXT_COLS = {'שחקן', 'ID', 'קלאב', 'Super Agent', 'סוכן'}
     # Relative column widths (keyed by the ORIGINAL column name).
-    WEIGHTS = {'שחקן': 2.3, 'ID': 1.3, 'קלאב': 2.6, 'Super Agent': 1.7, 'סוכן': 1.7,
-               'P&L': 1.3, 'Rake': 1.3, 'קבלת רייק': 1.3, 'סה"כ לתשלום': 1.5, 'ידיים': 1.2}
+    WEIGHTS = {'שחקן': 1.9, 'ID': 1.6, 'קלאב': 2.4, 'Super Agent': 1.6, 'סוכן': 1.9,
+               'P&L': 1.7, 'Rake': 1.5, 'קבלת רייק': 1.4, 'סה"כ לתשלום': 1.7,
+               'סה"כ תשלום לאחר רייק': 1.9, 'ידיים': 1.3}
 
     def is_num_col(col):
         return col not in TEXT_COLS
@@ -3456,45 +3460,74 @@ def _full_box_pdf(rows, columns, agent_name, period_label, generated):
         except (ValueError, TypeError):
             return '' if val is None else str(val)
 
+    # Every cell is a Paragraph so long tokens WRAP inside the column instead of
+    # spilling into the neighbour (fixes the agent-name overflow). Font, colour
+    # and alignment live on the paragraph style, not on TableStyle.
+    def pstyle(size, bold, align, color='#111111'):
+        return ParagraphStyle('c', fontName='DejaVu-Bold' if bold else 'DejaVu',
+                              fontSize=size, leading=size + 3, alignment=align,
+                              textColor=colors.HexColor(color), splitLongWords=1,
+                              wordWrap=None)
+
     # RTL: first logical column goes on the RIGHT → reverse display order.
     disp_cols = list(reversed(columns))
-
-    table_data = [[rtl(c) for c in disp_cols]]        # header
-    neg_cells = []                                     # (col, row) of negative numbers → red
-    total_row_idx = None
-    for row in rows:
-        is_total = str(row.get(columns[0], '')).startswith('סה"כ')
-        line = []
-        for ci, col in enumerate(disp_cols):
-            v = row.get(col, '')
-            if is_num_col(col):
-                line.append(fmt_num(v))
-                try:
-                    if float(v) < 0:
-                        neg_cells.append((ci, len(table_data)))
-                except (ValueError, TypeError):
-                    pass
-            else:
-                line.append(rtl(v))
-        table_data.append(line)
-        if is_total:
-            total_row_idx = len(table_data) - 1
 
     # Column widths proportional to weights, scaled to the usable page width.
     page_w, page_h = landscape(A4)
     usable = page_w - 20 * mm
-    weights = [WEIGHTS.get(c, 1.4) for c in disp_cols]
+    weights = [WEIGHTS.get(c, 1.6) for c in disp_cols]
     wsum = sum(weights) or 1
     col_widths = [usable * w / wsum for w in weights]
+    width_of = dict(zip(disp_cols, col_widths))
+
+    def wrap_rtl(text, font, size, avail):
+        """Break a multi-word Hebrew label into lines that fit `avail`, running
+        bidi PER LINE so each wrapped line keeps the correct visual order (plain
+        auto-wrap of a pre-bidi'd string flips the line order)."""
+        words, lines, cur = str(text).split(' '), [], ''
+        for w in words:
+            trial = (cur + ' ' + w).strip()
+            if cur and pdfmetrics.stringWidth(trial, font, size) > avail:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = trial
+        if cur:
+            lines.append(cur)
+        return '<br/>'.join(rtl(ln) for ln in lines)
+
+    def cell(col, val, kind):                 # kind: 'head' | 'data' | 'total'
+        num = is_num_col(col)
+        align = TA_CENTER if (num or col == 'ID') else TA_RIGHT
+        if kind == 'head':
+            return Paragraph(wrap_rtl(col, 'DejaVu-Bold', 12, width_of.get(col, 60) - 10),
+                             pstyle(12, True, align, '#1a2b6b'))
+        if num:
+            s = fmt_num(val)
+            if kind == 'total':
+                return Paragraph(s, pstyle(12, True, align))
+            neg = False
+            try:
+                neg = float(val) < 0
+            except (ValueError, TypeError):
+                neg = False
+            return Paragraph(s, pstyle(11, False, align, '#c0182b' if neg else '#111111'))
+        # text (incl. ID)
+        return Paragraph(rtl(val), pstyle(12 if kind == 'total' else 11,
+                                          kind == 'total', align))
+
+    table_data = [[cell(c, c, 'head') for c in disp_cols]]
+    total_row_idx = None
+    for row in rows:
+        is_total = str(row.get(columns[0], '')).startswith('סה"כ')
+        kind = 'total' if is_total else 'data'
+        table_data.append([cell(c, row.get(c, ''), kind) for c in disp_cols])
+        if is_total:
+            total_row_idx = len(table_data) - 1
 
     style_cmds = [
-        ('FONTNAME', (0, 0), (-1, -1), 'DejaVu'),
-        ('FONTNAME', (0, 0), (-1, 0), 'DejaVu-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef1fb')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1a2b6b')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#888888')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef1fb')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
@@ -3502,19 +3535,10 @@ def _full_box_pdf(rows, columns, agent_name, period_label, generated):
         ('RIGHTPADDING', (0, 0), (-1, -1), 5),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f6f7fb')]),
     ]
-    # Per-column alignment: numbers + ID centred, name/club/agent right-aligned.
-    for ci, col in enumerate(disp_cols):
-        centred = is_num_col(col) or col == 'ID'
-        style_cmds.append(('ALIGN', (ci, 0), (ci, -1), 'CENTER' if centred else 'RIGHT'))
-    # Negative numbers in red.
-    for (ci, ri) in neg_cells:
-        style_cmds.append(('TEXTCOLOR', (ci, ri), (ci, ri), colors.HexColor('#c0182b')))
-    # Grand-total row: bold, boxed, shaded (stays readable in B/W too).
+    # Grand-total row: boxed + shaded (bold handled by the cell paragraphs).
     if total_row_idx is not None:
         tr = total_row_idx
         style_cmds += [
-            ('FONTNAME', (0, tr), (-1, tr), 'DejaVu-Bold'),
-            ('FONTSIZE', (0, tr), (-1, tr), 12),
             ('BACKGROUND', (0, tr), (-1, tr), colors.HexColor('#dfe4f7')),
             ('LINEABOVE', (0, tr), (-1, tr), 1.5, colors.HexColor('#333333')),
         ]
@@ -3756,6 +3780,31 @@ def export_agent_full_box():
     if request.args.get('format') == 'pdf':
         from datetime import datetime as _dt
         pdf_rows = sheets.get('קופסא מלאה', [])
+        # Kenny777's report gets a manager-tailored layout: add a "total after
+        # rake refund" column (סה"כ לתשלום + the player's rakeback = Rake × his
+        # configured rake %), and drop the hands + club columns he doesn't need.
+        if sa_id == '7526-3392' and pdf_rows:
+            from app.models import RakeConfig
+            _pct = {rc.entity_id: (rc.rake_percent or 0)
+                    for rc in RakeConfig.query.filter_by(entity_type='player').all()}
+            _new_rows, _rb_sum = [], 0.0
+            for _r in pdf_rows:
+                _is_total = str(_r.get('שחקן', '')).startswith('סה"כ')
+                if _is_total:
+                    _rb = round(_rb_sum, 2)
+                else:
+                    _rb = round(float(_r.get('Rake') or 0) * _pct.get(_r.get('ID'), 0) / 100.0, 2)
+                    _rb_sum += _rb
+                _after = round(float(_r.get('סה"כ לתשלום') or 0) + _rb, 2)
+                _nr = {}
+                for _k, _v in _r.items():
+                    if _k in ('ידיים', 'קלאב'):
+                        continue
+                    _nr[_k] = _v
+                    if _k == 'סה"כ לתשלום':
+                        _nr['סה"כ תשלום לאחר רייק'] = _after
+                _new_rows.append(_nr)
+            pdf_rows = _new_rows
         columns = list(pdf_rows[0].keys()) if pdf_rows else []
         return _full_box_pdf(pdf_rows, columns,
                              agent_name=current_user.username,
