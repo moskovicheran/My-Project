@@ -3800,6 +3800,10 @@ def export_agent_full_box():
             def _pct_for(pid):
                 return _agent_pct[pid] if pid in _agent_pct else _player_pct.get(pid, 0)
 
+            def _money(x):
+                x = float(x or 0)
+                return f'{int(x):,}' if x == int(x) else f'{x:,.2f}'
+
             _new_rows, _rb_sum = [], 0.0
             for _r in pdf_rows:
                 _is_total = str(_r.get('שחקן', '')).startswith('סה"כ')
@@ -3813,7 +3817,13 @@ def export_agent_full_box():
                 for _k, _v in _r.items():
                     if _k in ('ידיים', 'קלאב'):
                         continue
-                    _nr[_k] = _v
+                    if _k == 'Rake' and _rb:
+                        # rake, with the rakeback he actually receives in a small
+                        # green line below it (markup rendered by the cell Paragraph)
+                        _nr[_k] = (f'{_money(_v)}<br/>'
+                                   f'<font size="8" color="#1a7f37">({_money(_rb)})</font>')
+                    else:
+                        _nr[_k] = _v
                     if _k == 'סה"כ לתשלום':
                         _nr['סה"כ תשלום לאחר רייק'] = _after
                 _new_rows.append(_nr)
