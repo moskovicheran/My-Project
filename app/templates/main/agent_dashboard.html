@@ -1244,7 +1244,7 @@ body.dark .dp-reset { color:#ff6b6b; }
         <p>בחר גרסה:</p>
         <div class="export-modal-btns">
             <a id="fullBoxExcelLink" href="#" class="export-btn-full">📊 גרסת אקסל (הורדה)</a>
-            <a id="fullBoxPrintLink" href="#" target="_blank" class="export-btn-agents">🖨️ גרסת הדפסה A4 — פונטים גדולים</a>
+            <a id="fullBoxPrintLink" href="#" class="export-btn-agents">🖨️ PDF להדפסה A4 — פונטים גדולים</a>
             <a href="#" onclick="closeFullBoxModal(); return false;" class="export-btn-cancel">ביטול</a>
         </div>
     </div>
@@ -1256,7 +1256,7 @@ function showFullBoxChoice() {
     var d = window.__selectedDates || '';
     var sep = _fullBoxBase.indexOf('?') >= 0 ? '&' : '?';
     var xls = _fullBoxBase + (d ? sep + 'dates=' + encodeURIComponent(d) : '');
-    var prn = _fullBoxBase + sep + 'format=print' + (d ? '&dates=' + encodeURIComponent(d) : '');
+    var prn = _fullBoxBase + sep + 'format=pdf' + (d ? '&dates=' + encodeURIComponent(d) : '');
     document.getElementById('fullBoxExcelLink').href = xls;
     document.getElementById('fullBoxPrintLink').href = prn;
     document.getElementById('fullBoxModal').classList.add('active');

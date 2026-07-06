@@ -3405,6 +3405,145 @@ def export_agent_players():
                        period_label=period_label, transfer_pids=[p[0] for p in players])
 
 
+def _full_box_pdf(rows, columns, agent_name, period_label, generated):
+    """Render the full-box report as a ready-to-print A4 (landscape) PDF.
+
+    Same data as the Excel export. Hebrew is right-to-left, so we (a) reverse
+    the column order to read right→left and (b) run each cell through the bidi
+    algorithm (get_display) since reportlab draws glyphs left→right. Bundled
+    DejaVuSans covers Hebrew + Latin + digits so it renders identically on the
+    Vercel Linux runtime (no reliance on system fonts).
+    """
+    import os
+    from flask import current_app
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                    Paragraph, Spacer)
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT
+    try:
+        from bidi.algorithm import get_display
+    except Exception:                       # newer python-bidi exposes it at top level
+        from bidi import get_display
+
+    font_dir = os.path.join(current_app.root_path, 'static', 'fonts')
+    if 'DejaVu' not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont('DejaVu', os.path.join(font_dir, 'DejaVuSans.ttf')))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', os.path.join(font_dir, 'DejaVuSans-Bold.ttf')))
+
+    def rtl(v):
+        return get_display(str(v if v is not None else ''))
+
+    # Columns that hold text (right-aligned). Everything else is treated as a
+    # number (centred, comma-formatted). 'Rake' may have been renamed to
+    # 'הרייק שלי (X%)' by hide-breakdown — anything not in this set is numeric.
+    TEXT_COLS = {'שחקן', 'ID', 'קלאב', 'Super Agent', 'סוכן'}
+    # Relative column widths (keyed by the ORIGINAL column name).
+    WEIGHTS = {'שחקן': 2.3, 'ID': 1.3, 'קלאב': 2.6, 'Super Agent': 1.7, 'סוכן': 1.7,
+               'P&L': 1.3, 'Rake': 1.3, 'קבלת רייק': 1.3, 'סה"כ לתשלום': 1.5, 'ידיים': 1.2}
+
+    def is_num_col(col):
+        return col not in TEXT_COLS
+
+    def fmt_num(val):
+        try:
+            f = float(val)
+            return f'{int(f):,}' if f == int(f) else f'{f:,.2f}'
+        except (ValueError, TypeError):
+            return '' if val is None else str(val)
+
+    # RTL: first logical column goes on the RIGHT → reverse display order.
+    disp_cols = list(reversed(columns))
+
+    table_data = [[rtl(c) for c in disp_cols]]        # header
+    neg_cells = []                                     # (col, row) of negative numbers → red
+    total_row_idx = None
+    for row in rows:
+        is_total = str(row.get(columns[0], '')).startswith('סה"כ')
+        line = []
+        for ci, col in enumerate(disp_cols):
+            v = row.get(col, '')
+            if is_num_col(col):
+                line.append(fmt_num(v))
+                try:
+                    if float(v) < 0:
+                        neg_cells.append((ci, len(table_data)))
+                except (ValueError, TypeError):
+                    pass
+            else:
+                line.append(rtl(v))
+        table_data.append(line)
+        if is_total:
+            total_row_idx = len(table_data) - 1
+
+    # Column widths proportional to weights, scaled to the usable page width.
+    page_w, page_h = landscape(A4)
+    usable = page_w - 20 * mm
+    weights = [WEIGHTS.get(c, 1.4) for c in disp_cols]
+    wsum = sum(weights) or 1
+    col_widths = [usable * w / wsum for w in weights]
+
+    style_cmds = [
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVu'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVu-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef1fb')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1a2b6b')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#888888')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f6f7fb')]),
+    ]
+    # Per-column alignment: numbers + ID centred, name/club/agent right-aligned.
+    for ci, col in enumerate(disp_cols):
+        centred = is_num_col(col) or col == 'ID'
+        style_cmds.append(('ALIGN', (ci, 0), (ci, -1), 'CENTER' if centred else 'RIGHT'))
+    # Negative numbers in red.
+    for (ci, ri) in neg_cells:
+        style_cmds.append(('TEXTCOLOR', (ci, ri), (ci, ri), colors.HexColor('#c0182b')))
+    # Grand-total row: bold, boxed, shaded (stays readable in B/W too).
+    if total_row_idx is not None:
+        tr = total_row_idx
+        style_cmds += [
+            ('FONTNAME', (0, tr), (-1, tr), 'DejaVu-Bold'),
+            ('FONTSIZE', (0, tr), (-1, tr), 12),
+            ('BACKGROUND', (0, tr), (-1, tr), colors.HexColor('#dfe4f7')),
+            ('LINEABOVE', (0, tr), (-1, tr), 1.5, colors.HexColor('#333333')),
+        ]
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=10 * mm, rightMargin=10 * mm,
+                            topMargin=10 * mm, bottomMargin=10 * mm,
+                            title=f'דוח קופסא מלאה - {agent_name}')
+    title_style = ParagraphStyle('t', fontName='DejaVu-Bold', fontSize=18,
+                                 alignment=TA_RIGHT, spaceAfter=4, leading=22)
+    meta_style = ParagraphStyle('m', fontName='DejaVu', fontSize=11,
+                                 alignment=TA_RIGHT, textColor=colors.HexColor('#444444'),
+                                 spaceAfter=10, leading=15)
+    meta = f'{agent_name}  |  {period_label or "כל התקופות"}  |  הופק: {generated}'
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle(style_cmds))
+    doc.build([
+        Paragraph(rtl('דוח קופסא מלאה'), title_style),
+        Paragraph(rtl(meta), meta_style),
+        Spacer(1, 4),
+        table,
+    ])
+    buf.seek(0)
+    fname = f'{agent_name}_full_box.pdf'
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/pdf')
+
+
 @main_bp.route('/export/agent/full_box')
 @login_required
 def export_agent_full_box():
@@ -3611,18 +3750,17 @@ def export_agent_full_box():
     period_label = _format_period_label(selected_dates)
     sheets = _apply_hide_breakdown({'קופסא מלאה': rows}, _hide_breakdown_pct(sa_id))
 
-    # Print-friendly A4 version (large fonts) — identical data to the Excel,
-    # rendered as a standalone HTML page the agent can print. Triggered from the
-    # same "דוח קופסא מלאה" button via ?format=print.
-    if request.args.get('format') == 'print':
+    # Ready-to-print A4 PDF (large fonts) — identical data to the Excel, but a
+    # downloaded file the agent can print without the browser print dialog.
+    # Triggered from the same "דוח קופסא מלאה" button via ?format=pdf.
+    if request.args.get('format') == 'pdf':
         from datetime import datetime as _dt
-        print_rows = sheets.get('קופסא מלאה', [])
-        columns = list(print_rows[0].keys()) if print_rows else []
-        return render_template('main/full_box_print.html',
-                               rows=print_rows, columns=columns,
-                               agent_name=current_user.username,
-                               period_label=period_label,
-                               generated=_dt.now().strftime('%d/%m/%Y %H:%M'))
+        pdf_rows = sheets.get('קופסא מלאה', [])
+        columns = list(pdf_rows[0].keys()) if pdf_rows else []
+        return _full_box_pdf(pdf_rows, columns,
+                             agent_name=current_user.username,
+                             period_label=period_label,
+                             generated=_dt.now().strftime('%d/%m/%Y %H:%M'))
 
     return _make_excel(sheets,
                        f'{current_user.username}{suffix}_full_box.xlsx',
