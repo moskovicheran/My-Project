@@ -3780,22 +3780,35 @@ def export_agent_full_box():
     if request.args.get('format') == 'pdf':
         from datetime import datetime as _dt
         pdf_rows = sheets.get('קופסא מלאה', [])
-        # Kenny777's report gets a manager-tailored layout: add a "total after
-        # rake refund" column (סה"כ לתשלום + the player's rakeback = Rake × his
-        # configured rake %), and drop the hands + club columns he doesn't need.
+        # Kenny777's report gets a manager-tailored layout: add a
+        # "total payment after rake" column = P&L (רווח/הפסד) + the entity's
+        # rakeback (his own Rake × the % he receives in rake-management), and
+        # drop the hands + club columns he doesn't need.
+        # The % is looked up the SAME way the dashboard resolves it: a pure
+        # player is entity_type='player', but an agent/sub-agent (e.g. niminimi,
+        # an agent under Kenny) is entity_type in ('agent','sub_agent') — so a
+        # player-only lookup returned 0 for him. Check all three; agent/sub_agent
+        # wins if an id somehow carries both.
         if sa_id == '7526-3392' and pdf_rows:
             from app.models import RakeConfig
-            _pct = {rc.entity_id: (rc.rake_percent or 0)
-                    for rc in RakeConfig.query.filter_by(entity_type='player').all()}
+            _player_pct = {rc.entity_id: (rc.rake_percent or 0)
+                           for rc in RakeConfig.query.filter_by(entity_type='player').all()}
+            _agent_pct = {rc.entity_id: (rc.rake_percent or 0)
+                          for rc in RakeConfig.query.filter(
+                              RakeConfig.entity_type.in_(['agent', 'sub_agent'])).all()}
+
+            def _pct_for(pid):
+                return _agent_pct[pid] if pid in _agent_pct else _player_pct.get(pid, 0)
+
             _new_rows, _rb_sum = [], 0.0
             for _r in pdf_rows:
                 _is_total = str(_r.get('שחקן', '')).startswith('סה"כ')
                 if _is_total:
                     _rb = round(_rb_sum, 2)
                 else:
-                    _rb = round(float(_r.get('Rake') or 0) * _pct.get(_r.get('ID'), 0) / 100.0, 2)
+                    _rb = round(float(_r.get('Rake') or 0) * _pct_for(_r.get('ID')) / 100.0, 2)
                     _rb_sum += _rb
-                _after = round(float(_r.get('סה"כ לתשלום') or 0) + _rb, 2)
+                _after = round(float(_r.get('P&L') or 0) + _rb, 2)
                 _nr = {}
                 for _k, _v in _r.items():
                     if _k in ('ידיים', 'קלאב'):
