@@ -1098,17 +1098,38 @@ def dashboard():
                     _displayed_pids.add(m['player_id'])
             _missing_from_display = cs_player_ids - _displayed_pids
             if _missing_from_display:
+                _nick_lookup = list(_missing_from_display) + cs_scope_ids
                 _nicks_map = dict(SM.query.with_entities(
                     SM.player_id, sqlfunc.max(SM.nickname)
-                ).filter(SM.player_id.in_(list(_missing_from_display))
+                ).filter(SM.player_id.in_(_nick_lookup)
                 ).group_by(SM.player_id).all())
+                # A player belonging to a sub-SA below this child gets its
+                # own labelled group rather than being flattened into the
+                # child's direct list — otherwise niroha02's players read as
+                # niroha27's own, and the two can never be told apart if
+                # their rake percentages ever diverge.
+                _owner_of = {}
+                for _desc in get_sa_descendants(cs_sa):
+                    for _p in (get_players_with_current_scope(
+                            [_desc], M=SM,
+                            period_ids=[b['period_id'] for b in archive_buckets]
+                            if use_archive else None) or set()):
+                        _owner_of.setdefault(_p, _desc)
                 for _mpid in _missing_from_display:
-                    cs.setdefault('direct', []).append({
+                    _row = {
                         'player_id': _mpid,
                         'nickname': _nicks_map.get(_mpid, _mpid),
                         'role': 'Player',
                         'pnl': 0, 'rake': 0, 'hands': 0,
-                    })
+                    }
+                    _owner = _owner_of.get(_mpid)
+                    if _owner and _owner != cs_sa:
+                        _grp = cs.setdefault('agents', {}).setdefault(
+                            _owner, {'nick': _nicks_map.get(_owner, _owner),
+                                     'members': []})
+                        _grp['members'].append(_row)
+                    else:
+                        cs.setdefault('direct', []).append(_row)
 
             # Drop players whose current SA is no longer this child SA from
             # cs['direct'] and cs['agents'] (they've been moved elsewhere).
