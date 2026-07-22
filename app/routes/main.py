@@ -1047,8 +1047,14 @@ def dashboard():
             # already surfaced as a direct member by the block above, and
             # keeping it in-scope here ensures the card total matches the
             # export (otherwise Mamtakk's own -401.98/895.61 is missing).
+            # Sub-SAs below this child are included too: boxes are drawn for
+            # direct children only, so without this a grandchild's players
+            # (e.g. niroha02 under niroha27) appear in no box at all while
+            # still counting in the parent's total.
+            from app.union_data import get_sa_descendants
+            cs_scope_ids = ([cs_sa] + get_sa_descendants(cs_sa)) if cs_sa else []
             cs_current_pids = get_players_with_current_scope(
-                [cs_sa], M=SM,
+                cs_scope_ids, M=SM,
                 period_ids=[b['period_id'] for b in archive_buckets] if use_archive else None) if cs_sa else set()
             # Union with Excel-discovered / previously-known pids so nothing
             # silently vanishes, but drop anyone whose current SA is no

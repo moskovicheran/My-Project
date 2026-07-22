@@ -42,6 +42,33 @@ def get_sa_children(parent_sa_id):
     return list(_load_sa_hierarchy().get(parent_sa_id, []))
 
 
+def get_sa_descendants(parent_sa_id):
+    """Return every SA id below `parent_sa_id`, at any depth.
+
+    `get_sa_children` is one level only. That was fine while the tree was
+    flat, but a sub-SA can itself have sub-SAs (e.g. Mangisto San →
+    niroha27 → niroha02), and those grandchildren fell out of the parent's
+    roll-up entirely: not in the parent's totals, and not inside any card
+    on the parent's dashboard. Walking to full depth keeps a branch whole,
+    so a manager's number always covers everyone actually under them.
+
+    Cycle-safe — a malformed hierarchy row (A→B, B→A) would otherwise
+    recurse forever. Order is breadth-first; the parent itself is never
+    included.
+    """
+    hierarchy = _load_sa_hierarchy()
+    out, seen = [], {parent_sa_id}
+    queue = list(hierarchy.get(parent_sa_id, []))
+    while queue:
+        node = queue.pop(0)
+        if not node or node in seen:
+            continue
+        seen.add(node)
+        out.append(node)
+        queue.extend(hierarchy.get(node, []))
+    return out
+
+
 def get_managed_clubs_all_cfgs():
     """All SARakeConfig rows that have a managed_club_id (i.e. SA→club
     assignments). Cached per-request — many helpers walked this list once
@@ -1097,9 +1124,11 @@ def get_agent_scope(player_id):
                     known_ids.add(own_row.agent_id)
     known_ids.discard(''); known_ids.discard('-')
 
+    # Full depth, not just direct children — a sub-SA can have sub-SAs of
+    # its own, and those used to fall out of the parent's roll-up.
     child_sa_ids = []
     for kid in list(known_ids):
-        child_sa_ids.extend(get_sa_children(kid))
+        child_sa_ids.extend(get_sa_descendants(kid))
     all_sa_ids = list(set(list(known_ids) + child_sa_ids))
 
     try:
@@ -1349,9 +1378,11 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
                     known_ids.add(own_row.agent_id)
     known_ids.discard(''); known_ids.discard('-')
 
+    # Full depth, not just direct children — a sub-SA can have sub-SAs of
+    # its own, and those used to fall out of the parent's roll-up.
     child_sa_ids = []
     for kid in list(known_ids):
-        child_sa_ids.extend(get_sa_children(kid))
+        child_sa_ids.extend(get_sa_descendants(kid))
     all_ids = list(set(list(known_ids) + child_sa_ids))
 
     # Managed clubs this agent oversees (resolved via Excel club_id → name).
@@ -1571,9 +1602,11 @@ def get_agent_scope_predicate(sa_id, M=None):
                     known_ids.add(own_row.agent_id)
     known_ids.discard(''); known_ids.discard('-')
 
+    # Full depth, not just direct children — a sub-SA can have sub-SAs of
+    # its own, and those used to fall out of the parent's roll-up.
     child_sa_ids = []
     for kid in list(known_ids):
-        child_sa_ids.extend(get_sa_children(kid))
+        child_sa_ids.extend(get_sa_descendants(kid))
     all_ids = list(set(list(known_ids) + child_sa_ids))
 
     rake_cfgs = [c for c in get_managed_clubs_all_cfgs() if c.sa_id == uid]
