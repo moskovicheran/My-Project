@@ -22,6 +22,38 @@ OVERVIEW_MANAGERS = [
     ('Pagsos',         '2786-6715'),
 ]
 
+
+def get_subordinate_managers():
+    """Managers whose card is view-only because another manager's card
+    already owns their money.
+
+    Returns {sa_id: owning_manager_sa_id}. A manager qualifies when some
+    ancestor in the SA hierarchy is itself an OVERVIEW_MANAGERS entry —
+    e.g. niroha27 and robin hood 777 both sit under Mangiso San, so their
+    rake is already counted inside his card. Their own cards stay on the
+    page for monitoring, but adding them to any cross-card total would
+    count the same rows twice.
+
+    Derived from the live hierarchy rather than hard-coded, so moving an
+    agent in or out of a manager's tree takes effect on its own instead of
+    silently leaving a stale constant behind.
+    """
+    from app.models import SAHierarchy
+
+    parent_of = {h.child_sa_id: h.parent_sa_id
+                 for h in SAHierarchy.query.all()}
+    manager_ids = {pid for _, pid in OVERVIEW_MANAGERS}
+
+    subordinate = {}
+    for pid in manager_ids:
+        node, guard = parent_of.get(pid), 0
+        while node and guard < 50:      # guard: malformed cycle in the table
+            if node in manager_ids:
+                subordinate[pid] = node
+                break
+            node, guard = parent_of.get(node), guard + 1
+    return subordinate
+
 # Whitelist of clubs to show on the admin overview as tracked clubs.
 # (display_name, club_id). Clicking a card opens the full club dashboard
 # via /dashboard?view_as=<club_id>. Clubs without a club_id in the Excel
@@ -175,6 +207,12 @@ def build_overview_context():
         sqlfunc.count(ExpenseCharge.id),
     ).group_by(ExpenseCharge.agent_player_id).all())
 
+    # Cards whose money is already counted inside another manager's card.
+    # They stay on the page for monitoring, labelled so the numbers are not
+    # mistaken for an independent balance.
+    subordinate = get_subordinate_managers()
+    manager_label = {pid: name for name, pid in OVERVIEW_MANAGERS}
+
     agents_data = []
     for username, pid in OVERVIEW_MANAGERS:
         totals = get_agent_totals(
@@ -194,6 +232,8 @@ def build_overview_context():
             'total_expenses': exp,
             'expense_count': int(expense_counts.get(pid, 0) or 0),
             'balance_after_expenses': round(bal_plus_rake - exp, 2),
+            'view_only': pid in subordinate,
+            'owned_by': manager_label.get(subordinate.get(pid), ''),
         })
     agents_data.sort(key=lambda a: a['rake'], reverse=True)
 
@@ -299,9 +339,15 @@ def health():
     ct = get_cumulative_totals()
     top_rake, top_pnl = ct['total_rake'], ct['total_pnl']
 
-    # Sum of all cards
+    # Sum of all cards. View-only cards (a manager sitting inside another
+    # manager's tree) are skipped — their rows are already inside the
+    # parent's total, so adding them here would report a phantom surplus
+    # against the top box.
+    subordinate = get_subordinate_managers()
     sum_rake = sum_pnl = 0.0
     for _, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
+        if pid in subordinate:
+            continue
         t = get_agent_totals(pid)
         sum_rake += t['total_rake']; sum_pnl += t['total_pnl']
     for _, cid in OVERVIEW_CLUBS:
@@ -338,10 +384,16 @@ def health():
     cd, _ = get_members_hierarchy()
     cid_to_name = {c['club_id']: c['name'] for c in cd}
     all_overrides = PlayerAssignment.query.all()
+    from app.union_data import get_sa_descendants
     sa_info = []
     for _, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
-        child = [h.child_sa_id for h in SAHierarchy.query.filter_by(parent_sa_id=pid).all()]
-        all_ids = list(set([pid] + child))
+        # View-only cards own no rows of their own — the parent manager's
+        # card claims them. Including them here would report every row in
+        # their branch as double-counted, which is now the intended shape.
+        if pid in subordinate:
+            continue
+        # Full subtree, mirroring the dashboards.
+        all_ids = list(set([pid] + get_sa_descendants(pid)))
         cur = get_players_with_current_scope(all_ids, M=DailyPlayerStats) or set()
         rake_cfgs_h = SARakeConfig.query.filter_by(sa_id=pid).filter(SARakeConfig.managed_club_id.isnot(None)).all()
         managed = set([cid_to_name.get(c.managed_club_id) or c.managed_club_id for c in rake_cfgs_h])
@@ -383,9 +435,9 @@ def health():
     all_carded_sa_ids = set()
     for si in sa_info:
         all_carded_sa_ids.add(si['pid'])
-        # Children via SAHierarchy — mirror the child_sa_ids used by dashboards
-        for h in SAHierarchy.query.filter_by(parent_sa_id=si['pid']).all():
-            all_carded_sa_ids.add(h.child_sa_id)
+        # Whole subtree via SAHierarchy — mirrors the dashboards, so a
+        # grandchild SA isn't reported as an unregistered orphan.
+        all_carded_sa_ids.update(get_sa_descendants(si['pid']))
     all_registered_clubs = set()
     for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
         all_registered_clubs.add(cid_to_name.get(c.managed_club_id) or c.managed_club_id)
