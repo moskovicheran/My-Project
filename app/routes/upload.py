@@ -196,11 +196,14 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             except (ValueError, TypeError):
                 continue
             game_type = str(row.iloc[4]) if str(row.iloc[4]) != 'nan' else ''
+            # col 3 = Status ('Ended' / 'In Progress')
+            status = str(row.iloc[3]) if str(row.iloc[3]) != 'nan' else ''
             reentry = str(row.iloc[10]) if str(row.iloc[10]) != 'nan' else ''
             start = str(row.iloc[14])[:16] if str(row.iloc[14]) != 'nan' else ''
             duration = str(row.iloc[16]) if str(row.iloc[16]) != 'nan' else ''
             tournaments.append({
                 'upload_id': upload_id, 'title': title[:200],
+                'status': status[:30],
                 'game_type': game_type, 'buyin': round(buyin, 2),
                 'fee': round(fee, 2), 'reentry': reentry,
                 'gtd': round(gtd, 2), 'entries': round(entries, 0),
@@ -433,8 +436,8 @@ def _archive_and_clear_active():
             ), {'pid': pid})
 
             db.session.execute(text(
-                "INSERT INTO archived_tournament_stats (period_id, upload_id, title, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration) "
-                "SELECT :pid, upload_id, title, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration FROM tournament_stats"
+                "INSERT INTO archived_tournament_stats (period_id, upload_id, title, status, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration) "
+                "SELECT :pid, upload_id, title, status, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration FROM tournament_stats"
             ), {'pid': pid})
     except Exception as e:
         db.session.rollback()

@@ -53,7 +53,17 @@
         <tbody>
             {% for t in mtts %}
             <tr style="cursor:pointer;" onclick="toggleMttPlayers(this, '{{ t.title|e }}')">
-                <td><strong>{{ t.title }}</strong></td>
+                <td>
+                    <strong>{{ t.title }}</strong>
+                    {% if t.running %}
+                    <span title="הטורניר עדיין רץ בזמן שהדוח נמשך — מספר הכניסות והפרסים חלקיים. שחקנים שנרשמו אחרי משיכת הדוח לא נספרו."
+                          style="display:inline-block; margin-inline-start:0.4rem; padding:0.05rem 0.4rem;
+                                 border-radius:6px; font-size:0.68rem; font-weight:bold; white-space:nowrap;
+                                 background:#fff7ed; color:#9a3412; border:1px solid #fed7aa;">
+                        ⏳ עדיין רץ
+                    </span>
+                    {% endif %}
+                </td>
                 <td><span class="badge badge-game">{{ t.game_type }}</span></td>
                 <td>{{ t.buyin }}</td>
                 <td>{{ t.fee }}</td>

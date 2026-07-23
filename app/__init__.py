@@ -144,6 +144,16 @@ def create_app():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            # Tournament status ('Ended' / 'In Progress') — added after the
+            # tables shipped, so prod needs the explicit ALTER here too.
+            for _tbl in ('tournament_stats', 'archived_tournament_stats'):
+                try:
+                    db.session.execute(_text(
+                        f'ALTER TABLE {_tbl} ADD COLUMN IF NOT EXISTS '
+                        "status VARCHAR(30) DEFAULT ''"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
         except Exception as e:
             print(f"New-table create warning: {e}")
 
@@ -194,6 +204,9 @@ def create_app():
                      'BOOLEAN NOT NULL DEFAULT FALSE'),
                     ('collection_cycles', 'frozen',
                      'BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('tournament_stats', 'status', "VARCHAR(30) DEFAULT ''"),
+                    ('archived_tournament_stats', 'status',
+                     "VARCHAR(30) DEFAULT ''"),
                 ]
                 for tbl, col, coldef in column_adds:
                     try:

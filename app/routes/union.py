@@ -38,7 +38,14 @@ def mtts():
     db_mtts = TournamentStats.query.all()
     if db_mtts:
         # Each tournament as separate row
+        # A tournament still in progress when the report was pulled has
+        # incomplete entries and no prize pool, and PPPoker never revisits it
+        # in a later file — so flag it rather than showing partial numbers as
+        # if they were final.
         mtt_list = [{'title': t.title, 'game_type': t.game_type,
+                     'status': getattr(t, 'status', '') or '',
+                     'running': 'progress' in (getattr(t, 'status', '') or '').lower()
+                                or not (t.duration or '').strip(),
                      'buyin': t.buyin, 'fee': t.fee, 'reentry': t.reentry,
                      'gtd': t.gtd, 'entries': t.entries, 'prize_pool': t.prize_pool,
                      'start': t.start, 'duration': t.duration} for t in db_mtts]

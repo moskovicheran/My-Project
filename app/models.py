@@ -246,6 +246,12 @@ class TournamentStats(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     upload_id = db.Column(db.Integer, db.ForeignKey('daily_uploads.id'), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
+    # 'Ended' / 'In Progress' straight from the report. A tournament still
+    # in progress when the file was pulled has incomplete entries and no
+    # prize pool, and PPPoker binds it to its START date — so late
+    # registrations never reach any later file. Surfacing this is what
+    # turns that from a silent shortfall into something visible.
+    status = db.Column(db.String(30), default='')
     game_type = db.Column(db.String(30), default='')
     buyin = db.Column(db.Float, default=0)
     fee = db.Column(db.Float, default=0)
@@ -339,6 +345,7 @@ class ArchivedTournamentStats(db.Model):
     period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'), nullable=False)
     upload_id = db.Column(db.Integer, nullable=False)
     title = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(30), default='')
     game_type = db.Column(db.String(30), default='')
     buyin = db.Column(db.Float, default=0)
     fee = db.Column(db.Float, default=0)
