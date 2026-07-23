@@ -35,7 +35,12 @@ def mtts():
     from sqlalchemy import func as sqlfunc
 
     # Try cumulative DB first
-    db_mtts = TournamentStats.query.all()
+    # Chronological. Without an explicit order Postgres returns rows in
+    # whatever physical order it likes — in practice a later upload's rows
+    # can surface above an earlier day's, which reads as "today's upload is
+    # missing" when in fact the older day was pushed to the bottom.
+    db_mtts = TournamentStats.query.order_by(
+        TournamentStats.start, TournamentStats.id).all()
     if db_mtts:
         # Each tournament as separate row
         # A tournament still in progress when the report was pulled has
