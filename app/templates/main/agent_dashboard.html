@@ -228,9 +228,18 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
             </div>
         </div>
         {% endfor %}
-        <div style="display:flex; justify-content:space-between; padding:0.6rem 0 0; font-size:0.95rem; font-weight:700;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.6rem 0 0; font-size:0.95rem; font-weight:700;">
             <span>סה"כ החזר</span>
             <span style="color:#667eea;">{{ total_rake_refund|comma }}</span>
+        </div>
+        {% set gross_rake_total = rake_refund_list|sum(attribute='total_rake') %}
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.35rem 0 0; font-size:0.82rem; color:#8a8f9c;">
+            <span>סה"כ רייק ברוטו</span>
+            <span>{{ gross_rake_total|round(2)|comma }}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.6rem; padding:0.7rem 0.8rem; background:#e9fbf6; border:1px solid #b8ede0; border-radius:10px; font-weight:800; font-size:1.05rem;">
+            <span style="color:#0f9b7d;">💰 נשאר לי אחרי ההחזר</span>
+            <span style="color:#0f9b7d;">{{ (gross_rake_total - total_rake_refund)|round(2)|comma }}</span>
         </div>
     </div>
 </div>
