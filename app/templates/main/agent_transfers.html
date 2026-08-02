@@ -5,7 +5,7 @@
 <div class="page-header">
     <div>
         <h1>העברת כספים</h1>
-        <p class="subtitle">העבר כספים בין שחקנים שלך בלבד</p>
+        <p class="subtitle">העבר כספים בין כל מה שבקופסא שלך — שחקנים, מועדונים וסוכנים</p>
     </div>
     <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline">← חזור לדשבורד</a>
 </div>
@@ -159,12 +159,20 @@
 
 <script src="{{ url_for('static', filename='js/transfer_form.js') }}?v={{ asset_v }}"></script>
 <script>
+// Players only — used by the house return/distribute forms.
 var ALL_PLAYERS = [
     {% for p in players %}{% set bal = balances.get(p.player_id, 0) %}
     {key: {{ (p.player_id ~ '|' ~ p.nickname) | tojson }}, label: {{ (p.nickname ~ ' (' ~ p.club ~ ') — יתרה: ' ~ (bal|comma)) | tojson }}, balance: {{ bal }}},
     {% endfor %}
 ];
-initTransferForm(ALL_PLAYERS, ALL_PLAYERS);
+// Players + managed clubs + sub-agents — the full counterparty list for the
+// main transfer form.
+var ALL_TARGETS = [
+    {% for t in xfer_targets %}
+    {key: {{ t.key | tojson }}, label: {{ t.label | tojson }}, balance: {{ t.balance }}},
+    {% endfor %}
+];
+initTransferForm(ALL_TARGETS, ALL_TARGETS);
 initReturnHouse(ALL_PLAYERS);
 initDistributeHouse(ALL_PLAYERS);
 </script>

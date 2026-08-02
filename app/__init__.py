@@ -154,6 +154,21 @@ def create_app():
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
+            # Widen money_transfers id columns so synthetic counterparty ids
+            # like '__club__<club name>' fit (were VARCHAR(20)). Postgres
+            # widens a varchar as a fast metadata-only change; runs on every
+            # boot (incl. prod, where create_all is skipped) and is a no-op
+            # once applied. Guarded so SQLite (no such ALTER) just passes.
+            try:
+                db.session.execute(_text(
+                    'ALTER TABLE money_transfers '
+                    'ALTER COLUMN from_player_id TYPE VARCHAR(120)'))
+                db.session.execute(_text(
+                    'ALTER TABLE money_transfers '
+                    'ALTER COLUMN to_player_id TYPE VARCHAR(120)'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         except Exception as e:
             print(f"New-table create warning: {e}")
 

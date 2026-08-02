@@ -67,9 +67,11 @@ class MoneyTransfer(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    from_player_id = db.Column(db.String(20), nullable=False)
+    # Wide enough for synthetic counterparty ids like '__club__<club name>'
+    # (a club wallet), alongside real player/agent ids and '__house__<sa>'.
+    from_player_id = db.Column(db.String(120), nullable=False)
     from_name = db.Column(db.String(100), nullable=False)
-    to_player_id = db.Column(db.String(20), nullable=False)
+    to_player_id = db.Column(db.String(120), nullable=False)
     to_name = db.Column(db.String(100), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     description = db.Column(db.String(200))

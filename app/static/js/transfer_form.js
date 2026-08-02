@@ -76,6 +76,15 @@
         return '<strong style="color:' + (v < 0 ? '#ef233c' : '#2ec4b6') + ';">' + v.toFixed(2) + '</strong>';
     }
 
+    function clubInvolved() {
+        // Club wallets (__club__<name>) are free-moving internal buckets, so
+        // the smart cap / minus→minus rule doesn't apply when one is picked.
+        var f = document.getElementById('fromKey');
+        var t = document.getElementById('toKey');
+        return (f && f.value.indexOf('__club__') === 0) ||
+               (t && t.value.indexOf('__club__') === 0);
+    }
+
     function updateLimits() {
         // Smart cap (never lets anyone go into minus):
         //   payer in plus  → he gives, max = his balance.
@@ -87,11 +96,14 @@
         var amt = document.getElementById('amountInput');
         if (fb) fb.innerHTML = (p !== null) ? 'יתרה: ' + bal(p) : '';
         if (tb) tb.innerHTML = (r !== null) ? 'יתרה: ' + bal(r) : '';
-        if (amt && p !== null) {
-            var max = 0;
-            if (p > 0) max = p;
-            else if (p < 0 && r !== null && r > 0) max = Math.min(Math.abs(p), r);
-            amt.max = max > 0 ? max : '';
+        if (amt) {
+            if (clubInvolved()) { amt.removeAttribute('max'); }
+            else if (p !== null) {
+                var max = 0;
+                if (p > 0) max = p;
+                else if (p < 0 && r !== null && r > 0) max = Math.min(Math.abs(p), r);
+                amt.max = max > 0 ? max : '';
+            }
         }
     }
 
@@ -104,7 +116,8 @@
             alert('יש לבחור משלם ומקבל מהרשימה.');
             return false;
         }
-        if (selected.from !== null && selected.from < 0 &&
+        if (!clubInvolved() &&
+            selected.from !== null && selected.from < 0 &&
             selected.to !== null && selected.to <= 0) {
             alert('לא ניתן להעביר ממינוס למינוס — שחקן בחוב יכול להעביר רק לשחקן בפלוס.');
             return false;

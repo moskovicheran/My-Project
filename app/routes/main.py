@@ -4494,7 +4494,8 @@ def agent_transfers():
         return redirect(url_for('main.dashboard'))
 
     from app.union_data import (get_player_balance, get_all_balances,
-                                 resolve_transfer, get_players_with_current_scope)
+                                 resolve_transfer, get_players_with_current_scope,
+                                 get_agent_scope)
     from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats, HOUSE_PLAYER_NAME
 
     sa_id = current_user.player_id
@@ -4539,9 +4540,35 @@ def agent_transfers():
                                'club': info[1] if info else ''})
     my_players.sort(key=lambda r: (r['nickname'] or '').lower())
 
-    # Ledger scope: real players for counterparty validation; +house for the
-    # transfers list and delete permission (house rows carry the house id).
-    ledger_ids = set(my_player_ids) | {house_id}
+    # ── Extra counterparties: move money between ANY dashboard entity ──
+    # Managed clubs and sub-agents in this box become transfer counterparties
+    # alongside players. Clubs are synthetic wallets (__club__<name>) whose
+    # balance is simply their net transfers; agents use their real SA id.
+    from sqlalchemy import func as sqlfunc
+    scope_sa_ids, managed_clubs, po_clubs = get_agent_scope(sa_id)
+    club_targets = []   # [{'id','name'}]
+    for cn in list(dict.fromkeys((managed_clubs or []) + (po_clubs or []))):
+        if cn:
+            club_targets.append({'id': f'__club__{cn}', 'name': cn})
+    agent_targets = []  # sub-agents not already surfaced as players
+    _existing = {p['player_id'] for p in my_players}
+    _agent_pool = [a for a in (scope_sa_ids or []) if a and a != sa_id and a not in _existing]
+    if _agent_pool:
+        _ag_nick = dict(DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).filter(DailyPlayerStats.player_id.in_(_agent_pool)
+        ).group_by(DailyPlayerStats.player_id).all())
+        for aid in _agent_pool:
+            agent_targets.append({'id': aid, 'name': _ag_nick.get(aid) or aid})
+
+    club_ids = {c['id'] for c in club_targets}
+    agent_ids = {a['id'] for a in agent_targets}
+    # Everything this box may pay to / from.
+    allowed_ids = set(my_player_ids) | club_ids | agent_ids
+
+    # Ledger scope: all box entities for validation, the transfers list and
+    # delete permission (+house for the inner-box rows).
+    ledger_ids = set(allowed_ids) | {house_id}
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -4623,9 +4650,19 @@ def agent_transfers():
                 to_pid = to_key.split('|', 1)[0]
                 from_name = from_key.split('|', 1)[1]
                 to_name = to_key.split('|', 1)[1]
-                # Verify both players belong to this agent
-                if from_pid not in my_player_ids or to_pid not in my_player_ids:
-                    flash('אין הרשאה להעביר לשחקן שלא שייך אליך.', 'danger')
+                # Verify both sides belong to this box (player / club / agent).
+                if from_pid not in allowed_ids or to_pid not in allowed_ids:
+                    flash('אין הרשאה להעביר לישות שלא שייכת אליך.', 'danger')
+                elif from_pid.startswith('__club__') or to_pid.startswith('__club__'):
+                    # A club wallet is a free-moving internal bucket (may go
+                    # negative) — store the directed move as-is, no smart cap.
+                    t = MoneyTransfer(user_id=current_user.id,
+                                      from_player_id=from_pid, from_name=from_name,
+                                      to_player_id=to_pid, to_name=to_name,
+                                      amount=round(amount, 2), description=description)
+                    db.session.add(t)
+                    db.session.commit()
+                    flash(f'העברה של {amount} מ-{from_name} ל-{to_name} בוצעה.', 'success')
                 else:
                     ok, fp, fn, tp, tn, store_amt, msg = resolve_transfer(from_pid, from_name, to_pid, to_name, amount)
                     if not ok:
@@ -4651,7 +4688,29 @@ def agent_transfers():
     # The inner box's true balance (may be negative). This is the ONLY place the
     # minus is shown — every other view excludes the synthetic house entirely.
     house_balance = get_player_balance(house_id)
-    # Transfers touching my players or my inner box.
+
+    # Combined counterparty list for the transfer autocomplete: players, then
+    # managed clubs (🏛️), then sub-agents (👤). Club/agent balances are their
+    # net transfers (get_player_balance handles ids that have no game rows).
+    xfer_targets = []
+    for p in my_players:
+        b = balances.get(p['player_id'], 0)
+        club = f" ({p['club']})" if p['club'] else ''
+        xfer_targets.append({'key': f"{p['player_id']}|{p['nickname']}",
+                             'label': f"{p['nickname']}{club} — יתרה: {b:,.2f}",
+                             'balance': b})
+    for c in club_targets:
+        b = get_player_balance(c['id'])
+        xfer_targets.append({'key': f"{c['id']}|{c['name']}",
+                             'label': f"🏛️ {c['name']} (מועדון) — יתרה: {b:,.2f}",
+                             'balance': b})
+    for a in agent_targets:
+        b = get_player_balance(a['id'])
+        xfer_targets.append({'key': f"{a['id']}|{a['name']}",
+                             'label': f"👤 {a['name']} (סוכן) — יתרה: {b:,.2f}",
+                             'balance': b})
+
+    # Transfers touching any box entity or the inner box.
     my_transfers = MoneyTransfer.query.filter(
         db.or_(
             MoneyTransfer.from_player_id.in_(ledger_ids),
@@ -4661,6 +4720,7 @@ def agent_transfers():
 
     return render_template('main/agent_transfers.html',
                            players=my_players, balances=balances,
+                           xfer_targets=xfer_targets,
                            transfers=my_transfers, house_balance=house_balance)
 
 
