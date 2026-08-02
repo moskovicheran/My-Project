@@ -794,6 +794,30 @@ def dashboard():
                 ag['total_pnl'] += m['pnl']
             ag['total_pnl'] = round(ag['total_pnl'], 2)
 
+        # Cross balances (הצלבות) for the main list: apply the side whose club
+        # is among the player's NON-managed in-scope clubs (his managed-club
+        # play shows in its own card, adjusted there). Zero-sum with that side.
+        from app.union_data import (get_player_crosses as _gpc,
+                                     cross_delta_for_clubs as _cdc)
+        _ml_cross = _gpc(list(all_my_player_ids))
+        if _ml_cross:
+            _ml_clubs = {}
+            if _my_sub is not None:
+                for _pid, _cl in db.session.query(
+                        _my_sub.c.player_id, _my_sub.c.club).distinct().all():
+                    if _cl:
+                        _ml_clubs.setdefault(_pid, set()).add(_cl)
+            for m in direct_players:
+                _dd = _cdc(_ml_cross.get(m['player_id']), _ml_clubs.get(m['player_id'], set()))
+                if _dd:
+                    m['pnl'] = round(m['pnl'] + _dd, 2)
+            for ag in agents_map.values():
+                for m in ag['members']:
+                    _dd = _cdc(_ml_cross.get(m['player_id']), _ml_clubs.get(m['player_id'], set()))
+                    if _dd:
+                        m['pnl'] = round(m['pnl'] + _dd, 2)
+                ag['total_pnl'] = round(sum(mm['pnl'] for mm in ag['members']), 2)
+
         # Money transfers touching this agent's players — surfaced as a
         # visible list on the dashboard (the P&L card already nets them in).
         from app.models import MoneyTransfer
@@ -1400,13 +1424,22 @@ def dashboard():
                 ).filter(*club_filters
                 ).group_by(SM.player_id).all()
 
+                # Cross balances (הצלבות): shift a player's P&L between his
+                # clubs. For THIS club, +amount when it's the −side (to_club),
+                # −amount when it's the +side (from_club). Zero-sum per player
+                # across his clubs; never touches the global wallet.
+                from app.union_data import get_player_crosses, cross_delta_for_clubs
+                _cx_club = get_player_crosses([row[0] for row in club_players_db])
+                club_cross = {pid: cross_delta_for_clubs(cl, club_name)
+                              for pid, cl in _cx_club.items()}
+
                 # Build SA structure from DB data
                 club_sas = {}
                 no_sa = []
                 club_rake = 0
                 club_pnl = 0
                 for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val in club_players_db:
-                    p = round(float(pnl_val or 0), 2)
+                    p = round(float(pnl_val or 0) + club_cross.get(pid, 0), 2)
                     r = round(float(rake_val or 0), 2)
                     club_rake += r
                     club_pnl += p
@@ -1439,7 +1472,7 @@ def dashboard():
                     all_club_members.append({
                         'player_id': pid, 'nickname': nick,
                         'sa_nick': sa_nick, 'agent_nick': ag_nick,
-                        'pnl_total': round(float(pnl_val or 0), 2),
+                        'pnl_total': round(float(pnl_val or 0) + club_cross.get(pid, 0), 2),
                         'rake_total': round(float(rake_val or 0), 2),
                     })
                 all_club_members.sort(key=lambda m: m['rake_total'], reverse=True)

@@ -129,9 +129,9 @@ def create_app():
         # them yet. Idempotent (checkfirst=True) and very fast on warm DBs.
         try:
             from app.models import (BotSuspectDismissal, ProtectedAgent,
-                                     CollectionCycle, PlayerPayment)
+                                     CollectionCycle, PlayerPayment, PlayerCross)
             for _newtbl in (BotSuspectDismissal, ProtectedAgent,
-                            CollectionCycle, PlayerPayment):
+                            CollectionCycle, PlayerPayment, PlayerCross):
                 _newtbl.__table__.create(db.engine, checkfirst=True)
             # `frozen` was added to collection_cycles after it first shipped.
             # Ensure it exists here too — the main column-migration block

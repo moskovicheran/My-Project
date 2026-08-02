@@ -80,6 +80,32 @@ class MoneyTransfer(db.Model):
     user = db.relationship('User', backref='transfers')
 
 
+class PlayerCross(db.Model):
+    """A per-club "balance" (הצלבה) for a SINGLE player whose P&L is split
+    across two clubs — e.g. +602.95 in GORILLA ISRAELu and −600 in SPC T. It
+    shifts `amount` from the player's winning club (from_club) to his losing
+    club (to_club) so both sides net toward zero on the dashboard, leaving
+    only the true remainder.
+
+    Deliberately NOT a MoneyTransfer: it never touches the global wallet
+    balance and is zero-sum for the player. Read by the dashboard's per-club
+    aggregations (managed-club cards + the main list) to redistribute a
+    player's P&L between his clubs."""
+    __tablename__ = 'player_crosses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
+    player_name = db.Column(db.String(100))
+    from_club = db.Column(db.String(200), nullable=False)  # the +side (reduced)
+    to_club = db.Column(db.String(200), nullable=False)    # the −side (raised)
+    amount = db.Column(db.Float, nullable=False)           # always positive
+    description = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='player_crosses')
+
+
 class SAHierarchy(db.Model):
     __tablename__ = 'sa_hierarchy'
 

@@ -179,6 +179,9 @@
     // the player's balance — it's a correction — so capFromBalance = false.
     window.initReturnHouse = function (players) { single('rh', players, false); };
     window.initDistributeHouse = function (players) { single('dh', players, false); };
+    // Player-cross loader (admin balance UI): pick a player, then "load" posts
+    // cross_key = "player_id|nickname" to render his per-club breakdown.
+    window.initPlayerCross = function (players) { single('cx', players, false); };
 
     function pickedOrAlert(id) {
         var k = document.getElementById(id);

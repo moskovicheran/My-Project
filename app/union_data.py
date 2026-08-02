@@ -1898,6 +1898,62 @@ def apply_transfer_adjustment(pnl, player_id, adjustments):
     return round(pnl + adjustments.get(player_id, 0), 2)
 
 
+def get_player_crosses(player_ids):
+    """Returns {player_id: [(from_club, to_club, amount), ...]} for cross
+    balances (הצלבות) — see PlayerCross. Keeps the per-club dimension: a cross
+    shifts `amount` from the winning club (from_club) to the losing club
+    (to_club). Read by the dashboard's per-club aggregations; never touches the
+    global wallet balance."""
+    from app.models import PlayerCross
+    if not player_ids:
+        return {}
+    out = {}
+    for c in PlayerCross.query.filter(
+            PlayerCross.player_id.in_(list(player_ids))).all():
+        out.setdefault(c.player_id, []).append(
+            (c.from_club, c.to_club, round(float(c.amount or 0), 2)))
+    return out
+
+
+def cross_delta_for_clubs(cross_list, club_set):
+    """Net cross adjustment for a player given the clubs present in a view:
+    +amount when the to_club (−side) is in view, −amount when the from_club
+    (+side) is in view. `club_set` may be a single club name or a set."""
+    if isinstance(club_set, str):
+        club_set = {club_set}
+    d = 0.0
+    for from_club, to_club, amount in (cross_list or []):
+        if to_club in club_set:
+            d += amount
+        if from_club in club_set:
+            d -= amount
+    return round(d, 2)
+
+
+def get_player_club_pnl(player_id):
+    """Cumulative P&L for ONE player broken down by club (all uploads):
+    [{'club': ..., 'pnl': ...}, ...] sorted high→low. Powers the admin
+    balance UI — both the auto-detect (highest + club vs lowest − club) and the
+    manual club pickers. Excludes Name Entry / empty-role rows."""
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func, and_
+    rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.club,
+        func.sum(DailyPlayerStats.pnl),
+    ).filter(
+        DailyPlayerStats.player_id == player_id,
+        DailyPlayerStats.club.isnot(None),
+        DailyPlayerStats.club != '',
+        and_(DailyPlayerStats.role != 'Name Entry',
+             DailyPlayerStats.role.isnot(None),
+             DailyPlayerStats.role != ''),
+    ).group_by(DailyPlayerStats.club).all()
+    result = [{'club': club, 'pnl': round(float(pnl or 0), 2)}
+              for club, pnl in rows]
+    result.sort(key=lambda r: r['pnl'], reverse=True)
+    return result
+
+
 def get_player_balance(player_id):
     """Returns current balance: cumulative P&L − money sent + money received.
     A transfer moves balance from sender (from) to receiver (to): the sender's
