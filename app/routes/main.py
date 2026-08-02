@@ -1252,9 +1252,15 @@ def dashboard():
         for m in direct_players:
             pct = player_rake_configs.get(m['player_id'], 0)
             if pct:
-                refund = round(m['rake'] * pct / 100, 2)
+                # kenny777 ONLY: the box owner's OWN self-row is kept by him,
+                # not refunded out — so refund = 0, his "שלי" = his full rake,
+                # and it does NOT reduce "נשאר לי".
+                _self_kept = (m['player_id'] == sa_id and sa_id == '7526-3392')
+                refund = 0.0 if _self_kept else round(m['rake'] * pct / 100, 2)
                 players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
-                                          'total_rake': m['rake'], 'refund': refund})
+                                          'player_id': m['player_id'],
+                                          'total_rake': m['rake'], 'refund': refund,
+                                          'self_kept': _self_kept})
         for ag in agents_map.values():
             for m in ag['members']:
                 pct = player_rake_configs.get(m['player_id'], 0)
@@ -1299,6 +1305,7 @@ def dashboard():
             rake_refund_list.append({'nick': p['nick'], 'rake_pct': p['rake_pct'],
                                      'player_id': p.get('player_id'),
                                      'total_rake': p['total_rake'], 'refund': p['refund'],
+                                     'self_kept': p.get('self_kept', False),
                                      'type': 'player'})
         # Child SAs with their own RakeConfig — same net-of-downstream-refunds
         # treatment: collect their direct + agent-member players, deduct any

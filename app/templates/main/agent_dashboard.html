@@ -213,7 +213,8 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 {% if r.get('paid') %}<span title="שולם בגבייה" style="color:#2ec4b6; font-weight:700;">✓</span>{% endif %}
                 <strong>{{ r.nick }}</strong>
-                <span class="rake-split-badge">{{ r.rake_pct|int }}%</span>
+                {% if r.get('self_kept') %}<span style="background:#0f9b7d; color:#fff; font-size:0.68rem; font-weight:700; padding:0.05rem 0.4rem; border-radius:8px;" title="הרייק שלך נשאר אצלך במלואו">100% שלך</span>
+                {% else %}<span class="rake-split-badge">{{ r.rake_pct|int }}%</span>{% endif %}
                 {% if r.type == 'player' %}<span class="muted" style="font-size:0.75rem;">שחקן</span>{% endif %}
                 {% if r.get('paid_to_players') and r['paid_to_players'] > 0 %}
                 <span class="muted" style="font-size:0.72rem;"
