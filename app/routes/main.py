@@ -1239,8 +1239,11 @@ def dashboard():
             ag['agent_net_rake'] = round(ag['total_rake'] * pct / 100, 2)
             ag['sa_keeps'] = round(ag['total_rake'] - ag['agent_net_rake'], 2)
 
-        # Query rake configs for players
-        all_player_ids_list = list(all_my_player_ids)
+        # Query rake configs for players. Include the SA's own id so his own
+        # play (the self-row inserted into direct_players) can carry a player
+        # RakeConfig too — e.g. set the box owner to 100% refund on his own
+        # rake without affecting anyone else in the box.
+        all_player_ids_list = list(all_my_player_ids | {sa_id})
         player_rake_configs = {rc.entity_id: rc.rake_percent
                                for rc in RakeConfig.query.filter(
                                    RakeConfig.entity_type == 'player',
