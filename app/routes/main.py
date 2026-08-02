@@ -1658,9 +1658,15 @@ def dashboard():
         # players), so no club rake leaks in. Club rake stays in the club panel.
         unconfigured_player_rake = 0.0
         if sa_id == '7526-3392':
-            _child_rake = sum(float(cs.get('total_rake') or 0) for cs in child_sas)
+            # All PLAYER rake = direct players + agents (each once) + child-SA
+            # totals — summed from the actual structures, NOT total_rake (which
+            # also carries ~club rake). Minus what the refund list already
+            # covers = the truly-uncovered player rake, counted 100% kept.
+            _players_rake = (sum(float(m.get('rake') or 0) for m in direct_players)
+                             + sum(float(a.get('total_rake') or 0) for a in agents_map.values())
+                             + sum(float(cs.get('total_rake') or 0) for cs in child_sas))
             _covered = sum(float(r.get('total_rake') or 0) for r in rake_refund_list)
-            unconfigured_player_rake = round(max(0.0, total_rake + _child_rake - _covered), 2)
+            unconfigured_player_rake = round(max(0.0, _players_rake - _covered), 2)
 
         return render_template('main/agent_dashboard.html',
                                collection_rake_total=collection_rake_total,
