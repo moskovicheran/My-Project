@@ -222,9 +222,10 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
                 </span>
                 {% endif %}
             </div>
-            <div style="display:flex; gap:1rem; align-items:center;">
+            <div style="display:flex; gap:0.6rem 1rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                 <span class="muted">רייק {{ r.total_rake|comma }}</span>
-                <span style="color:#667eea; font-weight:700;">{{ r.refund|comma }}</span>
+                <span style="color:#667eea; font-weight:700;" title="החזר לשחקן">החזר {{ r.refund|comma }}</span>
+                <span style="color:#0f9b7d; font-weight:700;" title="שלי — כמה נשאר לך מהשחקן הזה (רייק − החזר)">שלי {{ (r.total_rake - r.refund)|round(2)|comma }}</span>
             </div>
         </div>
         {% endfor %}
@@ -239,6 +240,14 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
             <span>סה"כ רייק ברוטו (כל השחקנים)</span>
             <span>{{ total_rake|round(2)|comma }}</span>
         </div>
+        {% set configured_gross = rake_refund_list|sum(attribute='total_rake') %}
+        {% set unconfigured_kept = (total_rake - configured_gross)|round(2) %}
+        {% if unconfigured_kept > 0.005 %}
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.35rem 0 0; font-size:0.82rem; color:#0f9b7d;">
+            <span>שחקנים ללא הגדרה (100% שלך)</span>
+            <span>+{{ unconfigured_kept|comma }}</span>
+        </div>
+        {% endif %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.6rem; padding:0.7rem 0.8rem; background:#e9fbf6; border:1px solid #b8ede0; border-radius:10px; font-weight:800; font-size:1.05rem;">
             <span style="color:#0f9b7d;">💰 נשאר לי אחרי ההחזר</span>
             <span style="color:#0f9b7d;">{{ (total_rake - total_rake_refund)|round(2)|comma }}</span>
