@@ -118,6 +118,101 @@
     </form>
 </div>
 
+<div class="section" style="margin-bottom:1.5rem; border:2px solid #f59e0b; border-radius:14px;">
+    <h2 class="section-title">⚖️ איזון שחקן בין מועדונים</h2>
+    <p class="muted small" style="margin:-0.4rem 0 0.8rem;">שחקן אחד שמשחק בשני מועדונים (פלוס באחד, מינוס בשני) — מזיז את הפלוס לכיסוי המינוס כך ששני הצדדים מאוזנים בדשבורד, ונשאר רק ההפרש האמיתי. לא נוגע בארנק (zero-sum) — רק מחלק מחדש את ה-P&L של השחקן בין המועדונים שלו.</p>
+
+    <form method="POST" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="action" value="prepare_cross">
+        <div style="flex:2; min-width:260px; position:relative;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">שחקן לאיזון</label>
+            <input type="text" id="cxSearch" autocomplete="off" placeholder="הקלד 2 אותיות לחיפוש..."
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+            <input type="hidden" name="cross_key" id="cxKey">
+            <div id="cxDropdown" class="sa-autocomplete" style="display:none;"></div>
+            <div id="cxBalance" class="muted small" style="margin-top:0.2rem;"></div>
+        </div>
+        <button type="submit" class="btn btn-outline">טען פירוט מועדונים</button>
+    </form>
+
+    {% if cross_detail %}
+    <div style="margin-top:1rem; padding-top:0.9rem; border-top:1px dashed #f0c986;">
+        <div style="margin-bottom:0.6rem;"><strong>{{ cross_detail.player_name }}</strong> — P&L לפי מועדון:</div>
+        <table class="table table-sm" style="max-width:420px; margin-bottom:0.9rem;">
+            <thead><tr><th>מועדון</th><th>P&L</th></tr></thead>
+            <tbody>
+            {% for c in cross_detail.clubs %}
+                <tr><td>{{ c.club }}</td>
+                    <td class="amount {% if c.pnl >= 0 %}income{% else %}expense{% endif %}">{{ c.pnl|comma }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <form method="POST" onsubmit="return confirm('לאזן את {{ cross_detail.player_name }}?');"
+              style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="add_cross">
+            <input type="hidden" name="cross_player_id" value="{{ cross_detail.player_id }}">
+            <input type="hidden" name="cross_player_name" value="{{ cross_detail.player_name }}">
+            <div style="min-width:200px;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">מוריד מ- (הצד בפלוס)</label>
+                <select name="from_club" style="width:100%; padding:0.5rem 0.6rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                    {% for c in cross_detail.clubs %}
+                    <option value="{{ c.club }}" {% if c.club == cross_detail.suggest_from %}selected{% endif %}>{{ c.club }} ({{ c.pnl|comma }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="font-size:1.3rem; color:#888; padding-bottom:0.4rem;">→</div>
+            <div style="min-width:200px;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סוגר את המינוס ב- (הצד במינוס)</label>
+                <select name="to_club" style="width:100%; padding:0.5rem 0.6rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+                    {% for c in cross_detail.clubs %}
+                    <option value="{{ c.club }}" {% if c.club == cross_detail.suggest_to %}selected{% endif %}>{{ c.club }} ({{ c.pnl|comma }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="min-width:110px;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סכום</label>
+                <input type="number" name="cross_amount" required step="0.01" min="0.01" value="{{ cross_detail.suggest_amount }}"
+                       style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+            </div>
+            <div style="flex:1; min-width:120px;">
+                <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">תיאור</label>
+                <input type="text" name="description" placeholder="אופציונלי"
+                       style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+            </div>
+            <button type="submit" class="btn btn-primary">אזן</button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if crosses %}
+    <table class="table table-sm" style="margin-top:1rem;">
+        <thead><tr><th>תאריך</th><th>שחקן</th><th>מוריד מ-</th><th>סוגר ב-</th><th>סכום</th><th>תיאור</th><th></th></tr></thead>
+        <tbody>
+        {% for c in crosses %}
+            <tr>
+                <td class="muted">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                <td><strong>{{ c.player_name or c.player_id }}</strong></td>
+                <td>{{ c.from_club }}</td>
+                <td>{{ c.to_club }}</td>
+                <td class="amount income">{{ c.amount|comma }}</td>
+                <td class="muted">{{ c.description or '-' }}</td>
+                <td>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('לבטל את האיזון?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="delete_cross">
+                        <input type="hidden" name="cross_id" value="{{ c.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">בטל</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
 <div class="section">
     <h2 class="section-title">העברות ({{ transfers|length }})</h2>
     {% if transfers %}
@@ -173,6 +268,7 @@ var ALL_TARGETS = [
     {% endfor %}
 ];
 initTransferForm(ALL_TARGETS, ALL_TARGETS);
+initPlayerCross(ALL_PLAYERS);
 initReturnHouse(ALL_PLAYERS);
 initDistributeHouse(ALL_PLAYERS);
 </script>
