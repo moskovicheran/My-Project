@@ -239,17 +239,32 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
            rows makes "נשאר לי" the true player-side kept rake, and it ties out
            exactly to the sum of the per-row "שלי". #}
         {% set players_gross = rake_refund_list|sum(attribute='total_rake') %}
+        {# unconfigured_player_rake is computed ONLY for kenny777 (0 otherwise):
+           his players with no rake config, counted 100% kept (player rake only). #}
+        {% set unconf = unconfigured_player_rake|default(0) %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.35rem 0 0; font-size:0.82rem; color:#8a8f9c;">
             <span>סה"כ רייק שחקנים</span>
             <span>{{ players_gross|round(2)|comma }}</span>
         </div>
+        {% if unconf > 0.005 %}
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.35rem 0 0; font-size:0.82rem; color:#0f9b7d;">
+            <span>שחקנים ללא הגדרת רייק (100% שלך)</span>
+            <span>+{{ unconf|comma }}</span>
+        </div>
+        {% endif %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.6rem; padding:0.7rem 0.8rem; background:#e9fbf6; border:1px solid #b8ede0; border-radius:10px; font-weight:800; font-size:1.05rem;">
             <span style="color:#0f9b7d;">💰 נשאר לי אחרי ההחזר</span>
-            <span style="color:#0f9b7d;">{{ (players_gross - total_rake_refund)|round(2)|comma }}</span>
+            <span style="color:#0f9b7d;">{{ (players_gross + unconf - total_rake_refund)|round(2)|comma }}</span>
         </div>
+        {% if unconf > 0.005 %}
+        <div style="font-size:0.74rem; color:#0f9b7d; margin-top:0.4rem; line-height:1.35; font-weight:600;">
+            ⚠ שחקן ללא הגדרת רייק נכנס לחישוב כ-<strong>100%</strong> שלך (רייק שחקנים בלבד) — גם בלי שיופיע כשורה בטבלה.
+        </div>
+        {% else %}
         <div style="font-size:0.74rem; color:#8a8f9c; margin-top:0.4rem; line-height:1.35;">
             (רייק שחקנים בלבד — רייק מועדונים מחושב בנפרד בפאנל המועדונים)
         </div>
+        {% endif %}
     </div>
 </div>
 <script>

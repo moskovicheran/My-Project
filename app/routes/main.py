@@ -1330,6 +1330,11 @@ def dashboard():
                 })
         total_rake_refund = round(sum(r['refund'] for r in rake_refund_list), 2)
 
+        # kenny777 ONLY: players with no rake config count as 100% kept toward
+        # "נשאר לי". Summed straight from the player structures (direct + agent
+        # members + child-SA members), so ONLY player rake — never club rake
+        # (which lives in the separate club panel). Kenny's own self-row is
+        # already configured (100%), so it's excluded here automatically.
         # Build a single SA structure with cumulative data
         total_rake = sum(m['rake'] for m in direct_players) + sum(a['total_rake'] for a in agents_map.values())
         total_pnl = sum(m['pnl'] for m in direct_players) + sum(a['total_pnl'] for a in agents_map.values())
@@ -1643,6 +1648,20 @@ def dashboard():
             if _r.get('player_id') and _r.get('player_id') in _paid_rake_pids:
                 _r['paid'] = True
 
+        # kenny777 ONLY: players with no rake config count as 100% kept toward
+        # "נשאר לי". Computed here where total_rake / child_sas / rake_refund_list
+        # are all in their FINAL state. Top-down so the agent/sub-agent hierarchy
+        # isn't double counted: (all player rake) − (rake already covered by the
+        # refund list). all player rake = total_rake (direct + agents, each once)
+        # + child-SA totals. For KENNY this is club-free (his self-row is SPC T,
+        # not a managed club, and managed-club players are excluded from direct
+        # players), so no club rake leaks in. Club rake stays in the club panel.
+        unconfigured_player_rake = 0.0
+        if sa_id == '7526-3392':
+            _child_rake = sum(float(cs.get('total_rake') or 0) for cs in child_sas)
+            _covered = sum(float(r.get('total_rake') or 0) for r in rake_refund_list)
+            unconfigured_player_rake = round(max(0.0, total_rake + _child_rake - _covered), 2)
+
         return render_template('main/agent_dashboard.html',
                                collection_rake_total=collection_rake_total,
                                collection_rake_list=collection_rake_list,
@@ -1657,6 +1676,7 @@ def dashboard():
                                expense_charges=expense_charges,
                                rake_refund_list=rake_refund_list,
                                total_rake_refund=total_rake_refund,
+                               unconfigured_player_rake=unconfigured_player_rake,
                                club_rake_refund_list=club_rake_refund_list,
                                club_rake_refund_total=club_rake_refund_total,
                                my_rake_pct=my_rake_pct,
