@@ -233,27 +233,22 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
             <span>סה"כ החזר</span>
             <span style="color:#667eea;">{{ total_rake_refund|comma }}</span>
         </div>
-        {# Gross = the WHOLE box's player rake (total_rake), not only the
-           configured rows — so players with no rake config count as 100%
-           kept by the manager without being shown as refund lines. #}
+        {# Gross = ONLY the player rows shown here (their rake). NOT total_rake,
+           which for managers with managed clubs also includes club rake — that
+           has its own separate "club rake" panel. Keeping it to the panel's own
+           rows makes "נשאר לי" the true player-side kept rake, and it ties out
+           exactly to the sum of the per-row "שלי". #}
+        {% set players_gross = rake_refund_list|sum(attribute='total_rake') %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.35rem 0 0; font-size:0.82rem; color:#8a8f9c;">
-            <span>סה"כ רייק ברוטו (כל השחקנים)</span>
-            <span>{{ total_rake|round(2)|comma }}</span>
+            <span>סה"כ רייק שחקנים</span>
+            <span>{{ players_gross|round(2)|comma }}</span>
         </div>
-        {% set configured_gross = rake_refund_list|sum(attribute='total_rake') %}
-        {% set unconfigured_kept = (total_rake - configured_gross)|round(2) %}
-        {% if unconfigured_kept > 0.005 %}
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.35rem 0 0; font-size:0.82rem; color:#0f9b7d;">
-            <span>שחקנים ללא הגדרה (100% שלך)</span>
-            <span>+{{ unconfigured_kept|comma }}</span>
-        </div>
-        {% endif %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.6rem; padding:0.7rem 0.8rem; background:#e9fbf6; border:1px solid #b8ede0; border-radius:10px; font-weight:800; font-size:1.05rem;">
             <span style="color:#0f9b7d;">💰 נשאר לי אחרי ההחזר</span>
-            <span style="color:#0f9b7d;">{{ (total_rake - total_rake_refund)|round(2)|comma }}</span>
+            <span style="color:#0f9b7d;">{{ (players_gross - total_rake_refund)|round(2)|comma }}</span>
         </div>
         <div style="font-size:0.74rem; color:#8a8f9c; margin-top:0.4rem; line-height:1.35;">
-            (שחקן שלא הוגדר לו רייק — מחושב כ-<strong>100%</strong> שלך, ולכן הרייק שלו נכלל כאן גם בלי שיופיע כשורת החזר)
+            (רייק שחקנים בלבד — רייק מועדונים מחושב בנפרד בפאנל המועדונים)
         </div>
     </div>
 </div>
