@@ -1690,6 +1690,7 @@ def dashboard():
                                rake_refund_list=rake_refund_list,
                                total_rake_refund=total_rake_refund,
                                unconfigured_player_rake=unconfigured_player_rake,
+                               show_rake_extras=(sa_id == '7526-3392'),
                                club_rake_refund_list=club_rake_refund_list,
                                club_rake_refund_total=club_rake_refund_total,
                                my_rake_pct=my_rake_pct,

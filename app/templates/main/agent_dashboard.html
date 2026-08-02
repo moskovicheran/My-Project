@@ -223,17 +223,25 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
                 </span>
                 {% endif %}
             </div>
+            {% if show_rake_extras %}
             <div style="display:flex; gap:0.6rem 1rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                 <span class="muted">רייק {{ r.total_rake|comma }}</span>
                 <span style="color:#667eea; font-weight:700;" title="החזר לשחקן">החזר {{ r.refund|comma }}</span>
                 <span style="color:#0f9b7d; font-weight:700;" title="שלי — כמה נשאר לך מהשחקן הזה (רייק − החזר)">שלי {{ (r.total_rake - r.refund)|round(2)|comma }}</span>
             </div>
+            {% else %}
+            <div style="display:flex; gap:1rem; align-items:center;">
+                <span class="muted">רייק {{ r.total_rake|comma }}</span>
+                <span style="color:#667eea; font-weight:700;">{{ r.refund|comma }}</span>
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.2rem; padding:0.6rem 0 0; font-size:0.95rem; font-weight:700;">
             <span>סה"כ החזר</span>
             <span style="color:#667eea;">{{ total_rake_refund|comma }}</span>
         </div>
+        {% if show_rake_extras %}
         {# Gross = ONLY the player rows shown here (their rake). NOT total_rake,
            which for managers with managed clubs also includes club rake — that
            has its own separate "club rake" panel. Keeping it to the panel's own
@@ -265,6 +273,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
         <div style="font-size:0.74rem; color:#8a8f9c; margin-top:0.4rem; line-height:1.35;">
             (רייק שחקנים בלבד — רייק מועדונים מחושב בנפרד בפאנל המועדונים)
         </div>
+        {% endif %}
         {% endif %}
     </div>
 </div>
