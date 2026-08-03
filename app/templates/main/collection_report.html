@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>דוח סגירת מחזור — {{ cycle.label }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, "Segoe UI", sans-serif; color: #222; margin: 0; padding: 1.2rem; background: #f4f5f8; }
+  .sheet { max-width: 820px; margin: 0 auto; background: #fff; padding: 1.6rem 1.8rem; border-radius: 12px;
+           box-shadow: 0 2px 14px rgba(0,0,0,.08); }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;
+         border-bottom: 3px solid #4361ee; padding-bottom: .8rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .top h1 { margin: 0 0 .2rem; font-size: 1.5rem; color: #4361ee; }
+  .muted { color: #7a8091; font-size: .85rem; }
+  .actions { display: flex; gap: .5rem; }
+  .btn { border: none; border-radius: 8px; padding: .5rem 1rem; font-size: .9rem; font-weight: 700;
+         cursor: pointer; text-decoration: none; }
+  .btn-print { background: #4361ee; color: #fff; }
+  .btn-back { background: #eef1f5; color: #555; }
+  h2.sec { font-size: 1.05rem; margin: 1.2rem 0 .4rem; padding-bottom: .2rem; border-bottom: 1px solid #e6e8ef; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: .42rem .5rem; text-align: right; border-bottom: 1px solid #eef0f4; }
+  th { background: #f7f8fb; color: #6a7080; font-weight: 700; font-size: .8rem; }
+  .num { font-variant-numeric: tabular-nums; }
+  .pos { color: #159b6d; font-weight: 700; }
+  .neg { color: #e63946; font-weight: 700; }
+  .empty { color: #9aa0ad; font-size: .85rem; padding: .3rem 0; }
+  .totals { margin-top: 1.3rem; display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; }
+  .tcard { background: #f7f8fb; border: 1px solid #e6e8ef; border-radius: 10px; padding: .7rem .9rem; }
+  .tcard .lbl { color: #7a8091; font-size: .8rem; }
+  .tcard .val { font-size: 1.25rem; font-weight: 800; margin-top: .15rem; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .sheet { box-shadow: none; max-width: none; border-radius: 0; padding: 0; }
+    .no-print { display: none !important; }
+    h2.sec { break-after: avoid; }
+    tr { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="top">
+    <div>
+      <h1>📋 דוח סגירת מחזור</h1>
+      <div><strong>{{ cycle.label }}</strong>{% if cycle.is_closed %} · נסגר {{ cycle.closed_at.strftime('%d/%m/%Y %H:%M') if cycle.closed_at else '' }}{% endif %}</div>
+      <div class="muted">סוכן: {{ agent_name }}
+        {% if date_from and date_to %} · תקופה: {{ date_from.strftime('%d/%m/%Y') }} – {{ date_to.strftime('%d/%m/%Y') }}{% endif %}
+        · {{ player_count }} שחקנים</div>
+    </div>
+    <div class="actions no-print">
+      <a href="#" class="btn btn-print" onclick="window.print();return false;">🖨️ הדפס / שמור PDF</a>
+      <a href="{{ url_for('main.agent_collection') }}" class="btn btn-back">← חזרה</a>
+    </div>
+  </div>
+
+  {% macro tbl(rows) %}
+  {% if rows %}
+  <table>
+    <thead><tr><th>שחקן</th><th>מועדון</th><th>רווח/הפסד</th><th>החזר רייק</th><th>להתחשבנות</th><th>שולם</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ r.nickname }}</strong></td>
+        <td class="muted">{{ r.club }}</td>
+        <td class="num {% if r.base >= 0 %}pos{% else %}neg{% endif %}">{{ r.base|comma }}</td>
+        <td class="num">{{ r.manual_rake|comma }}</td>
+        <td class="num {% if r.settlement >= 0 %}pos{% else %}neg{% endif %}">{{ r.settlement|comma }}</td>
+        <td>{% if r.is_paid %}✓{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">אין רשומות.</div>{% endif %}
+  {% endmacro %}
+
+  <h2 class="sec" style="color:#159b6d;">📥 צריך לקבל ({{ receive|length }}) — סה״כ {{ total_receive|comma }}</h2>
+  {{ tbl(receive) }}
+
+  <h2 class="sec" style="color:#e63946;">📤 במינוס — חייבים לך ({{ minus|length }}) — סה״כ {{ total_minus|comma }}</h2>
+  {{ tbl(minus) }}
+
+  <h2 class="sec" style="color:#4361ee;">✅ שולם ({{ settled|length }}) — סה״כ {{ total_settled|comma }}</h2>
+  {{ tbl(settled) }}
+
+  <div class="totals">
+    <div class="tcard"><div class="lbl">📥 צריך לקבל</div><div class="val pos">{{ total_receive|comma }}</div></div>
+    <div class="tcard"><div class="lbl">📤 חייבים לך (מינוס)</div><div class="val neg">{{ total_minus|comma }}</div></div>
+    <div class="tcard"><div class="lbl">✅ כבר שולם</div><div class="val">{{ total_settled|comma }}</div></div>
+    <div class="tcard"><div class="lbl">🎁 סה״כ החזרי רייק</div><div class="val">{{ total_rake_refund|comma }}</div></div>
+  </div>
+</div>
+</body>
+</html>

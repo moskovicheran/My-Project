@@ -88,6 +88,9 @@
         </h2>
         <div style="display:flex; align-items:center; gap:0.6rem;">
             <span class="muted small">שולמו {{ cv.done }} / נותרו {{ cv.pending }}</span>
+            {% if show_report_btn %}
+            <a href="{{ url_for('main.agent_collection_report', cycle_id=c.id) }}" target="_blank" class="btn btn-outline btn-sm" style="border-color:#4361ee; color:#4361ee;">🖨️ דוח להדפסה</a>
+            {% endif %}
             <form method="POST" onsubmit="return confirm('לסגור את המחזור {{ c.label }}? לא ניתן לערוך אחרי סגירה.');" style="margin:0;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="action" value="close_cycle">

@@ -2379,7 +2379,41 @@ def agent_collection():
         })
 
     return render_template('main/agent_collection.html',
-                           cycles=cycles_view, rake_pct=rake_pct)
+                           cycles=cycles_view, rake_pct=rake_pct,
+                           show_report_btn=(sa_id == '7526-3392'))
+
+
+@main_bp.route('/agent/collection/report/<int:cycle_id>')
+@login_required
+def agent_collection_report(cycle_id):
+    """kenny777 ONLY: a clean, printable / Save-as-PDF cycle-closing report."""
+    if not hasattr(current_user, 'role') or current_user.role != 'agent' or not current_user.player_id:
+        return redirect(url_for('main.dashboard'))
+    sa_id = current_user.player_id
+    if sa_id != '7526-3392':
+        return redirect(url_for('main.agent_collection'))
+    from app.models import CollectionCycle, DailyUpload
+    from sqlalchemy import func as _sf
+    cycle = CollectionCycle.query.get(cycle_id)
+    if not cycle or cycle.owner_id != sa_id:
+        return redirect(url_for('main.agent_collection'))
+    rake_pct = _agent_rake_pct(sa_id)
+    pays = {p.player_id: p for p in cycle.payments}
+    live = {} if (cycle.frozen or cycle.is_closed) else _collection_live_rows(sa_id, None, None)
+    receive, minus, settled = _collection_cycle_rows(cycle, live, pays, rake_pct)
+    _dr = db.session.query(_sf.min(DailyUpload.upload_date),
+                           _sf.max(DailyUpload.upload_date)).first()
+    _all = receive + minus + settled
+    return render_template(
+        'main/collection_report.html',
+        cycle=cycle, receive=receive, minus=minus, settled=settled,
+        total_receive=round(sum(r['settlement'] for r in receive), 2),
+        total_minus=round(sum(r['settlement'] for r in minus), 2),
+        total_settled=round(sum(r['settlement'] for r in settled), 2),
+        total_rake_refund=round(sum(r['manual_rake'] for r in _all), 2),
+        player_count=len(_all),
+        date_from=_dr[0] if _dr else None, date_to=_dr[1] if _dr else None,
+        agent_name=current_user.username)
 
 
 @main_bp.route('/agent/reports')
