@@ -2409,9 +2409,15 @@ def agent_collection_report(cycle_id):
     # "יוצא כולל ההחזר" = רווח/הפסד + ההחזר.
     from app.models import RakeConfig
     _pids = [r.get('player_id') for r in _all if r.get('player_id')]
-    _pcfg = {rc.entity_id: rc.rake_percent for rc in RakeConfig.query.filter(
-        RakeConfig.entity_type == 'player',
-        RakeConfig.entity_id.in_(_pids)).all()} if _pids else {}
+    # A player's refund % may be stored under ANY entity type (some are set as
+    # agent / sub_agent, not 'player'). Look across all, preferring 'player'.
+    _pcfg = {}
+    if _pids:
+        for _et in ('player', 'sub_agent', 'agent'):
+            for rc in RakeConfig.query.filter(
+                    RakeConfig.entity_type == _et,
+                    RakeConfig.entity_id.in_(_pids)).all():
+                _pcfg.setdefault(rc.entity_id, rc.rake_percent)
     for r in _all:
         _pct = _pcfg.get(r.get('player_id'), 0)
         r['rake_refund'] = round(float(r.get('rake') or 0) * _pct / 100, 2)
