@@ -2404,13 +2404,25 @@ def agent_collection_report(cycle_id):
     _dr = db.session.query(_sf.min(DailyUpload.upload_date),
                            _sf.max(DailyUpload.upload_date)).first()
     _all = receive + minus + settled
+    # "החזר רייק" = the rake each player actually gets back, by their configured
+    # refund % (RakeConfig player), not the cycle's manual field. Then
+    # "יוצא כולל ההחזר" = רווח/הפסד + ההחזר.
+    from app.models import RakeConfig
+    _pids = [r.get('player_id') for r in _all if r.get('player_id')]
+    _pcfg = {rc.entity_id: rc.rake_percent for rc in RakeConfig.query.filter(
+        RakeConfig.entity_type == 'player',
+        RakeConfig.entity_id.in_(_pids)).all()} if _pids else {}
+    for r in _all:
+        _pct = _pcfg.get(r.get('player_id'), 0)
+        r['rake_refund'] = round(float(r.get('rake') or 0) * _pct / 100, 2)
+        r['out_with_refund'] = round(float(r.get('base') or 0) + r['rake_refund'], 2)
     return render_template(
         'main/collection_report.html',
         cycle=cycle, receive=receive, minus=minus, settled=settled,
-        total_receive=round(sum(r['settlement'] for r in receive), 2),
-        total_minus=round(sum(r['settlement'] for r in minus), 2),
-        total_settled=round(sum(r['settlement'] for r in settled), 2),
-        total_rake_refund=round(sum(r['manual_rake'] for r in _all), 2),
+        total_receive=round(sum(r['out_with_refund'] for r in receive), 2),
+        total_minus=round(sum(r['out_with_refund'] for r in minus), 2),
+        total_settled=round(sum(r['out_with_refund'] for r in settled), 2),
+        total_rake_refund=round(sum(r['rake_refund'] for r in _all), 2),
         total_generated_rake=round(sum(r['rake'] for r in _all), 2),
         player_count=len(_all),
         date_from=_dr[0] if _dr else None, date_to=_dr[1] if _dr else None,

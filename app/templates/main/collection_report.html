@@ -66,8 +66,8 @@
         <td class="muted">{{ r.club }}</td>
         <td class="num {% if r.base >= 0 %}pos{% else %}neg{% endif %}">{{ r.base|comma }}</td>
         <td class="num muted">{{ r.rake|comma }}</td>
-        <td class="num" style="color:#2ec4b6; font-weight:700;">{{ r.manual_rake|comma }}</td>
-        <td class="num {% if r.settlement >= 0 %}pos{% else %}neg{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
+        <td class="num" style="color:#2ec4b6; font-weight:700;">{{ r.rake_refund|comma }}</td>
+        <td class="num {% if r.out_with_refund >= 0 %}pos{% else %}neg{% endif %}"><strong>{{ r.out_with_refund|comma }}</strong></td>
         <td>{% if r.is_paid %}✓{% else %}—{% endif %}</td>
       </tr>
     {% endfor %}
