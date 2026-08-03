@@ -58,15 +58,16 @@
   {% macro tbl(rows) %}
   {% if rows %}
   <table>
-    <thead><tr><th>שחקן</th><th>מועדון</th><th>רווח/הפסד</th><th>החזר רייק</th><th>להתחשבנות</th><th>שולם</th></tr></thead>
+    <thead><tr><th>שחקן</th><th>מועדון</th><th>רווח/הפסד</th><th>רייק שייצר</th><th>החזר רייק</th><th>יוצא כולל ההחזר</th><th>שולם</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
         <td><strong>{{ r.nickname }}</strong></td>
         <td class="muted">{{ r.club }}</td>
         <td class="num {% if r.base >= 0 %}pos{% else %}neg{% endif %}">{{ r.base|comma }}</td>
-        <td class="num">{{ r.manual_rake|comma }}</td>
-        <td class="num {% if r.settlement >= 0 %}pos{% else %}neg{% endif %}">{{ r.settlement|comma }}</td>
+        <td class="num muted">{{ r.rake|comma }}</td>
+        <td class="num" style="color:#2ec4b6; font-weight:700;">{{ r.manual_rake|comma }}</td>
+        <td class="num {% if r.settlement >= 0 %}pos{% else %}neg{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
         <td>{% if r.is_paid %}✓{% else %}—{% endif %}</td>
       </tr>
     {% endfor %}
@@ -88,7 +89,8 @@
     <div class="tcard"><div class="lbl">📥 צריך לקבל</div><div class="val pos">{{ total_receive|comma }}</div></div>
     <div class="tcard"><div class="lbl">📤 חייבים לך (מינוס)</div><div class="val neg">{{ total_minus|comma }}</div></div>
     <div class="tcard"><div class="lbl">✅ כבר שולם</div><div class="val">{{ total_settled|comma }}</div></div>
-    <div class="tcard"><div class="lbl">🎁 סה״כ החזרי רייק</div><div class="val">{{ total_rake_refund|comma }}</div></div>
+    <div class="tcard"><div class="lbl">💠 סה״כ רייק שייצרו</div><div class="val" style="color:#7a8091;">{{ total_generated_rake|comma }}</div></div>
+    <div class="tcard"><div class="lbl">🎁 סה״כ החזרי רייק</div><div class="val" style="color:#2ec4b6;">{{ total_rake_refund|comma }}</div></div>
   </div>
 </div>
 </body>

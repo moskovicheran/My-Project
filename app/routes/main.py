@@ -2411,6 +2411,7 @@ def agent_collection_report(cycle_id):
         total_minus=round(sum(r['settlement'] for r in minus), 2),
         total_settled=round(sum(r['settlement'] for r in settled), 2),
         total_rake_refund=round(sum(r['manual_rake'] for r in _all), 2),
+        total_generated_rake=round(sum(r['rake'] for r in _all), 2),
         player_count=len(_all),
         date_from=_dr[0] if _dr else None, date_to=_dr[1] if _dr else None,
         agent_name=current_user.username)
