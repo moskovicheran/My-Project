@@ -64,6 +64,9 @@
     <a href="{{ url_for('admin.cycle_summary_export') }}" class="cycle-btn" title="הורדת Excel עם Rake/PnL לפי מנהל + Freerolls/Overlay">
         <span>💰</span><span>סיכום גבייה (Excel)</span>
     </a>
+    <a href="{{ url_for('admin.collections_log') }}" class="cycle-btn" style="margin-right:0;" title="תיעוד גבייה — כמה נגבה מכל שחקן, ע״י איזה סוכן, ומתי">
+        <span>📥</span><span>נגבה עד כה</span>
+    </a>
 </div>
 
 <style>
@@ -347,6 +350,12 @@ body.dark .dp-reset { color:#ff6b6b; }
                     {% if ag.balance_plus_rake > 0 %}+{% endif %}{{ ag.balance_plus_rake|comma }}
                 </span>
             </div>
+            {% if ag.collected and ag.collected > 0 %}
+            <div style="display:flex; gap:0.8rem; justify-content:space-between; align-items:center; padding:0.4rem 0.9rem; background:#f0fff7; border-top:1px solid #d7e8df; font-size:0.8rem;" title="הקופסה לא זזה — הכסף ירד מהשחקן (שלא רואה חיוב) ועבר לכיס הסוכן">
+                <span>💰 נגבה <strong style="color:#159b6d;">{{ ag.collected|comma }}</strong></span>
+                <span>מגיע עוד <strong style="color:#e8950c;">{{ (ag.balance_plus_rake - ag.collected)|comma }}</strong></span>
+            </div>
+            {% endif %}
         </a>
         {% endfor %}
     </div>

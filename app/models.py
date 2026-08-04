@@ -184,9 +184,14 @@ class PlayerPayment(db.Model):
     base_amount = db.Column(db.Float, default=0)   # snapshot PnL (+ transfer adj)
     total_rake = db.Column(db.Float, default=0)    # snapshot rake — caps manual_rake
     manual_rake = db.Column(db.Float, default=0)   # rakeback granted by the agent
-    is_paid = db.Column(db.Boolean, default=False)
+    is_paid = db.Column(db.Boolean, default=False)  # manual "fully paid" mark
     paid_at = db.Column(db.DateTime, nullable=True)
     note = db.Column(db.String(200), default='')
+    # How much the player has paid so far this cycle (supports partial/split
+    # payments — owes 300, paid 200, remaining 100). Editable running figure;
+    # settled once it covers the debt. A settlement is cash only — it never
+    # touches poker PnL/rake or the admin reconciliation.
+    paid_so_far = db.Column(db.Float, default=0)
 
     def __repr__(self):
         return f'<PlayerPayment {self.player_id} cycle={self.cycle_id} paid={self.is_paid}>'

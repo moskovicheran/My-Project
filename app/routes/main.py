@@ -1675,7 +1675,28 @@ def dashboard():
             _covered = sum(float(r.get('total_rake') or 0) for r in rake_refund_list)
             unconfigured_player_rake = round(max(0.0, _players_rake - _covered), 2)
 
+        # Collection "balloon" for the agent dashboard: of everything debtors
+        # owe this cycle, how much is already collected (in the agent's pocket)
+        # vs still to complete. Pure cash overlay from paid_so_far — never
+        # touches the poker/global numbers. Guarded so it can't break the page.
+        coll_total_owed = coll_collected = coll_remaining = 0.0
+        try:
+            _ccyc = _collection_current_cycle(sa_id)
+            _clive = _collection_live_rows(sa_id, None, None)
+            _crows = _collection_cycle_rows(
+                _ccyc, _clive, {p.player_id: p for p in _ccyc.payments},
+                _agent_rake_pct(sa_id))
+            _debtors = [r for grp in _crows for r in grp if r['settlement'] < 0]
+            coll_total_owed = round(sum(abs(r['settlement']) for r in _debtors), 2)
+            coll_collected = round(sum(r['paid_so_far'] for r in _debtors), 2)
+            coll_remaining = round(sum(r['remaining_abs'] for r in _debtors), 2)
+        except Exception:
+            pass
+
         return render_template('main/agent_dashboard.html',
+                               coll_total_owed=coll_total_owed,
+                               coll_collected=coll_collected,
+                               coll_remaining=coll_remaining,
                                collection_rake_total=collection_rake_total,
                                collection_rake_list=collection_rake_list,
                                my_sas=my_sas, child_sas=child_sas,
@@ -2241,17 +2262,26 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
         manual_rake = round((pay.manual_rake or 0) if pay else 0, 2)
         is_paid = pay.is_paid if pay else False
         settlement = round(base + manual_rake, 2)
+        # Partial-payment overlay: what's paid so far, what's left. Cash only —
+        # does not touch poker PnL/rake or the reconciliation.
+        paid_so_far = round((pay.paid_so_far or 0) if pay else 0, 2)
+        owed_abs = round(abs(settlement), 2)
+        remaining_abs = round(max(owed_abs - paid_so_far, 0), 2)
+        remaining = round((1 if settlement >= 0 else -1) * remaining_abs, 2) or 0.0
+        fully = is_paid or (owed_abs > 0.001 and paid_so_far + 0.001 >= owed_abs)
         row = {
             'cycle_id': cycle.id, 'player_id': pid, 'nickname': nick, 'club': club,
             'base': round(base, 2), 'rake': round(rake, 2),
             'manual_rake': manual_rake, 'settlement': settlement,
+            'paid_so_far': paid_so_far, 'remaining': remaining,
+            'remaining_abs': remaining_abs, 'fully_paid': fully,
             'is_paid': is_paid, 'paid_at': pay.paid_at if pay else None,
             'cap': round(rake_pct / 100.0 * rake, 2),
             # The refund expressed as a % of the player's generated rake, so the
             # agent enters a percentage and the amount is derived from it.
             'rake_pct_val': round(manual_rake / rake * 100, 2) if rake else 0,
         }
-        (settled if is_paid else minus if settlement < 0 else receive).append(row)
+        (settled if fully else minus if settlement < 0 else receive).append(row)
     receive.sort(key=lambda x: x['settlement'], reverse=True)
     minus.sort(key=lambda x: x['settlement'])
     settled.sort(key=lambda x: x['nickname'])
@@ -2288,7 +2318,7 @@ def agent_collection():
                 db.session.commit()
                 flash(f'מחזור "{cycle.label}" נסגר.', 'success')
 
-        elif action in ('toggle_paid', 'set_rake'):
+        elif action in ('toggle_paid', 'set_rake', 'set_paid'):
             cycle = CollectionCycle.query.get(request.form.get('cycle_id'))
             pid = (request.form.get('player_id') or '').strip()
             if cycle and cycle.owner_id == sa_id and not cycle.is_closed and pid:
@@ -2301,6 +2331,31 @@ def agent_collection():
                     pay.is_paid = not pay.is_paid
                     pay.paid_at = datetime.utcnow() if pay.is_paid else None
                     db.session.commit()
+                elif action == 'set_paid':
+                    # Partial/split payment: record how much the player has paid
+                    # so far (running figure). Cash only — no PnL/reconciliation
+                    # impact. Settled is derived (paid covers the debt).
+                    try:
+                        amt = float(request.form.get('paid_input') or 0)
+                    except ValueError:
+                        flash('סכום לא תקין.', 'danger')
+                        return redirect(rt)
+                    if amt < 0:
+                        flash('סכום לא יכול להיות שלילי.', 'danger')
+                        return redirect(rt)
+                    pay.paid_so_far = round(amt, 2)
+                    pay.paid_at = datetime.utcnow() if amt > 0 else None
+                    pay.is_paid = False  # paid_so_far is the single source of truth
+                    # Snapshot the player's live settlement sign so the admin
+                    # rollup can count only real collection (debtor = money IN),
+                    # not payouts to winners. Cheap: one live-rows read per save.
+                    if not cycle.frozen:
+                        _lb = _collection_live_rows(sa_id, None, None).get(pid)
+                        if _lb:
+                            pay.base_amount = round(_lb.get('base', 0), 2)
+                            pay.total_rake = round(_lb.get('rake', 0), 2)
+                    db.session.commit()
+                    flash(f'עודכן: שולם {amt:,.2f}.', 'success')
                 else:  # set_rake
                     if cycle.frozen:
                         total_rake = pay.total_rake or 0
@@ -2362,6 +2417,8 @@ def agent_collection():
         'receive': receive, 'minus': minus, 'settled': settled,
         'total_receive': round(sum(r['settlement'] for r in receive), 2),
         'total_minus': round(sum(r['settlement'] for r in minus), 2),
+        'total_collected': round(sum(r['paid_so_far'] for r in receive + minus + settled if r['settlement'] < 0), 2),
+        'total_remaining_collect': round(sum(r['remaining_abs'] for r in minus), 2),
         'done': len(settled), 'pending': len(receive) + len(minus),
     })
     for c in CollectionCycle.query.filter_by(
@@ -2375,6 +2432,8 @@ def agent_collection():
             'receive': receive, 'minus': minus, 'settled': settled,
             'total_receive': round(sum(r['settlement'] for r in receive), 2),
             'total_minus': round(sum(r['settlement'] for r in minus), 2),
+            'total_collected': round(sum(r['paid_so_far'] for r in receive + minus + settled if r['settlement'] < 0), 2),
+            'total_remaining_collect': round(sum(r['remaining_abs'] for r in minus), 2),
             'done': len(settled), 'pending': len(receive) + len(minus),
         })
 

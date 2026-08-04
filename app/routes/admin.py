@@ -213,6 +213,24 @@ def build_overview_context():
     subordinate = get_subordinate_managers()
     manager_label = {pid: name for name, pid in OVERVIEW_MANAGERS}
 
+    # Per-agent collection rollup — "where the chips are": how much each agent
+    # has collected from their debtor players this cycle. Read-only cash overlay,
+    # resets each cycle (only the current, non-frozen, non-closed cycle counts),
+    # and NEVER touches PnL/rake/reconciliation. Guarded so it can't break the page.
+    from app.models import CollectionCycle, PlayerPayment
+    collected_by_agent = {}
+    try:
+        _cid_owner = {c.id: c.owner_id for c in CollectionCycle.query.filter_by(
+            is_closed=False, frozen=False).all()}
+        if _cid_owner:
+            for _p in PlayerPayment.query.filter(
+                    PlayerPayment.cycle_id.in_(list(_cid_owner.keys()))).all():
+                if (_p.paid_so_far or 0) > 0 and (_p.base_amount or 0) < 0:
+                    _own = _cid_owner.get(_p.cycle_id)
+                    collected_by_agent[_own] = collected_by_agent.get(_own, 0) + (_p.paid_so_far or 0)
+    except Exception:
+        collected_by_agent = {}
+
     agents_data = []
     for username, pid in OVERVIEW_MANAGERS:
         totals = get_agent_totals(
@@ -232,6 +250,7 @@ def build_overview_context():
             'total_expenses': exp,
             'expense_count': int(expense_counts.get(pid, 0) or 0),
             'balance_after_expenses': round(bal_plus_rake - exp, 2),
+            'collected': round(collected_by_agent.get(pid, 0), 2),
             'view_only': pid in subordinate,
             'owned_by': manager_label.get(subordinate.get(pid), ''),
         })
@@ -270,6 +289,7 @@ def build_overview_context():
             'name': display_name, 'entity_id': pid,
             'players': totals['player_count'], 'rake': totals['total_rake'],
             'pnl': totals['total_pnl'], 'hands': totals['total_hands'],
+            'collected': round(collected_by_agent.get(pid, 0), 2),
         })
     tracked_clubs.sort(key=lambda c: c['rake'], reverse=True)
 
@@ -923,6 +943,72 @@ def cycle_summary_export():
     return send_file(io.BytesIO(content), as_attachment=True,
                      download_name=filename,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@admin_bp.route('/collections')
+@admin_required
+def collections_log():
+    """נגבה עד כה — documentation of what each agent has collected from their
+    DEBTOR players this cycle: who, how much, from whom, when. Read-only cash
+    overlay; never touches PnL/rake/reconciliation. Resets each cycle (only the
+    current, non-frozen, non-closed cycles are read)."""
+    from app.models import CollectionCycle, PlayerPayment, DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+    from app.union_data import get_agent_totals
+    cid_owner, cid_label = {}, {}
+    for c in CollectionCycle.query.filter_by(is_closed=False, frozen=False).all():
+        cid_owner[c.id] = c.owner_id
+        cid_label[c.id] = c.label
+    owner_ids = set(cid_owner.values())
+    agent_nick = dict(DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id.in_(list(owner_ids))
+    ).group_by(DailyPlayerStats.player_id).all()) if owner_ids else {}
+    manager_label = {pid: n for n, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS}
+    rows, total_collected = [], 0.0
+    if cid_owner:
+        pays = PlayerPayment.query.filter(
+            PlayerPayment.cycle_id.in_(list(cid_owner.keys()))).all()
+        # Resolve real player nicknames (the payment row doesn't store them).
+        _pids = [p.player_id for p in pays if (p.paid_so_far or 0) > 0]
+        player_nick = dict(DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+        ).filter(DailyPlayerStats.player_id.in_(_pids)
+        ).group_by(DailyPlayerStats.player_id).all()) if _pids else {}
+        for p in pays:
+            paid = float(p.paid_so_far or 0)
+            if paid <= 0 or float(p.base_amount or 0) >= 0:
+                continue  # count only real collections from debtors (money IN)
+            _own = cid_owner[p.cycle_id]
+            rows.append({
+                'agent': manager_label.get(_own) or agent_nick.get(_own) or _own,
+                'agent_id': _own, 'cycle': cid_label.get(p.cycle_id, ''),
+                'player': player_nick.get(p.player_id) or p.nickname or p.player_id,
+                'collected': round(paid, 2),
+                'at': p.paid_at.strftime('%d/%m/%Y %H:%M') if p.paid_at else '',
+            })
+            total_collected += paid
+    rows.sort(key=lambda r: -r['collected'])
+    # Per-agent summary: קופסה (balance+rake — untouched) · נגבה · מגיע עוד
+    # (=קופסה−נגבה). The box never moves; the collection is documented on top.
+    by_agent = {}  # agent_id -> {name, collected}
+    for r in rows:
+        d = by_agent.setdefault(r['agent_id'], {'name': r['agent'], 'collected': 0.0})
+        d['collected'] = round(d['collected'] + r['collected'], 2)
+    agent_totals = []
+    for aid, d in by_agent.items():
+        try:
+            t = get_agent_totals(aid)
+            box = round(float(t['total_pnl'] or 0) + float(t['total_rake'] or 0), 2)
+        except Exception:
+            box = 0.0
+        agent_totals.append({'agent': d['name'], 'box': box,
+                             'collected': d['collected'],
+                             'remaining': round(box - d['collected'], 2)})
+    agent_totals.sort(key=lambda x: -x['collected'])
+    return render_template('admin/collections_log.html',
+                           rows=rows, agent_totals=agent_totals,
+                           total_collected=round(total_collected, 2))
 
 
 @admin_bp.route('/cycle-summary/<int:report_id>.xlsx')

@@ -16,7 +16,7 @@
 <table class="table table-sm coll-table">
     <thead><tr>
         <th>שחקן</th><th>רווח/הפסד</th><th>רייק שייצר (100%)</th>
-        <th>קבלת רייק (מקס׳ {{ rake_pct|round(0)|int }}%)</th><th>להתחשבנות</th><th></th>
+        <th>קבלת רייק (מקס׳ {{ rake_pct|round(0)|int }}%)</th><th>מגיע</th><th>שולם / נשאר</th>
     </tr></thead>
     <tbody>
     {% for r in rows %}
@@ -41,14 +41,19 @@
                     <span class="muted small coll-amt">= {{ r.manual_rake|comma }}</span>
                 </form>
             </td>
-            <td data-label="להתחשבנות" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
-            <td class="coll-action">
-                <form method="POST" style="margin:0;">
+            <td data-label="מגיע" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
+            <td class="coll-action coll-pay">
+                <form method="POST" style="margin:0; display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <input type="hidden" name="action" value="toggle_paid">
+                    <input type="hidden" name="action" value="set_paid">
                     <input type="hidden" name="cycle_id" value="{{ c.id }}">
                     <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                    <button type="submit" class="btn btn-sm">✓ שולם</button>
+                    <span class="muted small">שולם</span>
+                    <input type="number" name="paid_input" value="{{ '%.2f'|format(r.paid_so_far) }}" min="0" step="0.01"
+                           data-owed="{{ r.settlement|abs }}" oninput="collRemain(this)" title="כמה שילם עד כה"
+                           style="width:80px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
+                    <button type="submit" class="btn btn-sm btn-outline">שמור</button>
+                    <span class="muted small coll-remain">נשאר {{ r.remaining_abs|comma }}</span>
                 </form>
             </td>
         </tr>
@@ -100,6 +105,13 @@
         </div>
     </div>
 
+    {% if cv.total_collected or cv.total_remaining_collect %}
+    <div class="coll-summary">
+        <div><span class="lbl">💰 נגבה עד כה (בכיס)</span><span class="val" style="color:#159b6d;">{{ cv.total_collected|comma }}</span></div>
+        <div><span class="lbl">📤 נשאר לגבות</span><span class="val" style="color:#ef233c;">{{ cv.total_remaining_collect|comma }}</span></div>
+    </div>
+    {% endif %}
+
     {{ rake_tables(c, rake_pct, cv.receive,
         '📥 צריך לקבל (' ~ cv.receive|length ~ ') — סה״כ ' ~ cv.total_receive|comma,
         '#2ec4b6', 'אין שחקנים שצריך לשלם להם.') }}
@@ -114,7 +126,7 @@
     <table class="table table-sm coll-table">
         <thead><tr>
             <th>שחקן</th><th>רווח/הפסד</th><th>רייק שייצר (100%)</th>
-            <th>קבלת רייק</th><th>סכום ששולם</th><th>תאריך</th><th></th>
+            <th>קבלת רייק</th><th>מגיע</th><th>שולם (עריכה)</th><th>תאריך</th>
         </tr></thead>
         <tbody>
         {% for r in cv.settled %}
@@ -126,22 +138,25 @@
                 <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
                 <td data-label="רייק שייצר" class="muted">{{ r.rake|comma }}</td>
                 <td data-label="קבלת רייק">{{ r.manual_rake|comma }}</td>
-                <td data-label="סכום ששולם" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}"><strong>{{ r.settlement|comma }}</strong></td>
-                <td data-label="תאריך" class="muted small">{{ r.paid_at.strftime('%d/%m/%Y %H:%M') if r.paid_at else '' }}</td>
-                <td class="coll-action">
-                    <form method="POST" style="margin:0;">
+                <td data-label="מגיע" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}">{{ r.settlement|comma }}</td>
+                <td data-label="שולם" class="coll-pay">
+                    <form method="POST" style="margin:0; display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="action" value="toggle_paid">
+                        <input type="hidden" name="action" value="set_paid">
                         <input type="hidden" name="cycle_id" value="{{ c.id }}">
                         <input type="hidden" name="player_id" value="{{ r.player_id }}">
-                        <button type="submit" class="btn btn-sm btn-outline">↩ בטל</button>
+                        <input type="number" name="paid_input" value="{{ '%.2f'|format(r.paid_so_far) }}" min="0" step="0.01"
+                               title="ערוך סכום ששולם (הורדה מחזירה לחייבים)"
+                               style="width:80px; padding:0.25rem 0.4rem; border:1px solid #ddd; border-radius:6px;">
+                        <button type="submit" class="btn btn-sm btn-outline">שמור</button>
                     </form>
                 </td>
+                <td data-label="תאריך" class="muted small">{{ r.paid_at.strftime('%d/%m/%Y %H:%M') if r.paid_at else '' }}</td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
-    {% else %}<p class="muted small">עדיין לא סומנו תשלומים.</p>{% endif %}
+    {% else %}<p class="muted small">עדיין לא נגבו תשלומים במלואם.</p>{% endif %}
 </div>
 </div>
 {% endfor %}
@@ -164,6 +179,15 @@ function collCalc(inp) {
     if (span) span.textContent = '= ' + amt.toLocaleString(undefined,
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Live-update the "remaining" hint as the agent types how much was paid.
+function collRemain(inp) {
+    var owed = Math.abs(parseFloat(inp.dataset.owed) || 0);
+    var paid = parseFloat(inp.value) || 0;
+    var rem = Math.max(owed - paid, 0);
+    var span = inp.parentElement.querySelector('.coll-remain');
+    if (span) span.textContent = 'נשאר ' + rem.toLocaleString(undefined,
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 </script>
 
 <style>
@@ -176,6 +200,15 @@ function collCalc(inp) {
 .cycle-tab.active { background:#4361ee; color:#fff; border-color:#4361ee; }
 .cycle-tab-prev.active { background:#e8950c; border-color:#e8950c; }
 body.dark .cycle-tab { background:#1e1e2e; border-color:#333; color:#aaa; }
+
+/* ── Per-cycle collection summary (in pocket / left to collect) ── */
+.coll-summary { display:flex; gap:0.8rem; flex-wrap:wrap; margin:0 0 0.9rem; }
+.coll-summary > div { flex:1 1 180px; background:#f7f8fb; border:1px solid #e6e8ef;
+                      border-radius:10px; padding:0.6rem 0.9rem; }
+.coll-summary .lbl { display:block; color:#7a8091; font-size:0.8rem; }
+.coll-summary .val { display:block; font-size:1.3rem; font-weight:800; margin-top:0.15rem;
+                     font-variant-numeric:tabular-nums; }
+body.dark .coll-summary > div { background:#1e1e2e; border-color:#333; }
 
 /* ── Mobile: turn the wide collection tables into stacked cards ── */
 @media (max-width: 720px) {
@@ -204,8 +237,7 @@ body.dark .cycle-tab { background:#1e1e2e; border-color:#333; color:#aaa; }
     .coll-table td.coll-action { padding-top: 0.5rem; }
     .coll-table td.coll-action::before { content: ""; }
     .coll-table td.coll-action button { width: 100%; }
-    .coll-table td[data-label="להתחשבנות"],
-    .coll-table td[data-label="סכום ששולם"] { font-size: 1.05rem; }
+    .coll-table td[data-label="מגיע"] { font-size: 1.05rem; }
     body.dark .coll-table tr { background: #1e1e2e; border-color: #333; }
 }
 </style>

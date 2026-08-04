@@ -122,6 +122,13 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
 {% if rake_refund_list is defined and rake_refund_list %}{% set base_cards = base_cards + 1 %}{% endif %}
 {% if collection_rake_total is defined and collection_rake_total %}{% set base_cards = base_cards + 1 %}{% endif %}
 {% if my_rake_pct is defined and my_rake_pct %}{% set base_cards = base_cards + 1 %}{% endif %}
+{% if coll_total_owed is defined and coll_total_owed > 0 %}
+<div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; background:#f7faf8; border:1px solid #d7e8df; border-radius:10px; padding:0.45rem 0.85rem; margin-bottom:1rem; font-size:0.9rem;">
+    <span style="font-weight:700; color:#159b6d;">💰 גבייה</span>
+    <span>נגבה בכיס <strong style="color:#159b6d;">{{ coll_collected|comma }}</strong></span>
+    <a href="{{ url_for('main.agent_collection') }}" style="margin-inline-start:auto; color:#4361ee; font-weight:700; text-decoration:none;">לניהול →</a>
+</div>
+{% endif %}
 <div class="stats-grid stats-{{ base_cards }}" style="margin-bottom:1.5rem;">
     <div class="stat-card">
         <div class="stat-label">שחקנים</div>

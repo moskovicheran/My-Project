@@ -154,6 +154,16 @@ def create_app():
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
+            # Partial-payment tracking on player_payments — added after that
+            # table shipped, so prod (create_all skipped) needs the explicit
+            # ALTER. Idempotent, no-op once applied.
+            try:
+                db.session.execute(_text(
+                    'ALTER TABLE player_payments ADD COLUMN IF NOT EXISTS '
+                    'paid_so_far DOUBLE PRECISION DEFAULT 0'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             # Widen money_transfers id columns so synthetic counterparty ids
             # like '__club__<club name>' fit (were VARCHAR(20)). Postgres
             # widens a varchar as a fast metadata-only change; runs on every
