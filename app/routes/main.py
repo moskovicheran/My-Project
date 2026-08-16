@@ -4677,7 +4677,7 @@ def agent_transfers():
 
     from app.union_data import (get_player_balance, get_all_balances,
                                  resolve_transfer, get_players_with_current_scope,
-                                 get_agent_scope)
+                                 get_agent_scope, get_agent_scope_predicate)
     from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats, HOUSE_PLAYER_NAME
 
     sa_id = current_user.player_id
@@ -4687,13 +4687,12 @@ def agent_transfers():
     # aggregation — its (possibly negative) balance surfaces ONLY on this page.
     house_id = f'__house__{sa_id}'
 
-    # The agent's OWN box, complete: every player whose CURRENT attribution
-    # (their latest upload row's sa_id/agent_id) is this agent — i.e. their
-    # direct players plus their sub-agents' members. Child super-agents are
-    # naturally excluded (their players' current sa_id is the child, not this
-    # agent), so the agent can only move money "within themselves". This is
-    # the same current-scope source the dashboard uses; the old
-    # get_super_agent_tables box was missing most of the agent's players.
+    # The agent's OWN box: every player whose CURRENT attribution (their
+    # latest upload row's sa_id/agent_id) is this agent — i.e. their direct
+    # players plus their sub-agents' members. This is the same current-scope
+    # source the dashboard uses; the old get_super_agent_tables box was
+    # missing most of the agent's players. Child super-agents and managed
+    # clubs are folded in further down.
     box_pids = set(get_players_with_current_scope({sa_id}))
     # Manual overrides that attach a player directly to this agent.
     for a in PlayerAssignment.query.filter(
@@ -4717,6 +4716,24 @@ def agent_transfers():
         for (pid,) in DailyPlayerStats.query.with_entities(
                 DailyPlayerStats.player_id).filter(
                 DailyPlayerStats.club.in_(list(set(managed_clubs))),
+                DailyPlayerStats.role != 'Name Entry').distinct().all():
+            box_pids.add(pid)
+
+    # ...and the players of the child SUPER-AGENTS under him. The agent is
+    # responsible for the whole sub-tree, so he settles inside it directly
+    # instead of only pushing a lump to the 👤 sub-agent wallet (which stays
+    # available for exactly that). Sourced from get_agent_scope_predicate —
+    # the dashboard's own scope — rather than a raw walk of the child SAs: a
+    # shared sub-agent can carry players whose rows belong to ANOTHER card's
+    # club, and the predicate's carve-out is what keeps Riko's Fredos players
+    # off Mangisto's picker. It also subsumes the managed-club union above;
+    # that stays explicit so managing a club always yields its roster, even
+    # if the club later becomes shared and the predicate narrows.
+    scope_pred = get_agent_scope_predicate(sa_id)
+    if scope_pred is not None:
+        for (pid,) in DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id).filter(
+                scope_pred,
                 DailyPlayerStats.role != 'Name Entry').distinct().all():
             box_pids.add(pid)
 
