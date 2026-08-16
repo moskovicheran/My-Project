@@ -1448,13 +1448,26 @@ def dashboard():
                 club_cross = {pid: cross_delta_for_clubs(cl, club_name)
                               for pid, cl in _cx_club.items()}
 
+                # Wallet settlements (העברות) land on these rows too, so a
+                # −400 debtor who pays his 400 reads 0 here instead of −400 —
+                # the same way a hierarchy player's row is adjusted above.
+                # Applied once per player: anyone already adjusted in the
+                # direct/agent lists is skipped, because the adjustment is
+                # player-global and a player with rows BOTH inside and
+                # outside this club would otherwise be counted twice in the
+                # dashboard total (3 such players exist today).
+                club_xfer = get_transfer_adjustments([row[0] for row in club_players_db])
+                club_xfer = {pid: adj for pid, adj in club_xfer.items()
+                             if pid not in all_my_player_ids}
+
                 # Build SA structure from DB data
                 club_sas = {}
                 no_sa = []
                 club_rake = 0
                 club_pnl = 0
                 for pid, nick, sa_id_val, ag_id_val, pnl_val, rake_val in club_players_db:
-                    p = round(float(pnl_val or 0) + club_cross.get(pid, 0), 2)
+                    p = round(float(pnl_val or 0) + club_cross.get(pid, 0)
+                              + club_xfer.get(pid, 0), 2)
                     r = round(float(rake_val or 0), 2)
                     club_rake += r
                     club_pnl += p
@@ -1487,7 +1500,8 @@ def dashboard():
                     all_club_members.append({
                         'player_id': pid, 'nickname': nick,
                         'sa_nick': sa_nick, 'agent_nick': ag_nick,
-                        'pnl_total': round(float(pnl_val or 0) + club_cross.get(pid, 0), 2),
+                        'pnl_total': round(float(pnl_val or 0) + club_cross.get(pid, 0)
+                                           + club_xfer.get(pid, 0), 2),
                         'rake_total': round(float(rake_val or 0), 2),
                     })
                 all_club_members.sort(key=lambda m: m['rake_total'], reverse=True)
