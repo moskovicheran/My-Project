@@ -4703,6 +4703,23 @@ def agent_transfers():
             box_pids.add(a.player_id)
     box_pids.add(sa_id)  # the agent himself is part of his own box
 
+    scope_sa_ids, managed_clubs, po_clubs = get_agent_scope(sa_id)
+    # ...plus every player of the clubs this agent MANAGES. They sit on his
+    # dashboard inside the club card, but their current attribution is a
+    # sub-agent (or nobody), so current-scope alone left them out of the
+    # picker — an agent responsible for two clubs couldn't settle an SPC T
+    # debtor against a POKER GARDEN creditor, only move the club wallet as a
+    # lump. Verified against prod: every managed-club player is already in
+    # get_agent_scope_predicate's dashboard scope, so this adds no visibility
+    # the agent didn't already have. PLAYER_ONLY clubs stay out — there the
+    # agent only plays, the roster isn't his (his own row is already in box).
+    if managed_clubs:
+        for (pid,) in DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.player_id).filter(
+                DailyPlayerStats.club.in_(list(set(managed_clubs))),
+                DailyPlayerStats.role != 'Name Entry').distinct().all():
+            box_pids.add(pid)
+
     my_player_ids = set(box_pids)
     # Resolve a nickname + club for each player from their latest row.
     my_players = []
@@ -4727,7 +4744,6 @@ def agent_transfers():
     # alongside players. Clubs are synthetic wallets (__club__<name>) whose
     # balance is simply their net transfers; agents use their real SA id.
     from sqlalchemy import func as sqlfunc
-    scope_sa_ids, managed_clubs, po_clubs = get_agent_scope(sa_id)
     club_targets = []   # [{'id','name'}]
     for cn in list(dict.fromkeys((managed_clubs or []) + (po_clubs or []))):
         if cn:
