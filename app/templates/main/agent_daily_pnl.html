@@ -6,7 +6,8 @@
     <div>
         <h1>📅 רווח/הפסד יומי{% if box_label %} — {{ box_label }}{% endif %}</h1>
         <p class="subtitle">
-            {{ totals.days }} ימי פעילות
+            {{ totals.days }} ימים מוצגים
+            {%- if totals.days != totals.total_days %} מתוך {{ totals.total_days }}{% endif %}
             {%- if view_as_username %} · מציג כ-{{ view_as_username }}{% endif %}
         </p>
     </div>
@@ -14,6 +15,38 @@
         <a href="{{ url_for('main.agent_top_players', view_as=request.args.get('view_as'), sa_id=request.args.get('sa_id'), club=request.args.get('club')) }}"
            class="btn btn-outline" style="color:#4361ee; font-weight:600;">📊 טופ שחקנים</a>
         <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) }}" class="btn btn-outline">← חזור לדשבורד</a>
+    </div>
+</div>
+
+{# ── Filters. Each chip keeps the other params (box narrowing, view_as). ── #}
+{% macro chip(param, value, label, active, cls='') -%}
+    {%- set q = request.args.to_dict() -%}
+    {%- set _ = q.update({param: value}) -%}
+    <a class="dp-chip {{ cls }}{% if active %} active{% endif %}"
+       href="{{ request.path }}?{{ q|urlencode }}">{{ label }}</a>
+{%- endmacro %}
+
+<div class="dp-filters">
+    <div class="dp-filter-row">
+        <span class="dp-filter-label">תקופה</span>
+        {{ chip('range', 'all', 'הכל', sel_range == 'all') }}
+        {{ chip('range', '7', '7 ימים', sel_range == '7') }}
+        {{ chip('range', '30', '30 יום', sel_range == '30') }}
+        {{ chip('range', 'month', 'החודש', sel_range == 'month') }}
+    </div>
+    {% if cycles %}
+    <div class="dp-filter-row">
+        <span class="dp-filter-label">מחזור</span>
+        {% for c in cycles %}
+        {{ chip('range', c.key, c.label, sel_range == c.key, 'dp-chip-cycle') }}
+        {% endfor %}
+    </div>
+    {% endif %}
+    <div class="dp-filter-row">
+        <span class="dp-filter-label">ימים</span>
+        {{ chip('side', 'all', 'הכל', side == 'all') }}
+        {{ chip('side', 'up', '▲ חיוביים (' ~ totals.up_days ~ ')', side == 'up', 'dp-chip-up') }}
+        {{ chip('side', 'down', '▼ שליליים (' ~ totals.down_days ~ ')', side == 'down', 'dp-chip-down') }}
     </div>
 </div>
 
@@ -40,7 +73,9 @@
 
 {% if chart %}
 <div class="section">
-    <h2 class="section-title" style="color:#4361ee;">📈 30 הימים האחרונים</h2>
+    <h2 class="section-title" style="color:#4361ee;">
+        📈 {{ chart|length }} ימים{% if chart_truncated %} האחרונים מתוך {{ totals.days }}{% endif %}
+    </h2>
     <div class="dp-chart-wrap">
         <div class="dp-chart">
             {% for c in chart %}
@@ -80,7 +115,7 @@
                 <th style="color:#0d9488;">רייק 💎</th>
                 <th class="dp-hide-mobile">ידיים</th>
                 <th class="dp-hide-mobile">שחקנים</th>
-                <th class="dp-hide-mobile">מצטבר</th>
+                {% if side == 'all' %}<th class="dp-hide-mobile">מצטבר</th>{% endif %}
             </tr>
         </thead>
         <tbody>
@@ -101,13 +136,15 @@
                 <td class="amount" style="color:#0d9488;">{{ d.rake|comma }}</td>
                 <td class="dp-hide-mobile">{{ "{:,}".format(d.hands|int) }}</td>
                 <td class="dp-hide-mobile">{{ d.players }}</td>
+                {% if side == 'all' %}
                 <td class="amount dp-hide-mobile {{ 'income' if d.cumulative >= 0 else 'expense' }}">
                     {% if d.cumulative > 0 %}+{% endif %}{{ d.cumulative|comma }}
                 </td>
+                {% endif %}
             </tr>
             {% endfor %}
             {% if not days %}
-            <tr><td colspan="8" class="muted" style="text-align:center;">אין נתונים יומיים לקופסה הזו</td></tr>
+            <tr><td colspan="{{ 8 if side == 'all' else 7 }}" class="muted" style="text-align:center;">אין נתונים יומיים לקופסה הזו</td></tr>
             {% endif %}
         </tbody>
         {% if days %}
@@ -124,7 +161,7 @@
                 <td class="amount" style="color:#0d9488;"><strong>{{ totals.rake|comma }}</strong></td>
                 <td class="dp-hide-mobile"><strong>{{ "{:,}".format(totals.hands|int) }}</strong></td>
                 <td class="dp-hide-mobile"></td>
-                <td class="dp-hide-mobile"></td>
+                {% if side == 'all' %}<td class="dp-hide-mobile"></td>{% endif %}
             </tr>
         </tfoot>
         {% endif %}
@@ -135,7 +172,65 @@
     </div>
 </div>
 
+{% if game_rows %}
+<div class="section">
+    <h2 class="section-title" style="color:#7c3aed;">🃏 פילוח לפי סוג משחק</h2>
+    <table class="table table-sm dp-table" style="max-width:520px;">
+        <thead><tr><th>סוג משחק</th><th>רווח/הפסד</th><th>משקל</th></tr></thead>
+        <tbody>
+            {% for g in game_rows %}
+            <tr>
+                <td><strong>{{ g.game_type }}</strong></td>
+                <td class="amount {{ 'income' if g.pnl >= 0 else 'expense' }}">
+                    {% if g.pnl > 0 %}+{% endif %}{{ g.pnl|comma }}
+                </td>
+                <td style="min-width:120px;">
+                    <div class="dp-share"><div class="dp-share-fill {{ 'up' if g.pnl >= 0 else 'down' }}"
+                         style="width:{{ g.share }}%;"></div></div>
+                    <span class="muted" style="font-size:0.7rem;">{{ g.share }}%</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="muted" style="font-size:0.75rem; margin-top:0.5rem;">
+        ⚠️ רווח/הפסד בלבד — לטבלת הסשנים אין עמודת רייק, ולכן <strong>הפילוח הזה לא מסתכם לקופסה</strong>
+        (קופסה = רווח/הפסד + רייק). הוא עונה על "מאיפה מגיעה התנודה", לא על "כמה מגיע לי".
+        {% if request.args.get('club') %}
+        בנוסף, לסשנים אין שיוך למועדון — בתצוגה מסוננת למועדון הפילוח מכסה את כל המשחק של אותם שחקנים, לא רק במועדון הזה.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <style>
+.dp-filters { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+.dp-filter-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.dp-filter-label { font-size: 0.72rem; color: #888; font-weight: 700; min-width: 3.2rem; }
+.dp-chip { display: inline-block; text-decoration: none; font-size: 0.75rem; font-weight: 600;
+           padding: 0.2rem 0.65rem; border: 1px solid #c7d2fe; border-radius: 999px;
+           background: #fff; color: #4361ee; white-space: nowrap; transition: background .12s, color .12s; }
+.dp-chip:hover { background: #eef2ff; }
+.dp-chip.active { background: #4361ee; color: #fff; border-color: #4361ee; }
+.dp-chip-cycle { border-color: #ddd6fe; color: #7c3aed; }
+.dp-chip-cycle:hover { background: #f5f3ff; }
+.dp-chip-cycle.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+.dp-chip-up { border-color: #a7f3d0; color: #059669; }
+.dp-chip-up:hover { background: #ecfdf5; }
+.dp-chip-up.active { background: #10b981; border-color: #10b981; color: #fff; }
+.dp-chip-down { border-color: #fecaca; color: #dc2626; }
+.dp-chip-down:hover { background: #fef2f2; }
+.dp-chip-down.active { background: #ef233c; border-color: #ef233c; color: #fff; }
+body.dark .dp-chip { background: #1e1e2e; border-color: #3b3b55; color: #93c5fd; }
+body.dark .dp-chip:hover { background: #252545; }
+body.dark .dp-filter-label { color: #777; }
+
+.dp-share { height: 6px; background: #eef0f5; border-radius: 999px; overflow: hidden; margin-bottom: 0.15rem; }
+.dp-share-fill { height: 100%; border-radius: 999px; }
+.dp-share-fill.up { background: #10b981; }
+.dp-share-fill.down { background: #ef233c; }
+body.dark .dp-share { background: #2a2a3a; }
+
 .dp-day-inline { display: none; }
 .dp-legend { display: flex; flex-wrap: wrap; gap: 0.9rem; font-size: 0.78rem; margin-bottom: 0.6rem; }
 .dp-arc { font-size: 0.62rem; font-weight: 700; color: #b45309; background: rgba(245,158,11,0.15); border-radius: 999px; padding: 0.05rem 0.4rem; margin-inline-start: 0.25rem; }

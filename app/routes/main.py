@@ -2249,6 +2249,88 @@ def agent_top_players():
 HEB_WEEKDAYS = ['שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת', 'ראשון']
 
 
+def _daily_game_type_split(preds_for, start, end, live_days):
+    """P&L per game type (MTT / NLH / PLO…) for the same box and period.
+
+    P&L ONLY — player_sessions carries no rake column, so this can never add
+    up to the box (box = P&L + rake). It answers "where is the swing coming
+    from", not "what am I owed".
+
+    Sessions also carry no club, only player_id, so when the page is narrowed
+    to one managed club this covers those players' whole play rather than only
+    that club's tables. The template says so.
+    """
+    from app.models import (DailyPlayerStats, DailyUpload, PlayerSession,
+                            ArchivedPlayerStats, ArchivedUpload,
+                            ArchivedPlayerSession)
+    from sqlalchemy import func as sqlfunc, and_
+
+    def _scoped_pids(M, U, join_cond):
+        filters, _ = preds_for(M)
+        if not filters:
+            return set(), []
+        date_f = []
+        if start:
+            date_f.append(U.upload_date >= start)
+        if end:
+            date_f.append(U.upload_date <= end)
+        q = (db.session.query(sqlfunc.distinct(M.player_id))
+             .select_from(M).join(U, join_cond)
+             .filter(*(filters + date_f +
+                       [and_(M.role != 'Name Entry', M.role.isnot(None),
+                             M.role != '')])))
+        return {r[0] for r in q.all()}, date_f
+
+    live_pids, _ = _scoped_pids(DailyPlayerStats, DailyUpload,
+                                DailyPlayerStats.upload_id == DailyUpload.id)
+    arc_pids, _ = _scoped_pids(
+        ArchivedPlayerStats, ArchivedUpload,
+        and_(ArchivedPlayerStats.upload_id == ArchivedUpload.original_id,
+             ArchivedPlayerStats.period_id == ArchivedUpload.period_id))
+
+    totals = {}
+
+    def _add(rows):
+        for gt, pnl in rows:
+            key = (gt or 'Other').strip() or 'Other'
+            totals[key] = round(totals.get(key, 0.0) + float(pnl or 0), 2)
+
+    if live_pids:
+        f = [PlayerSession.player_id.in_(list(live_pids))]
+        if start:
+            f.append(DailyUpload.upload_date >= start)
+        if end:
+            f.append(DailyUpload.upload_date <= end)
+        _add(db.session.query(PlayerSession.game_type, sqlfunc.sum(PlayerSession.pnl))
+             .select_from(PlayerSession)
+             .join(DailyUpload, PlayerSession.upload_id == DailyUpload.id)
+             .filter(*f).group_by(PlayerSession.game_type).all())
+
+    if arc_pids:
+        # Same re-upload rule as the day rows: an archived date that also
+        # exists live is already counted above.
+        f = [ArchivedPlayerSession.player_id.in_(list(arc_pids))]
+        if live_days:
+            f.append(ArchivedUpload.upload_date.notin_(list(live_days)))
+        if start:
+            f.append(ArchivedUpload.upload_date >= start)
+        if end:
+            f.append(ArchivedUpload.upload_date <= end)
+        _add(db.session.query(ArchivedPlayerSession.game_type,
+                              sqlfunc.sum(ArchivedPlayerSession.pnl))
+             .select_from(ArchivedPlayerSession)
+             .join(ArchivedUpload,
+                   and_(ArchivedPlayerSession.upload_id == ArchivedUpload.original_id,
+                        ArchivedPlayerSession.period_id == ArchivedUpload.period_id))
+             .filter(*f).group_by(ArchivedPlayerSession.game_type).all())
+
+    span = sum(abs(v) for v in totals.values()) or 1
+    return sorted(({'game_type': k, 'pnl': v,
+                    'share': round(abs(v) / span * 100, 1)}
+                   for k, v in totals.items()),
+                  key=lambda r: r['pnl'])
+
+
 @main_bp.route('/daily-pnl')
 @login_required
 def agent_daily_pnl():
@@ -2372,13 +2454,52 @@ def agent_daily_pnl():
               if d not in live}                      # re-upload wins
     merged.update({d: dict(v, source='live') for d, v in live.items()})
 
-    days = []
+    # ── Period picker ──────────────────────────────────────────────────────
+    # Cycles come from the archive periods (each is a closed two-week round and
+    # already carries its own label) plus the still-open active window.
+    from app.models import ArchivePeriod
+    from datetime import timedelta as _td
+    cycles = [{'key': 'cycle:%d' % p.id, 'label': p.label,
+               'start': p.first_date, 'end': p.last_date}
+              for p in ArchivePeriod.query.order_by(ArchivePeriod.first_date.desc()).all()]
+    active_days = sorted(live)
+    if active_days:
+        cycles.insert(0, {
+            'key': 'cycle:current',
+            'label': '%s — %s (נוכחי)' % (active_days[0].strftime('%d/%m/%Y'),
+                                          active_days[-1].strftime('%d/%m/%Y')),
+            'start': active_days[0], 'end': active_days[-1]})
+
+    all_days = sorted(merged)
+    newest = all_days[-1] if all_days else None
+    sel_range = (request.args.get('range') or 'all').strip()
+    start = end = None
+    if newest:
+        if sel_range in ('7', '30'):
+            end, start = newest, newest - _td(days=int(sel_range) - 1)
+        elif sel_range == 'month':
+            end, start = newest, newest.replace(day=1)
+        elif sel_range.startswith('cycle:'):
+            match = next((c for c in cycles if c['key'] == sel_range), None)
+            if match:
+                start, end = match['start'], match['end']
+            else:
+                sel_range = 'all'          # unknown cycle → fall back to all
+        elif sel_range != 'all':
+            sel_range = 'all'
+
+    in_range = [d for d in all_days
+                if (start is None or d >= start) and (end is None or d <= end)]
+
+    # Cumulative runs over the whole selected period, before the up/down
+    # filter — so the running total on a row stays true to that date.
+    rows = []
     running = 0.0
-    for d in sorted(merged):                          # ascending → cumulative
+    for d in in_range:
         v = merged[d]
         box = round(v['pnl'] + v['rake'], 2)
         running = round(running + box, 2)
-        days.append({
+        rows.append({
             'date': d,
             'weekday': HEB_WEEKDAYS[d.weekday()],
             'pnl': round(v['pnl'], 2),
@@ -2390,9 +2511,24 @@ def agent_daily_pnl():
             'source': v['source'],
         })
 
-    # Chart: last 30 days, oldest → newest, bar height relative to the
-    # biggest absolute box value in that window.
-    chart = days[-30:]
+    # Winning / losing days. A discontiguous set has no meaningful running
+    # total, so the template hides the cumulative column when this is on.
+    side = (request.args.get('side') or 'all').strip()
+    if side not in ('all', 'up', 'down'):
+        side = 'all'
+    if side == 'up':
+        days = [r for r in rows if r['box'] > 0]
+    elif side == 'down':
+        days = [r for r in rows if r['box'] < 0]
+    else:
+        days = list(rows)
+
+    # Chart: oldest → newest over what is displayed, bar height relative to the
+    # biggest absolute box in the window. Capped so a 98-day view stays legible;
+    # the heading says so when it truncates.
+    CHART_MAX = 60
+    chart = days[-CHART_MAX:]
+    chart_truncated = len(days) > len(chart)
     peak = max((abs(c['box']) for c in chart), default=0) or 1
     chart = [dict(c, bar_pct=round(abs(c['box']) / peak * 100, 1)) for c in chart]
 
@@ -2402,18 +2538,24 @@ def agent_daily_pnl():
         'rake': round(sum(d['rake'] for d in days), 2),
         'hands': sum(d['hands'] for d in days),
         'days': len(days),
-        'up_days': sum(1 for d in days if d['box'] > 0),
-        'down_days': sum(1 for d in days if d['box'] < 0),
+        'up_days': sum(1 for r in rows if r['box'] > 0),
+        'down_days': sum(1 for r in rows if r['box'] < 0),
+        'total_days': len(all_days),
     }
     totals['avg'] = round(totals['box'] / len(days), 2) if days else 0
     best = max(days, key=lambda d: d['box']) if days else None
     worst = min(days, key=lambda d: d['box']) if days else None
 
+    game_rows = _daily_game_type_split(_preds_for, start, end, live)
+
     days.reverse()                                    # newest first in table
 
     return render_template('main/agent_daily_pnl.html',
                            days=days, chart=chart, totals=totals,
+                           chart_truncated=chart_truncated,
                            best=best, worst=worst,
+                           cycles=cycles, sel_range=sel_range, side=side,
+                           game_rows=game_rows,
                            box_label=box_label,
                            view_as_username=view_as_username)
 
