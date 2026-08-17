@@ -2742,10 +2742,19 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
         # Partial-payment overlay: what's paid so far, what's left. Cash only —
         # does not touch poker PnL/rake or the reconciliation.
         paid_so_far = round((pay.paid_so_far or 0) if pay else 0, 2)
-        owed_abs = round(abs(settlement), 2)
-        remaining_abs = round(max(owed_abs - paid_so_far, 0), 2)
-        remaining = round((1 if settlement >= 0 else -1) * remaining_abs, 2) or 0.0
-        fully = is_paid or (owed_abs > 0.001 and paid_so_far + 0.001 >= owed_abs)
+        # A payment reduces the MAGNITUDE of the position, and is allowed to
+        # overshoot past zero. The old form clamped at 0:
+        #     max(|settlement| - paid, 0)
+        # so once the player's live figure moved below what was already
+        # collected, the row read "0 — settled" and the over-collection simply
+        # vanished from the screen. Prod proved it: lishes was collected at
+        # 1,413.11, drifted to 704.07, and the 709.04 difference showed as 0
+        # here while the agent had to work it out by hand and refund it.
+        # Unclamped, that row reads -709.04 = give 709.04 back.
+        remaining = round(settlement - paid_so_far if settlement >= 0
+                          else settlement + paid_so_far, 2) or 0.0
+        remaining_abs = round(abs(remaining), 2)
+        fully = is_paid or (paid_so_far > 0 and remaining_abs < 0.01)
         row = {
             'cycle_id': cycle.id, 'player_id': pid, 'nickname': nick, 'club': club,
             'base': round(base, 2), 'rake': round(rake, 2),
@@ -2758,9 +2767,12 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
             # agent enters a percentage and the amount is derived from it.
             'rake_pct_val': round(manual_rake / rake * 100, 2) if rake else 0,
         }
-        (settled if fully else minus if settlement < 0 else receive).append(row)
-    receive.sort(key=lambda x: x['settlement'], reverse=True)
-    minus.sort(key=lambda x: x['settlement'])
+        # Bucket by what is still OPEN (net), not by the raw play result — a
+        # debtor who paid part of it belongs in the list by what he still owes.
+        # With no payment net == settlement, so nobody moves without a payment.
+        (settled if fully else minus if remaining < 0 else receive).append(row)
+    receive.sort(key=lambda x: x['remaining'], reverse=True)
+    minus.sort(key=lambda x: x['remaining'])
     settled.sort(key=lambda x: x['nickname'])
     return receive, minus, settled
 
@@ -2892,8 +2904,8 @@ def agent_collection():
         'cycle': current, 'is_current': True,
         'date_from': date_from, 'date_to': date_to,
         'receive': receive, 'minus': minus, 'settled': settled,
-        'total_receive': round(sum(r['settlement'] for r in receive), 2),
-        'total_minus': round(sum(r['settlement'] for r in minus), 2),
+        'total_receive': round(sum(r['remaining'] for r in receive), 2),
+        'total_minus': round(sum(r['remaining'] for r in minus), 2),
         'total_collected': round(sum(r['paid_so_far'] for r in receive + minus + settled if r['settlement'] < 0), 2),
         'total_remaining_collect': round(sum(r['remaining_abs'] for r in minus), 2),
         'done': len(settled), 'pending': len(receive) + len(minus),
@@ -2907,8 +2919,8 @@ def agent_collection():
             'cycle': c, 'is_current': False,
             'date_from': None, 'date_to': None,
             'receive': receive, 'minus': minus, 'settled': settled,
-            'total_receive': round(sum(r['settlement'] for r in receive), 2),
-            'total_minus': round(sum(r['settlement'] for r in minus), 2),
+            'total_receive': round(sum(r['remaining'] for r in receive), 2),
+            'total_minus': round(sum(r['remaining'] for r in minus), 2),
             'total_collected': round(sum(r['paid_so_far'] for r in receive + minus + settled if r['settlement'] < 0), 2),
             'total_remaining_collect': round(sum(r['remaining_abs'] for r in minus), 2),
             'done': len(settled), 'pending': len(receive) + len(minus),
