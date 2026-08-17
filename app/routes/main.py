@@ -2249,6 +2249,88 @@ def agent_top_players():
 HEB_WEEKDAYS = ['שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת', 'ראשון']
 
 
+def _equity_curve(rows, width=1000, height=200, pad=10):
+    """Geometry for the cumulative-box SVG curve.
+
+    Time runs RIGHT → LEFT to match the page direction (and the bar chart):
+    the oldest day sits at x=width, the newest at x=0.
+
+    Returns None for fewer than 2 points — a one-point line is not a curve.
+    """
+    if len(rows) < 2:
+        return None
+    vals = [r['cumulative'] for r in rows]
+    lo, hi = min(vals + [0]), max(vals + [0])
+    span = (hi - lo) or 1.0
+    n = len(rows)
+
+    def x_of(i):
+        return round(width - (i / (n - 1)) * width, 2)
+
+    def y_of(v):
+        return round(height - pad - ((v - lo) / span) * (height - 2 * pad), 2)
+
+    pts = [(x_of(i), y_of(v)) for i, v in enumerate(vals)]
+    line = 'M ' + ' L '.join('%s,%s' % p for p in pts)
+    base = y_of(0)
+    area = line + ' L %s,%s L %s,%s Z' % (pts[-1][0], base, pts[0][0], base)
+    peak_i = max(range(n), key=lambda i: vals[i])
+    trough_i = min(range(n), key=lambda i: vals[i])
+    return {
+        'line': line, 'area': area,
+        'width': width, 'height': height,
+        'zero_y': base, 'has_zero': lo < 0 < hi,
+        'last': {'x': pts[-1][0], 'y': pts[-1][1], 'value': vals[-1]},
+        'peak': {'x': pts[peak_i][0], 'y': pts[peak_i][1], 'value': vals[peak_i],
+                 'date': rows[peak_i]['date']},
+        'trough': {'x': pts[trough_i][0], 'y': pts[trough_i][1], 'value': vals[trough_i],
+                   'date': rows[trough_i]['date']},
+        'hi': hi, 'lo': lo,
+        'up': vals[-1] >= 0,
+    }
+
+
+# Sunday-first, the way a Hebrew week reads. Python's weekday() is Mon=0.
+_WEEK_ORDER = [6, 0, 1, 2, 3, 4, 5]
+
+
+def _weekday_breakdown(rows):
+    """Per weekday: how many days, total box, average box. Bar width is
+    relative to the biggest absolute average in the set."""
+    buckets = {i: {'n': 0, 'box': 0.0} for i in range(7)}
+    for r in rows:
+        b = buckets[r['date'].weekday()]
+        b['n'] += 1
+        b['box'] = round(b['box'] + r['box'], 2)
+    out = []
+    for wd in _WEEK_ORDER:
+        b = buckets[wd]
+        avg = round(b['box'] / b['n'], 2) if b['n'] else 0.0
+        out.append({'name': HEB_WEEKDAYS[wd], 'days': b['n'],
+                    'box': round(b['box'], 2), 'avg': avg})
+    peak = max((abs(o['avg']) for o in out), default=0) or 1
+    for o in out:
+        o['bar_pct'] = round(abs(o['avg']) / peak * 100, 1)
+    return out
+
+
+def _streaks(rows):
+    """Longest run of consecutive up days and of down days, in date order."""
+    best_up = best_down = cur_up = cur_down = 0
+    for r in rows:
+        if r['box'] > 0:
+            cur_up, cur_down = cur_up + 1, 0
+        elif r['box'] < 0:
+            cur_down, cur_up = cur_down + 1, 0
+        else:
+            cur_up = cur_down = 0
+        best_up, best_down = max(best_up, cur_up), max(best_down, cur_down)
+    total = len(rows)
+    ups = sum(1 for r in rows if r['box'] > 0)
+    return {'up': best_up, 'down': best_down,
+            'win_pct': round(ups / total * 100, 1) if total else 0}
+
+
 def _daily_game_type_split(preds_for, start, end, live_days):
     """P&L per game type (MTT / NLH / PLO…) for the same box and period.
 
@@ -2547,6 +2629,9 @@ def agent_daily_pnl():
     worst = min(days, key=lambda d: d['box']) if days else None
 
     game_rows = _daily_game_type_split(_preds_for, start, end, live)
+    curve = _equity_curve(rows)
+    weekdays = _weekday_breakdown(rows)
+    streaks = _streaks(rows)
 
     days.reverse()                                    # newest first in table
 
@@ -2555,7 +2640,8 @@ def agent_daily_pnl():
                            chart_truncated=chart_truncated,
                            best=best, worst=worst,
                            cycles=cycles, sel_range=sel_range, side=side,
-                           game_rows=game_rows,
+                           game_rows=game_rows, curve=curve,
+                           weekdays=weekdays, streaks=streaks,
                            box_label=box_label,
                            view_as_username=view_as_username)
 

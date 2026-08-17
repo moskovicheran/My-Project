@@ -71,10 +71,71 @@
     </div>
 </div>
 
+{% if curve and side == 'all' %}
+<div class="section dp-curve-card">
+    <div class="dp-curve-head">
+        <h2 class="section-title" style="margin:0;">📈 עקומת הקופסה</h2>
+        <div class="dp-curve-now {{ 'up' if curve.up else 'down' }}">
+            {% if curve.last.value > 0 %}+{% endif %}{{ curve.last.value|comma }}
+        </div>
+    </div>
+    <svg class="dp-svg" viewBox="0 0 {{ curve.width }} {{ curve.height }}"
+         preserveAspectRatio="none" role="img"
+         aria-label="עקומת הקופסה המצטברת לאורך התקופה">
+        <defs>
+            <linearGradient id="dpFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stop-color="{{ '#10b981' if curve.up else '#ef233c' }}" stop-opacity="0.30"/>
+                <stop offset="100%" stop-color="{{ '#10b981' if curve.up else '#ef233c' }}" stop-opacity="0.02"/>
+            </linearGradient>
+        </defs>
+        {% if curve.has_zero %}
+        <line x1="0" y1="{{ curve.zero_y }}" x2="{{ curve.width }}" y2="{{ curve.zero_y }}"
+              class="dp-svg-zero" stroke-dasharray="5 5"/>
+        {% endif %}
+        <path d="{{ curve.area }}" fill="url(#dpFill)"/>
+        <path d="{{ curve.line }}" fill="none" stroke="{{ '#10b981' if curve.up else '#ef233c' }}"
+              stroke-width="2.5" vector-effect="non-scaling-stroke"
+              stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="{{ curve.peak.x }}" cy="{{ curve.peak.y }}" r="4" class="dp-dot-peak"/>
+        <circle cx="{{ curve.trough.x }}" cy="{{ curve.trough.y }}" r="4" class="dp-dot-trough"/>
+        <circle cx="{{ curve.last.x }}" cy="{{ curve.last.y }}" r="5"
+                fill="{{ '#10b981' if curve.up else '#ef233c' }}" class="dp-dot-now"/>
+    </svg>
+    <div class="dp-curve-foot muted">
+        <span>הזמן זורם מימין (הישן) לשמאל (החדש)</span>
+        <span><span class="dp-key dp-key-peak"></span> שיא {{ curve.peak.value|comma }} · {{ curve.peak.date.strftime('%d/%m') }}</span>
+        <span><span class="dp-key dp-key-trough"></span> שפל {{ curve.trough.value|comma }} · {{ curve.trough.date.strftime('%d/%m') }}</span>
+    </div>
+</div>
+{% endif %}
+
+{% if weekdays and side == 'all' %}
+<div class="section">
+    <h2 class="section-title" style="color:#0d9488;">📆 לפי יום בשבוע</h2>
+    <div class="dp-week">
+        {% for w in weekdays %}
+        <div class="dp-week-cell{% if not w.days %} dp-week-empty{% endif %}"
+             title="{{ w.name }} · {{ w.days }} ימים · סה״כ {{ w.box|comma }}">
+            <div class="dp-week-name">{{ w.name }}</div>
+            <div class="dp-week-track">
+                <div class="dp-week-bar {{ 'up' if w.avg >= 0 else 'down' }}"
+                     style="height:{{ w.bar_pct }}%;"></div>
+            </div>
+            <div class="dp-week-avg {{ 'income' if w.avg >= 0 else 'expense' }}">
+                {% if w.avg > 0 %}+{% endif %}{{ w.avg|comma }}
+            </div>
+            <div class="dp-week-days muted">{{ w.days }} ימים</div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="muted" style="font-size:0.75rem; margin-top:0.5rem;">הגובה לפי הממוצע ליום, יחסית ליום החזק בשבוע.</div>
+</div>
+{% endif %}
+
 {% if chart %}
 <div class="section">
     <h2 class="section-title" style="color:#4361ee;">
-        📈 {{ chart|length }} ימים{% if chart_truncated %} האחרונים מתוך {{ totals.days }}{% endif %}
+        📊 {{ chart|length }} ימים{% if chart_truncated %} האחרונים מתוך {{ totals.days }}{% endif %}
     </h2>
     <div class="dp-chart-wrap">
         <div class="dp-chart">
@@ -103,6 +164,11 @@
     <div class="dp-legend muted">
         <span>ימים חיוביים: <strong style="color:#10b981;">{{ totals.up_days }}</strong></span>
         <span>ימים שליליים: <strong style="color:#ef233c;">{{ totals.down_days }}</strong></span>
+        {% if streaks %}
+        <span>אחוז ימים חיוביים: <strong>{{ streaks.win_pct }}%</strong></span>
+        <span>רצף ירוק הכי ארוך: <strong style="color:#10b981;">{{ streaks.up }}</strong></span>
+        <span>רצף אדום הכי ארוך: <strong style="color:#ef233c;">{{ streaks.down }}</strong></span>
+        {% endif %}
         <span>קופסה = רווח/הפסד + רייק</span>
     </div>
     <table class="table table-sm dp-table">
@@ -246,15 +312,56 @@ body.dark .dp-share { background: #2a2a3a; }
 .dp-up { align-items: flex-end; }
 .dp-down { align-items: flex-start; }
 .dp-zero { width: 100%; height: 1px; background: #d1d5db; }
-.dp-bar { width: 100%; border-radius: 3px; min-height: 2px; }
-.dp-bar-up { background: #10b981; }
-.dp-bar-down { background: #ef233c; }
+.dp-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; transition: filter .12s; }
+.dp-bar-up { background: linear-gradient(180deg, #34d399, #059669); }
+.dp-bar-down { background: linear-gradient(0deg, #f87171, #dc2626); border-radius: 0 0 3px 3px; }
+.dp-col:hover .dp-bar { filter: brightness(1.15) saturate(1.2); }
+
+/* ── equity curve ── */
+.dp-curve-card { padding-bottom: 0.8rem; }
+.dp-curve-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.dp-curve-now { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+.dp-curve-now.up { color: #10b981; }
+.dp-curve-now.down { color: #ef233c; }
+.dp-svg { display: block; width: 100%; height: 190px; overflow: visible; }
+.dp-svg-zero { stroke: #cbd5e1; stroke-width: 1; }
+.dp-dot-peak { fill: #10b981; opacity: 0.85; }
+.dp-dot-trough { fill: #ef233c; opacity: 0.85; }
+.dp-dot-now { stroke: #fff; stroke-width: 2; }
+.dp-curve-foot { display: flex; flex-wrap: wrap; gap: 0.9rem; font-size: 0.72rem; margin-top: 0.5rem; }
+.dp-key { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 0.25rem; }
+.dp-key-peak { background: #10b981; }
+.dp-key-trough { background: #ef233c; }
+body.dark .dp-svg-zero { stroke: #3a3a4a; }
+body.dark .dp-dot-now { stroke: #1e1e2e; }
+
+/* ── weekday strip ── */
+.dp-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.4rem; }
+.dp-week-cell { display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+                padding: 0.5rem 0.2rem; border-radius: 10px; background: #fafbfc; }
+.dp-week-empty { opacity: 0.4; }
+.dp-week-name { font-size: 0.75rem; font-weight: 700; }
+.dp-week-track { width: 60%; height: 54px; display: flex; align-items: flex-end; }
+.dp-week-bar { width: 100%; border-radius: 4px; min-height: 3px; }
+.dp-week-bar.up { background: linear-gradient(180deg, #34d399, #059669); }
+.dp-week-bar.down { background: linear-gradient(180deg, #f87171, #dc2626); }
+.dp-week-avg { font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+.dp-week-days { font-size: 0.65rem; }
+body.dark .dp-week-cell { background: #252535; }
 .dp-xlabel { font-size: 0.6rem; color: #888; margin-top: 0.25rem; transform: rotate(-45deg); transform-origin: center; white-space: nowrap; }
 body.dark .dp-zero { background: #3a3a4a; }
 body.dark .dp-xlabel { color: #777; }
 
 @media (max-width: 640px) {
     .dp-hide-mobile { display: none !important; }
+    .dp-svg { height: 150px; }
+    .dp-curve-now { font-size: 1.2rem; }
+    .dp-week { gap: 0.2rem; }
+    .dp-week-cell { padding: 0.4rem 0.1rem; }
+    .dp-week-name { font-size: 0.65rem; }
+    .dp-week-track { height: 40px; width: 72%; }
+    .dp-week-avg { font-size: 0.6rem; }
+    .dp-week-days { display: none; }
     .dp-day-inline { display: block; font-size: 0.72rem; line-height: 1.2; }
     .dp-table td, .dp-table th { padding: 0.4rem 0.3rem; font-size: 0.8rem; }
     .dp-col { width: 16px; flex: 0 0 16px; }
