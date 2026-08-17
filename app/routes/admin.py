@@ -2090,70 +2090,10 @@ def agent_view(sa_id):
 @admin_required
 def transfers():
     from app.union_data import (get_all_players_db, get_all_balances,
-                                 resolve_transfer, get_player_club_pnl)
-    from app.models import PlayerCross
-
-    cross_detail = None  # set by prepare_cross to render the per-club picker
+                                 resolve_transfer)
 
     if request.method == 'POST':
         action = request.form.get('action')
-        if action == 'prepare_cross':
-            # Load a player's per-club P&L so the admin can balance a split
-            # player. No DB mutation → render directly (not a redirect).
-            cross_key = request.form.get('cross_key', '').strip()
-            if not cross_key or '|' not in cross_key:
-                flash('יש לבחור שחקן מהרשימה.', 'danger')
-                return redirect(url_for('admin.transfers'))
-            pid, pname = cross_key.split('|', 1)
-            clubs = get_player_club_pnl(pid)
-            if len(clubs) < 2:
-                flash(f'{pname} משחק במועדון אחד בלבד — אין מה לאזן.', 'warning')
-                return redirect(url_for('admin.transfers'))
-            plus, minus = clubs[0], clubs[-1]
-            suggest_amount = 0.0
-            if plus['pnl'] > 0 and minus['pnl'] < 0:
-                suggest_amount = round(min(plus['pnl'], -minus['pnl']), 2)
-            cross_detail = {
-                'player_id': pid, 'player_name': pname, 'clubs': clubs,
-                'suggest_from': plus['club'] if plus['pnl'] > 0 else '',
-                'suggest_to': minus['club'] if minus['pnl'] < 0 else '',
-                'suggest_amount': suggest_amount,
-            }
-            # fall through to the shared render at the bottom
-        elif action == 'add_cross':
-            pid = request.form.get('cross_player_id', '').strip()
-            pname = request.form.get('cross_player_name', '').strip()
-            from_club = request.form.get('from_club', '').strip()
-            to_club = request.form.get('to_club', '').strip()
-            description = request.form.get('description', '').strip()
-            try:
-                amount = float(request.form.get('cross_amount', 0))
-            except ValueError:
-                flash('סכום לא תקין.', 'danger')
-                return redirect(url_for('admin.transfers'))
-            if not pid or not from_club or not to_club:
-                flash('יש לבחור שחקן ושני מועדונים.', 'danger')
-            elif from_club == to_club:
-                flash('יש לבחור שני מועדונים שונים.', 'warning')
-            elif amount <= 0:
-                flash('הסכום חייב להיות חיובי.', 'danger')
-            else:
-                c = PlayerCross(user_id=current_user.id, player_id=pid,
-                                player_name=pname, from_club=from_club,
-                                to_club=to_club, amount=round(amount, 2),
-                                description=description)
-                db.session.add(c)
-                db.session.commit()
-                flash(f'אוזן {pname}: {amount:.2f} מ-{from_club} ל-{to_club}.', 'success')
-            return redirect(url_for('admin.transfers'))
-        elif action == 'delete_cross':
-            cid = request.form.get('cross_id')
-            c = PlayerCross.query.get(cid)
-            if c:
-                db.session.delete(c)
-                db.session.commit()
-                flash('האיזון בוטל.', 'success')
-            return redirect(url_for('admin.transfers'))
         if action == 'add':
             from_key = request.form.get('from_key', '').strip()
             to_key = request.form.get('to_key', '').strip()
@@ -2191,18 +2131,14 @@ def transfers():
                 db.session.delete(t)
                 db.session.commit()
                 flash('העברה נמחקה.', 'success')
-        # prepare_cross falls through to the render below (with cross_detail);
-        # every other POST action is done and redirects (PRG).
-        if action != 'prepare_cross':
-            return redirect(url_for('admin.transfers'))
+        # Every POST action is done here and redirects (PRG).
+        return redirect(url_for('admin.transfers'))
 
     members = get_all_players_db()
     balances = get_all_balances()
     all_transfers = MoneyTransfer.query.order_by(MoneyTransfer.created_at.desc()).all()
-    crosses = PlayerCross.query.order_by(PlayerCross.created_at.desc()).all()
     return render_template('admin/transfers.html',
-                           transfers=all_transfers, members=members, balances=balances,
-                           crosses=crosses, cross_detail=cross_detail)
+                           transfers=all_transfers, members=members, balances=balances)
 
 
 @admin_bp.route('/notes', methods=['GET', 'POST'])
