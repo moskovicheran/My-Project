@@ -4927,13 +4927,14 @@ def agent_transfers():
     from app.union_data import (get_player_balance, get_all_balances,
                                  resolve_transfer, get_players_with_current_scope,
                                  get_agent_scope, get_agent_scope_predicate)
-    from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats, HOUSE_PLAYER_NAME
+    from app.models import MoneyTransfer, PlayerAssignment, DailyPlayerStats
 
     sa_id = current_user.player_id
-    # Per-agent synthetic "house" (inner box). Unlike the admin's single global
-    # __house__, each agent gets their own so pots never leak between agents. The
-    # id has no DailyPlayerStats rows, so it stays out of every dashboard/overview
-    # aggregation — its (possibly negative) balance surfaces ONLY on this page.
+    # RETIRED: the per-agent synthetic "house" (inner box). New house rows can
+    # no longer be created — the feature confused settlement, because a house
+    # row is not zero-sum inside the box: it silently moved money out of the
+    # card totals while the cash sat with the agent. The id is still resolved
+    # so rows written before the removal stay visible and deletable below.
     house_id = f'__house__{sa_id}'
 
     # The agent's OWN box: every player whose CURRENT attribution (their
@@ -5031,7 +5032,9 @@ def agent_transfers():
     allowed_ids = set(my_player_ids) | club_ids | agent_ids
 
     # Ledger scope: all box entities for validation, the transfers list and
-    # delete permission (+house for the inner-box rows).
+    # delete permission. The retired inner box (house_id) stays in scope on
+    # purpose — creating house rows is gone, but rows created before the
+    # feature was removed must remain visible and deletable here.
     ledger_ids = set(allowed_ids) | {house_id}
 
     cross_detail = None  # set by prepare_cross to render the per-club picker
@@ -5101,63 +5104,6 @@ def agent_transfers():
                 db.session.commit()
                 flash('האיזון בוטל.', 'success')
             return redirect(url_for('main.agent_transfers'))
-        if action == 'return_house':
-            # Pull money from one of the agent's players into their inner box
-            # (e.g. reversing a wrong tournament). Player balance drops, box rises.
-            rh_key = request.form.get('rh_key', '').strip()
-            description = request.form.get('description', '').strip()
-            try:
-                amount = float(request.form.get('rh_amount', 0))
-            except ValueError:
-                flash('סכום לא תקין.', 'danger')
-                return redirect(url_for('main.agent_transfers'))
-            if not rh_key or '|' not in rh_key:
-                flash('יש לבחור שחקן.', 'danger')
-            elif amount <= 0:
-                flash('הסכום חייב להיות חיובי.', 'danger')
-            else:
-                pid, pname = rh_key.split('|', 1)
-                if pid not in my_player_ids:
-                    flash('אין הרשאה לשחקן שלא שייך אליך.', 'danger')
-                else:
-                    t = MoneyTransfer(user_id=current_user.id,
-                                      from_player_id=pid, from_name=pname,
-                                      to_player_id=house_id, to_name=HOUSE_PLAYER_NAME,
-                                      amount=amount,
-                                      description=description or 'החזרת כסף לבית')
-                    db.session.add(t)
-                    db.session.commit()
-                    flash(f'הוחזרו {amount} מ-{pname} לקופסא הפנימית.', 'success')
-            return redirect(url_for('main.agent_transfers'))
-        if action == 'distribute_house':
-            # Pay from the inner box to a player — e.g. settling a player's debt.
-            # NOT capped (unlike admin): the box may go negative, and that minus
-            # is the agent's float, hidden from every external view.
-            dh_key = request.form.get('dh_key', '').strip()
-            description = request.form.get('description', '').strip()
-            try:
-                amount = float(request.form.get('dh_amount', 0))
-            except ValueError:
-                flash('סכום לא תקין.', 'danger')
-                return redirect(url_for('main.agent_transfers'))
-            if not dh_key or '|' not in dh_key:
-                flash('יש לבחור שחקן.', 'danger')
-            elif amount <= 0:
-                flash('הסכום חייב להיות חיובי.', 'danger')
-            else:
-                pid, pname = dh_key.split('|', 1)
-                if pid not in my_player_ids:
-                    flash('אין הרשאה לשחקן שלא שייך אליך.', 'danger')
-                else:
-                    t = MoneyTransfer(user_id=current_user.id,
-                                      from_player_id=house_id, from_name=HOUSE_PLAYER_NAME,
-                                      to_player_id=pid, to_name=pname,
-                                      amount=amount,
-                                      description=description or 'חלוקה מהבית')
-                    db.session.add(t)
-                    db.session.commit()
-                    flash(f'חולקו {amount} מהקופסא הפנימית ל-{pname}.', 'success')
-            return redirect(url_for('main.agent_transfers'))
         if action == 'add':
             from_key = request.form.get('from_key', '').strip()
             to_key = request.form.get('to_key', '').strip()
@@ -5217,9 +5163,6 @@ def agent_transfers():
             return redirect(url_for('main.agent_transfers'))
 
     balances = get_all_balances(my_player_ids)
-    # The inner box's true balance (may be negative). This is the ONLY place the
-    # minus is shown — every other view excludes the synthetic house entirely.
-    house_balance = get_player_balance(house_id)
 
     # Combined counterparty list for the transfer autocomplete: players, then
     # managed clubs (🏛️), then sub-agents (👤). Club/agent balances are their
@@ -5259,7 +5202,7 @@ def agent_transfers():
     return render_template('main/agent_transfers.html',
                            players=my_players, balances=balances,
                            xfer_targets=xfer_targets,
-                           transfers=my_transfers, house_balance=house_balance,
+                           transfers=my_transfers,
                            crosses=crosses, cross_detail=cross_detail)
 
 

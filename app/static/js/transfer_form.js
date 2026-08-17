@@ -130,11 +130,10 @@
         wire('to', toPlayers);
     };
 
-    // Generic single-field player autocomplete (house return / distribute).
+    // Generic single-field player autocomplete.
     // prefix drives the element ids: <prefix>Search/Key/Dropdown/Balance/Amount.
-    // capFromBalance=true caps the amount input at the picked player's balance
-    // (return-to-house); false leaves the amount cap to the form (distribute,
-    // capped server-side and via the input's own max = house pot).
+    // capFromBalance=true caps the amount input at the picked player's balance;
+    // false leaves any cap to the form itself.
     function single(prefix, players, capFromBalance) {
         var search = document.getElementById(prefix + 'Search');
         var hidden = document.getElementById(prefix + 'Key');
@@ -175,19 +174,7 @@
         });
     }
 
-    // Return-to-house works for any player (incl. minus) and isn't capped by
-    // the player's balance — it's a correction — so capFromBalance = false.
-    window.initReturnHouse = function (players) { single('rh', players, false); };
-    window.initDistributeHouse = function (players) { single('dh', players, false); };
     // Player-cross loader (admin balance UI): pick a player, then "load" posts
     // cross_key = "player_id|nickname" to render his per-club breakdown.
     window.initPlayerCross = function (players) { single('cx', players, false); };
-
-    function pickedOrAlert(id) {
-        var k = document.getElementById(id);
-        if (!k || !k.value) { alert('יש לבחור שחקן מהרשימה.'); return false; }
-        return true;
-    }
-    window.validateReturnHouse = function () { return pickedOrAlert('rhKey'); };
-    window.validateDistributeHouse = function () { return pickedOrAlert('dhKey'); };
 })();

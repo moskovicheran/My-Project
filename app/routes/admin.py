@@ -2089,10 +2089,9 @@ def agent_view(sa_id):
 @admin_bp.route('/transfers', methods=['GET', 'POST'])
 @admin_required
 def transfers():
-    from app.union_data import (get_all_players_db, get_player_balance,
-                                 get_all_balances, resolve_transfer,
-                                 get_player_club_pnl)
-    from app.models import HOUSE_PLAYER_ID, HOUSE_PLAYER_NAME, PlayerCross
+    from app.union_data import (get_all_players_db, get_all_balances,
+                                 resolve_transfer, get_player_club_pnl)
+    from app.models import PlayerCross
 
     cross_detail = None  # set by prepare_cross to render the per-club picker
 
@@ -2155,61 +2154,6 @@ def transfers():
                 db.session.commit()
                 flash('האיזון בוטל.', 'success')
             return redirect(url_for('admin.transfers'))
-        if action == 'return_house':
-            # Pull money from a player back into the house pot (e.g. reversing a
-            # wrong tournament). Works for ANY player — plus or minus — since
-            # it's a correction; the player's balance simply drops by the amount
-            # (it may go negative), and the house pot rises by it.
-            rh_key = request.form.get('rh_key', '').strip()
-            description = request.form.get('description', '').strip()
-            try:
-                amount = float(request.form.get('rh_amount', 0))
-            except ValueError:
-                flash('סכום לא תקין.', 'danger')
-                return redirect(url_for('admin.transfers'))
-            if not rh_key or '|' not in rh_key:
-                flash('יש לבחור שחקן.', 'danger')
-            elif amount <= 0:
-                flash('הסכום חייב להיות חיובי.', 'danger')
-            else:
-                pid, pname = rh_key.split('|', 1)
-                t = MoneyTransfer(user_id=current_user.id,
-                                  from_player_id=pid, from_name=pname,
-                                  to_player_id=HOUSE_PLAYER_ID, to_name=HOUSE_PLAYER_NAME,
-                                  amount=amount,
-                                  description=description or 'החזרת כסף לבית')
-                db.session.add(t)
-                db.session.commit()
-                flash(f'הוחזרו {amount} מ-{pname} לקופת הבית.', 'success')
-            return redirect(url_for('admin.transfers'))
-        if action == 'distribute_house':
-            # Pay money out of the house pot to a player who should receive it.
-            # Capped at what the house holds, so giving back balances taking.
-            dh_key = request.form.get('dh_key', '').strip()
-            description = request.form.get('description', '').strip()
-            try:
-                amount = float(request.form.get('dh_amount', 0))
-            except ValueError:
-                flash('סכום לא תקין.', 'danger')
-                return redirect(url_for('admin.transfers'))
-            house_bal = get_player_balance(HOUSE_PLAYER_ID)
-            if not dh_key or '|' not in dh_key:
-                flash('יש לבחור שחקן.', 'danger')
-            elif amount <= 0:
-                flash('הסכום חייב להיות חיובי.', 'danger')
-            elif amount > house_bal:
-                flash(f'חריגה! בקופת הבית יש {house_bal:.2f} בלבד.', 'danger')
-            else:
-                pid, pname = dh_key.split('|', 1)
-                t = MoneyTransfer(user_id=current_user.id,
-                                  from_player_id=HOUSE_PLAYER_ID, from_name=HOUSE_PLAYER_NAME,
-                                  to_player_id=pid, to_name=pname,
-                                  amount=amount,
-                                  description=description or 'חלוקה מקופת הבית')
-                db.session.add(t)
-                db.session.commit()
-                flash(f'חולקו {amount} מקופת הבית ל-{pname}.', 'success')
-            return redirect(url_for('admin.transfers'))
         if action == 'add':
             from_key = request.form.get('from_key', '').strip()
             to_key = request.form.get('to_key', '').strip()
@@ -2254,12 +2198,10 @@ def transfers():
 
     members = get_all_players_db()
     balances = get_all_balances()
-    house_balance = get_player_balance(HOUSE_PLAYER_ID)
     all_transfers = MoneyTransfer.query.order_by(MoneyTransfer.created_at.desc()).all()
     crosses = PlayerCross.query.order_by(PlayerCross.created_at.desc()).all()
     return render_template('admin/transfers.html',
                            transfers=all_transfers, members=members, balances=balances,
-                           house_balance=house_balance,
                            crosses=crosses, cross_detail=cross_detail)
 
 

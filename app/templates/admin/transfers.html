@@ -44,71 +44,6 @@
     </form>
 </div>
 
-<div class="section" style="margin-bottom:1.5rem; border:2px solid #667eea; border-radius:14px;">
-    <h2 class="section-title">💰 החזרת כסף לבית</h2>
-    <p class="muted small" style="margin:-0.4rem 0 0.8rem;">מושך כסף משחקן (בפלוס) חזרה לקופת הבית — למשל ביטול טורניר שגוי. מתועד כמו כל העברה.</p>
-    <form method="POST" onsubmit="return validateReturnHouse()" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <input type="hidden" name="action" value="return_house">
-
-        <div style="flex:2; min-width:240px; position:relative;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">שחקן (היתרה שלו תרד · גם שחקן במינוס — תיקון)</label>
-            <input type="text" id="rhSearch" autocomplete="off" placeholder="הקלד 2 אותיות לחיפוש..."
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-            <input type="hidden" name="rh_key" id="rhKey">
-            <div id="rhDropdown" class="sa-autocomplete" style="display:none;"></div>
-            <div id="rhBalance" class="muted small" style="margin-top:0.2rem;"></div>
-        </div>
-
-        <div style="min-width:110px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סכום</label>
-            <input type="number" name="rh_amount" id="rhAmount" required step="0.01" min="0.01" placeholder="0.00"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-        </div>
-
-        <div style="flex:1; min-width:120px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">תיאור / סיבה</label>
-            <input type="text" name="description" placeholder="למשל: טורניר שגוי"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-        </div>
-
-        <button type="submit" class="btn btn-primary">החזר לבית</button>
-    </form>
-    <div class="muted small" style="margin-top:0.6rem;">סה"כ בקופת הבית: <strong style="color:#667eea;">{{ house_balance|comma }}</strong></div>
-</div>
-
-<div class="section" style="margin-bottom:1.5rem; border:2px solid #2ec4b6; border-radius:14px;">
-    <h2 class="section-title">🎁 חלוקה מקופת הבית</h2>
-    <p class="muted small" style="margin:-0.4rem 0 0.8rem;">מחלק כסף מקופת הבית לשחקן שאמור לקבל — כך מאזנים את מה שנמשך. מוגבל לסכום שנצבר בקופה ({{ house_balance|comma }}).</p>
-    <form method="POST" onsubmit="return validateDistributeHouse()" style="display:flex; align-items:flex-end; gap:0.6rem; flex-wrap:wrap;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <input type="hidden" name="action" value="distribute_house">
-
-        <div style="flex:2; min-width:240px; position:relative;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">מקבל (היתרה שלו תעלה)</label>
-            <input type="text" id="dhSearch" autocomplete="off" placeholder="הקלד 2 אותיות לחיפוש..."
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-            <input type="hidden" name="dh_key" id="dhKey">
-            <div id="dhDropdown" class="sa-autocomplete" style="display:none;"></div>
-            <div id="dhBalance" class="muted small" style="margin-top:0.2rem;"></div>
-        </div>
-
-        <div style="min-width:110px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">סכום</label>
-            <input type="number" name="dh_amount" id="dhAmount" required step="0.01" min="0.01" max="{{ house_balance }}" placeholder="0.00"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-        </div>
-
-        <div style="flex:1; min-width:120px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">תיאור / סיבה</label>
-            <input type="text" name="description" placeholder="למשל: זיכוי מגיע"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
-        </div>
-
-        <button type="submit" class="btn btn-primary">חלק לשחקן</button>
-    </form>
-</div>
-
 <div class="section" style="margin-bottom:1.5rem; border:2px solid #f59e0b; border-radius:14px;">
     <h2 class="section-title">⚖️ איזון שחקן בין מועדונים</h2>
     <p class="muted small" style="margin:-0.4rem 0 0.8rem;">שחקן אחד שמשחק בשני מועדונים (פלוס באחד, מינוס בשני) — מזיז את הפלוס לכיסוי המינוס כך ששני הצדדים מאוזנים בדשבורד, ונשאר רק ההפרש האמיתי. לא נוגע בארנק (zero-sum) — רק מחלק מחדש את ה-P&L של השחקן בין המועדונים שלו.</p>
@@ -251,8 +186,6 @@ var ALL_PLAYERS = [
     {% endfor %}
 ];
 initTransferForm(ALL_PLAYERS, ALL_PLAYERS);
-initReturnHouse(ALL_PLAYERS);
-initDistributeHouse(ALL_PLAYERS);
 initPlayerCross(ALL_PLAYERS);
 </script>
 {% endblock %}

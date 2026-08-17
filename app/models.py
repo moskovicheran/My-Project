@@ -55,9 +55,13 @@ class AdminNote(db.Model):
     user = db.relationship('User', backref='notes')
 
 
-# Synthetic "house" account that money is returned to (e.g. reversing a wrong
-# tournament). It isn't a real player — it only ever appears as the to_player_id
-# of a MoneyTransfer, so its balance equals the total returned to the house.
+# RETIRED synthetic "house" account. The return-to-house / distribute-from-house
+# forms were removed from every dashboard: a house row has only one real side,
+# so unlike a player-to-player transfer it is NOT zero-sum inside a box — it
+# quietly shrank the card totals while the cash stayed with the agent, and the
+# settlement stopped matching the dashboard.
+# The constants remain because rows written before the removal still exist and
+# must keep rendering with their name.
 HOUSE_PLAYER_ID = '__house__'
 HOUSE_PLAYER_NAME = 'הבית'
 
