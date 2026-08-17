@@ -1,0 +1,79 @@
+{# One-off announcement card for the /daily-pnl tab.
+   Renders only while `daily_promo_days` > 0 (see inject_daily_pnl_promo);
+   after DAILY_PNL_PROMO_UNTIL it disappears on its own. Safe to delete this
+   file, the include lines and the context processor once the date has passed. #}
+{% if daily_promo_days %}
+<div class="dpp-card" id="dppCard" hidden>
+    <button type="button" class="dpp-x" onclick="dppDismiss()" title="הבנתי, אל תציג שוב">&times;</button>
+    <div class="dpp-icon">📅</div>
+    <h3>חדש — רווח/הפסד יומי</h3>
+    <p>הקופסה שלך מפורקת יום‑יום · עקומה מצטברת · פילוח לפי יום בשבוע וסוג משחק</p>
+    <a href="{{ url_for('main.agent_daily_pnl', view_as=request.args.get('view_as')) }}"
+       class="dpp-cta dpp-shine">כניסה לדוח היומי ←</a>
+    <div class="dpp-days">
+        {# Hebrew counts 1 and 2 with their own words — "בעוד 1 ימים" reads broken. #}
+        ההודעה תיעלם אוטומטית
+        {%- if daily_promo_days == 1 %} היום
+        {%- elif daily_promo_days == 2 %} בעוד יומיים
+        {%- else %} בעוד {{ daily_promo_days }} ימים
+        {%- endif %} · הטאב ימשיך להופיע בסרגל למעלה
+    </div>
+</div>
+
+<style>
+.dpp-card {
+    position: relative; text-align: center; border-radius: 18px;
+    padding: 1.6rem 1.2rem; margin-bottom: 1.2rem; color: #fff;
+    background: radial-gradient(120% 140% at 50% 0%, #7c3aed 0%, #4c1d95 55%, #312e81 100%);
+    box-shadow: 0 10px 30px rgba(49, 46, 129, 0.3);
+}
+.dpp-x {
+    position: absolute; top: 0.5rem; inset-inline-start: 0.7rem;
+    background: none; border: 0; color: #fff; opacity: 0.6;
+    font-size: 1.3rem; line-height: 1; cursor: pointer;
+}
+.dpp-x:hover { opacity: 1; }
+.dpp-icon { font-size: 2.1rem; line-height: 1; }
+.dpp-card h3 { margin: 0.5rem 0 0.2rem; font-size: 1.45rem; font-weight: 800; }
+.dpp-card p { margin: 0 0 1rem; font-size: 0.9rem; opacity: 0.88; }
+.dpp-cta {
+    display: inline-flex; align-items: center; gap: 0.4rem; text-decoration: none;
+    white-space: nowrap; background: #fff; color: #5b21b6; font-weight: 800;
+    font-size: 1.02rem; padding: 0.7rem 1.9rem; border-radius: 999px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+}
+.dpp-days { font-size: 0.7rem; opacity: 0.8; margin-top: 0.6rem; }
+
+/* Shine sweep — a highlight crossing the button, not a blink. */
+@keyframes dppShine { 0% { left: -140%; } 55%, 100% { left: 140%; } }
+.dpp-shine { position: relative; overflow: hidden; }
+.dpp-shine::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -140%; width: 45%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent);
+    transform: skewX(-18deg); animation: dppShine 3.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .dpp-shine::after { animation: none; } }
+@media (max-width: 640px) {
+    .dpp-card { padding: 1.2rem 0.9rem; }
+    .dpp-card h3 { font-size: 1.15rem; }
+    .dpp-card p { font-size: 0.8rem; }
+    .dpp-cta { font-size: 0.92rem; padding: 0.6rem 1.3rem; }
+}
+</style>
+
+<script>
+// Dismissal is per-browser only — nothing is written to the database.
+// `hidden` starts on so a dismissed card never flashes before this runs.
+(function () {
+    var card = document.getElementById('dppCard');
+    if (!card) return;
+    try {
+        if (localStorage.getItem('dppDailyPnlSeen') !== '1') card.hidden = false;
+    } catch (e) { card.hidden = false; }   // private mode → just show it
+    window.dppDismiss = function () {
+        card.hidden = true;
+        try { localStorage.setItem('dppDailyPnlSeen', '1'); } catch (e) {}
+    };
+})();
+</script>
+{% endif %}

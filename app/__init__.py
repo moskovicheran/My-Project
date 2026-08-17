@@ -84,6 +84,19 @@ def create_app():
             return {'asset_v': '1'}
 
     @app.context_processor
+    def inject_daily_pnl_promo():
+        """Countdown for the one-off "רווח/הפסד יומי" announcement card.
+
+        Self-expiring: past DAILY_PNL_PROMO_UNTIL the value is 0 and the
+        dashboards stop rendering the card — no scheduled job, no cleanup.
+        Delete this processor and the include once the date has passed.
+        """
+        from datetime import date
+        from app.models import DAILY_PNL_PROMO_UNTIL
+        left = (DAILY_PNL_PROMO_UNTIL - date.today()).days + 1
+        return {'daily_promo_days': left if left > 0 else 0}
+
+    @app.context_processor
     def inject_last_upload():
         from datetime import timedelta
         from app.models import DailyUpload

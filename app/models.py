@@ -55,6 +55,13 @@ class AdminNote(db.Model):
     user = db.relationship('User', backref='notes')
 
 
+# One-off announcement for the /daily-pnl tab, shown on the manager dashboards
+# until the END of this date (inclusive) and then gone on its own.
+# Inclusive of both ends: 17→20 Aug is the four days asked for.
+from datetime import date as _date
+DAILY_PNL_PROMO_UNTIL = _date(2026, 8, 20)
+
+
 # RETIRED synthetic "house" account. The return-to-house / distribute-from-house
 # forms were removed from every dashboard: a house row has only one real side,
 # so unlike a player-to-player transfer it is NOT zero-sum inside a box — it

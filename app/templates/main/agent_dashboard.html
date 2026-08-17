@@ -9,6 +9,7 @@
     <a href="{{ url_for('admin.overview') }}" class="btn btn-outline btn-sm">← חזור לסקירה</a>
 </div>
 {% endif %}
+{% include 'main/_daily_pnl_promo.html' %}
 <div class="page-header">
     <div>
         <h1>שלום, {{ view_as_username or current_user.username }}</h1>

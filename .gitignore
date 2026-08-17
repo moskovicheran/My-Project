@@ -8,3 +8,6 @@ uploads/
 .claude/
 *.xlsx
 *.xls
+
+# local design mockups — not shipped
+app/static/*_mockup.html
