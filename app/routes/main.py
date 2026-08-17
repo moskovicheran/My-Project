@@ -1918,6 +1918,106 @@ def dashboard():
                            balance=balance)
 
 
+def _resolve_box_viewer():
+    """Whose dashboard "box" is being viewed on a box-scoped page.
+
+    Returns (effective_role, effective_id, view_as_username). An admin can
+    look at anyone via ?view_as=<player_id>; an agent/club user always gets
+    their own. Returns (None, None, None) when the caller has no box —
+    the caller should redirect to the dashboard.
+    """
+    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
+    if view_as_id:
+        # Resolve the impersonated user's actual role so club users render the
+        # club branch (not the agent hierarchy branch).
+        from app.models import User as _U
+        _va_user = _U.query.filter_by(player_id=view_as_id).first()
+        effective_role = (_va_user.role if _va_user and _va_user.role in ('agent', 'club')
+                          else 'agent')
+        return effective_role, view_as_id, (_va_user.username if _va_user else view_as_id)
+    if current_user.role in ('agent', 'club') and current_user.player_id:
+        return current_user.role, current_user.player_id, None
+    return None, None, None
+
+
+def _club_name_for_id(club_id):
+    """Excel club_id → club name, as used on DailyPlayerStats.club."""
+    from app.union_data import get_members_hierarchy
+    clubs_data, _ = get_members_hierarchy()
+    for c in clubs_data:
+        if str(c['club_id']) == str(club_id):
+            return c['name']
+    return None
+
+
+def _sa_nickname(sa_id):
+    """Display name for an SA/agent id. Always read from the live table —
+    the archive may not carry the SA's own row."""
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+    row = DailyPlayerStats.query.with_entities(
+        sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(DailyPlayerStats.player_id == sa_id).first()
+    return (row[0] if row and row[0] else sa_id)
+
+
+def _box_narrowing(scope_sa_id, scope_club, allowed_sa_ids, allowed_clubs, M):
+    """Resolve ?sa_id= / ?club= into an extra clause that narrows a page to
+    ONE dashboard box (one child SA, or one managed club).
+
+    Returns (clause, box_label) — both None when nothing was narrowed.
+
+    The requested box must already sit inside the caller's allowed scope
+    (`allowed_sa_ids` / `allowed_clubs`), so a crafted URL can only ever
+    shrink what the viewer sees, never widen it. Callers either AND this
+    clause onto their base scope or — when the narrowed set is provably a
+    subset of it — use it on its own.
+    """
+    from app.models import SAHierarchy
+    from sqlalchemy import or_
+
+    if scope_sa_id and scope_sa_id in allowed_sa_ids:
+        narrow_ids = {scope_sa_id}
+        for h in SAHierarchy.query.filter_by(parent_sa_id=scope_sa_id).all():
+            if h.child_sa_id in allowed_sa_ids:
+                narrow_ids.add(h.child_sa_id)
+        return (or_(M.sa_id.in_(narrow_ids), M.agent_id.in_(narrow_ids)),
+                _sa_nickname(scope_sa_id))
+    if scope_club and scope_club in allowed_clubs:
+        return (M.club == scope_club), scope_club
+    return None, None
+
+
+def _box_scope_preds(sa_id, scope_sa_id=None, scope_club=None, M=None):
+    """/top-players scope: the agent's hierarchy ∪ managed clubs, optionally
+    narrowed to one box. Returns (preds, box_label) for `or_(*preds)`.
+
+    This is the LOOSER, roster-shaped scope (get_agent_scope) — it answers
+    "which players are mine", which is what a top-players list wants. For
+    money that has to reconcile with the dashboard card, use
+    `build_agent_scope_preds` instead (see agent_daily_pnl).
+    """
+    from app.models import DailyPlayerStats
+    from app.union_data import get_agent_scope
+    from sqlalchemy import and_
+    if M is None:
+        M = DailyPlayerStats
+
+    scope_sa_ids, managed_club_names, po_clubs = get_agent_scope(sa_id)
+
+    narrow, box_label = _box_narrowing(scope_sa_id, scope_club, scope_sa_ids,
+                                       managed_club_names, M)
+    if narrow is not None:
+        return [narrow], box_label
+
+    preds = [M.sa_id.in_(scope_sa_ids), M.agent_id.in_(scope_sa_ids)]
+    if managed_club_names:
+        preds.append(M.club.in_(managed_club_names))
+    if po_clubs:
+        preds.append(and_(M.club.in_(po_clubs), M.player_id == sa_id))
+    return preds, box_label
+
+
 @main_bp.route('/top-players')
 @login_required
 def agent_top_players():
@@ -1929,22 +2029,8 @@ def agent_top_players():
     the agent's allowed scope so the URL can never widen what the agent
     could otherwise see.
     """
-    view_as_id = request.args.get('view_as') if current_user.role == 'admin' else None
-
-    if view_as_id:
-        # Resolve the impersonated user's actual role so club users render the
-        # club branch (not the agent hierarchy branch).
-        from app.models import User as _U
-        _va_user = _U.query.filter_by(player_id=view_as_id).first()
-        effective_role = (_va_user.role if _va_user and _va_user.role in ('agent', 'club')
-                          else 'agent')
-        effective_id = view_as_id
-        view_as_username = _va_user.username if _va_user else view_as_id
-    elif current_user.role in ('agent', 'club') and current_user.player_id:
-        effective_role = current_user.role
-        effective_id = current_user.player_id
-        view_as_username = None
-    else:
+    effective_role, effective_id, view_as_username = _resolve_box_viewer()
+    if not effective_role:
         return redirect(url_for('main.dashboard'))
 
     scope_sa_id = (request.args.get('sa_id') or '').strip() or None
@@ -2007,33 +2093,10 @@ def agent_top_players():
         # iff it's in this agent's scope (sa_id/agent_id in hierarchy OR
         # club in managed clubs). Same logic used by /api/report and
         # agent_dashboard — prevents cross-channel leakage and double counts.
-        from app.union_data import get_agent_scope
-        _scope_sa_ids, managed_club_names, _po_clubs = get_agent_scope(sa_id)
-
-        # Per-box narrowing — intersected with the agent's allowed scope so a
-        # crafted URL can't widen visibility beyond what the agent could see.
-        if scope_sa_id and scope_sa_id in _scope_sa_ids:
-            narrow_ids = {scope_sa_id}
-            for h in SAHierarchy.query.filter_by(parent_sa_id=scope_sa_id).all():
-                if h.child_sa_id in _scope_sa_ids:
-                    narrow_ids.add(h.child_sa_id)
-            scope_preds = [DailyPlayerStats.sa_id.in_(narrow_ids),
-                           DailyPlayerStats.agent_id.in_(narrow_ids)]
-            nick_row = DailyPlayerStats.query.with_entities(
-                sqlfunc.max(DailyPlayerStats.nickname)
-            ).filter(DailyPlayerStats.player_id == scope_sa_id).first()
-            box_label = (nick_row[0] if nick_row and nick_row[0] else scope_sa_id)
-        elif scope_club and scope_club in managed_club_names:
-            scope_preds = [DailyPlayerStats.club == scope_club]
-            box_label = scope_club
-        else:
-            scope_preds = [DailyPlayerStats.sa_id.in_(_scope_sa_ids),
-                           DailyPlayerStats.agent_id.in_(_scope_sa_ids)]
-            if managed_club_names:
-                scope_preds.append(DailyPlayerStats.club.in_(managed_club_names))
-            if _po_clubs:
-                scope_preds.append(and_(DailyPlayerStats.club.in_(_po_clubs),
-                                        DailyPlayerStats.player_id == sa_id))
+        # Per-box narrowing (?sa_id= / ?club=) happens inside the helper and
+        # is intersected with the allowed scope, so a crafted URL can never
+        # widen visibility beyond what this agent could otherwise see.
+        scope_preds, box_label = _box_scope_preds(sa_id, scope_sa_id, scope_club)
         players_db = DailyPlayerStats.query.with_entities(
             DailyPlayerStats.player_id,
             sqlfunc.max(DailyPlayerStats.nickname),
@@ -2179,6 +2242,178 @@ def agent_top_players():
                            total_players=len(all_players),
                            biggest_winner=biggest_winner,
                            biggest_loser=biggest_loser,
+                           box_label=box_label,
+                           view_as_username=view_as_username)
+
+
+HEB_WEEKDAYS = ['שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת', 'ראשון']
+
+
+@main_bp.route('/daily-pnl')
+@login_required
+def agent_daily_pnl():
+    """Day-by-day P&L of one dashboard "box".
+
+    Same entry points as /top-players — admin views any agent/club with
+    ?view_as=<player_id>, and ?sa_id= / ?club= narrow to a single box — but
+    aggregated by upload date instead of by player.
+
+    The scope is `build_agent_scope_preds`, i.e. the SAME predicate
+    get_agent_totals uses, so the column adds up to the number on the
+    dashboard card rather than to the looser top-players roster.
+
+    "קופסה" for a day = P&L + rake, the same formula the collections log
+    uses for the cycle box. Rows come from the live table plus the archive;
+    an archived date that was later re-uploaded is dropped in favour of the
+    live one so a re-upload never double-counts.
+    """
+    effective_role, effective_id, view_as_username = _resolve_box_viewer()
+    if not effective_role:
+        return redirect(url_for('main.dashboard'))
+
+    scope_sa_id = (request.args.get('sa_id') or '').strip() or None
+    scope_club = (request.args.get('club') or '').strip() or None
+
+    from app.models import (DailyPlayerStats, DailyUpload,
+                            ArchivedPlayerStats, ArchivedUpload)
+    from app.union_data import build_agent_scope_preds
+    from sqlalchemy import func as sqlfunc, or_, and_
+
+    box_label = None
+
+    def _preds_for(M):
+        """Scope filter bound to source table M (live or archive).
+
+        Returns (filters, label) — the list is ANDed into the query; None
+        means "nothing in scope", which must read as zero rows.
+
+        Each branch reproduces the formula behind the card the user clicked
+        from, so the daily column always sums to the number on that card:
+          whole box     → build_agent_scope_preds (== get_agent_totals)
+          child-SA box  → players currently under that SA (full history),
+                          minus the parent's managed clubs — the same
+                          current-assignment scope the dashboard applies
+          managed club  → row-level `club == name`
+          personal box  → the whole box minus the clubs that have a box of
+                          their own (matches the dashboard's "רייק אישי")
+        """
+        if effective_role != 'agent':
+            club_name = _club_name_for_id(effective_id)
+            if not club_name:
+                return None, None
+            return [M.club == club_name], club_name
+
+        preds, ctx = build_agent_scope_preds(effective_id, M)
+        if not preds:
+            return None, None
+        managed = ctx['managed_club_names']
+        not_managed = [M.club.notin_(managed)] if managed else []
+        # The personal box drops only the clubs that get their OWN box on the
+        # dashboard. A player-only club never does — those rows are the
+        # agent's own play and belong in the personal box, not a club box.
+        own_boxes = ctx['exclusive'] + ctx['shared']
+        not_own_boxes = [M.club.notin_(own_boxes)] if own_boxes else []
+
+        # A crafted ?sa_id= / ?club= is honoured only when it names a box
+        # this viewer already owns — it can shrink the view, never widen it.
+        if scope_sa_id and scope_sa_id in ctx['all_ids']:
+            label = _sa_nickname(scope_sa_id)
+            if scope_sa_id == effective_id:
+                return [or_(*preds)] + not_own_boxes, label   # personal box
+            from app.union_data import (get_sa_descendants,
+                                        get_players_with_current_scope)
+            sub_ids = [scope_sa_id] + get_sa_descendants(scope_sa_id)
+            pids = get_players_with_current_scope(sub_ids, M=M)
+            if not pids:
+                return None, label
+            return [M.player_id.in_(list(pids))] + not_managed, label
+        if scope_club and scope_club in managed:
+            return [M.club == scope_club], scope_club
+        return [or_(*preds)], None
+
+    def _by_date(M, U, join_cond):
+        """(date → totals) for one source, or {} when the scope is empty."""
+        filters, label = _preds_for(M)
+        if not filters:
+            return {}, label
+        rows = (db.session.query(
+                    U.upload_date,
+                    sqlfunc.sum(M.pnl), sqlfunc.sum(M.rake), sqlfunc.sum(M.hands),
+                    sqlfunc.count(sqlfunc.distinct(M.player_id)))
+                .select_from(M).join(U, join_cond)
+                .filter(*(filters + [and_(M.role != 'Name Entry',
+                                          M.role.isnot(None), M.role != '')]))
+                .group_by(U.upload_date).all())
+        out = {}
+        for d, pnl, rake, hands, players in rows:
+            if d is None:
+                continue
+            # One date can span several uploaded files (one per club) — the
+            # group_by already merged them, but keep the accumulate form so a
+            # future multi-source merge stays correct.
+            cur = out.setdefault(d, {'pnl': 0.0, 'rake': 0.0, 'hands': 0,
+                                     'players': 0})
+            cur['pnl'] += float(pnl or 0)
+            cur['rake'] += float(rake or 0)
+            cur['hands'] += int(hands or 0)
+            cur['players'] += int(players or 0)
+        return out, label
+
+    live, box_label = _by_date(DailyPlayerStats, DailyUpload,
+                               DailyPlayerStats.upload_id == DailyUpload.id)
+    archived, _lbl = _by_date(
+        ArchivedPlayerStats, ArchivedUpload,
+        and_(ArchivedPlayerStats.upload_id == ArchivedUpload.original_id,
+             ArchivedPlayerStats.period_id == ArchivedUpload.period_id))
+    if box_label is None:
+        box_label = _lbl
+
+    merged = {d: dict(v, source='archived') for d, v in archived.items()
+              if d not in live}                      # re-upload wins
+    merged.update({d: dict(v, source='live') for d, v in live.items()})
+
+    days = []
+    running = 0.0
+    for d in sorted(merged):                          # ascending → cumulative
+        v = merged[d]
+        box = round(v['pnl'] + v['rake'], 2)
+        running = round(running + box, 2)
+        days.append({
+            'date': d,
+            'weekday': HEB_WEEKDAYS[d.weekday()],
+            'pnl': round(v['pnl'], 2),
+            'rake': round(v['rake'], 2),
+            'hands': v['hands'],
+            'players': v['players'],
+            'box': box,
+            'cumulative': running,
+            'source': v['source'],
+        })
+
+    # Chart: last 30 days, oldest → newest, bar height relative to the
+    # biggest absolute box value in that window.
+    chart = days[-30:]
+    peak = max((abs(c['box']) for c in chart), default=0) or 1
+    chart = [dict(c, bar_pct=round(abs(c['box']) / peak * 100, 1)) for c in chart]
+
+    totals = {
+        'box': round(sum(d['box'] for d in days), 2),
+        'pnl': round(sum(d['pnl'] for d in days), 2),
+        'rake': round(sum(d['rake'] for d in days), 2),
+        'hands': sum(d['hands'] for d in days),
+        'days': len(days),
+        'up_days': sum(1 for d in days if d['box'] > 0),
+        'down_days': sum(1 for d in days if d['box'] < 0),
+    }
+    totals['avg'] = round(totals['box'] / len(days), 2) if days else 0
+    best = max(days, key=lambda d: d['box']) if days else None
+    worst = min(days, key=lambda d: d['box']) if days else None
+
+    days.reverse()                                    # newest first in table
+
+    return render_template('main/agent_daily_pnl.html',
+                           days=days, chart=chart, totals=totals,
+                           best=best, worst=worst,
                            box_label=box_label,
                            view_as_username=view_as_username)
 

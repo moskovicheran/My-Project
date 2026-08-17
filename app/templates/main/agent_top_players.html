@@ -7,7 +7,11 @@
         <h1>📊 טופ שחקנים{% if box_label %} — {{ box_label }}{% endif %}</h1>
         <p class="subtitle">{{ total_players }} שחקנים פעילים{% if view_as_username %} · מציג כ-{{ view_as_username }}{% endif %}</p>
     </div>
-    <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) }}" class="btn btn-outline">← חזור לדשבורד</a>
+    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+        <a href="{{ url_for('main.agent_daily_pnl', view_as=request.args.get('view_as'), sa_id=request.args.get('sa_id'), club=request.args.get('club')) }}"
+           class="btn btn-outline" style="color:#7c3aed; font-weight:600;">📅 רווח/הפסד יומי</a>
+        <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) }}" class="btn btn-outline">← חזור לדשבורד</a>
+    </div>
 </div>
 
 <div class="stats-grid stats-3" style="margin-bottom:1.5rem;">

@@ -22,12 +22,14 @@
             <a href="{{ url_for('main.agent_transfers') }}" class="nav-link {% if request.endpoint == 'main.agent_transfers' %}active{% endif %}">העברת כספים</a>
             <a href="{{ url_for('main.agent_reports') }}" class="nav-link {% if request.endpoint == 'main.agent_reports' %}active{% endif %}">דוחות</a>
             <a href="{{ url_for('main.agent_top_players') }}" class="nav-link {% if request.endpoint == 'main.agent_top_players' %}active{% endif %}" style="{% if request.endpoint == 'main.agent_top_players' %}color:#fff;{% else %}color:#4cc9f0;{% endif %} font-weight:600;">📊 טופ שחקנים</a>
+            <a href="{{ url_for('main.agent_daily_pnl') }}" class="nav-link {% if request.endpoint == 'main.agent_daily_pnl' %}active{% endif %}" style="{% if request.endpoint == 'main.agent_daily_pnl' %}color:#fff;{% else %}color:#4cc9f0;{% endif %} font-weight:600;">📅 רווח/הפסד יומי</a>
             <a href="{{ url_for('main.agent_collection') }}" class="nav-link {% if request.endpoint == 'main.agent_collection' %}active{% endif %}" style="{% if request.endpoint == 'main.agent_collection' %}color:#fff;{% else %}color:#4cc9f0;{% endif %} font-weight:600;">💵 גבייה</a>
             {% endif %}
             {% if current_user.role == 'club' %}
             <a href="{{ url_for('main.club_transfers') }}" class="nav-link {% if request.endpoint == 'main.club_transfers' %}active{% endif %}">העברת כספים</a>
             <a href="{{ url_for('main.club_reports') }}" class="nav-link {% if request.endpoint == 'main.club_reports' %}active{% endif %}">דוחות</a>
             <a href="{{ url_for('main.agent_top_players') }}" class="nav-link {% if request.endpoint == 'main.agent_top_players' %}active{% endif %}" style="{% if request.endpoint == 'main.agent_top_players' %}color:#fff;{% else %}color:#4cc9f0;{% endif %} font-weight:600;">📊 טופ שחקנים</a>
+            <a href="{{ url_for('main.agent_daily_pnl') }}" class="nav-link {% if request.endpoint == 'main.agent_daily_pnl' %}active{% endif %}" style="{% if request.endpoint == 'main.agent_daily_pnl' %}color:#fff;{% else %}color:#4cc9f0;{% endif %} font-weight:600;">📅 רווח/הפסד יומי</a>
             {% endif %}
             {% if current_user.role == 'admin' %}
             <a href="{{ url_for('union.players') }}" class="nav-link {% if request.endpoint in ['union.players', 'union.player_detail', 'union.ring_games', 'union.mtts'] %}active{% endif %}">שחקנים וטבלאות</a>

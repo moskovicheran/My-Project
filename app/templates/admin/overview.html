@@ -340,6 +340,10 @@ body.dark .dp-reset { color:#ff6b6b; }
                             onclick="event.stopPropagation(); event.preventDefault(); window.location='{{ url_for('main.agent_top_players', view_as=ag.player_id) }}';"
                             class="ao-top-btn"
                             title="טופ שחקנים של {{ ag.username }}">📊 טופ שחקנים</button>
+                    <button type="button"
+                            onclick="event.stopPropagation(); event.preventDefault(); window.location='{{ url_for('main.agent_daily_pnl', view_as=ag.player_id) }}';"
+                            class="ao-top-btn ao-daily-btn"
+                            title="רווח/הפסד יומי של {{ ag.username }}">📅 יומי</button>
                     {% endif %}
                     <span class="muted" style="font-size:0.75rem;">{{ ag.player_id }}</span>
                 </div>
@@ -399,6 +403,10 @@ body.dark .dp-reset { color:#ff6b6b; }
 .ao-top-btn:hover { background: #eef2ff; border-color: #4361ee; }
 body.dark .ao-top-btn { background: #2a2a3e; color: #93c5fd; border-color: #3b3b55; }
 body.dark .ao-top-btn:hover { background: #1e293b; border-color: #93c5fd; }
+.ao-daily-btn { color: #7c3aed; border-color: #ddd6fe; }
+.ao-daily-btn:hover { background: #f5f3ff; border-color: #7c3aed; }
+body.dark .ao-daily-btn { color: #c4b5fd; }
+body.dark .ao-daily-btn:hover { background: #2e1065; border-color: #c4b5fd; }
 .ao-header {
     display: flex; justify-content: space-between; align-items: center;
     padding: 0.7rem 0.9rem; background: #fafbfc; border-bottom: 1px solid #f0f0f0;
@@ -581,6 +589,10 @@ body.dark .unlock-modal input { background: #1a1a2e; color: #e6e6f5; border-colo
                             onclick="event.stopPropagation(); event.preventDefault(); window.location='{{ url_for('main.agent_top_players', view_as=cl.entity_id) }}';"
                             class="ao-top-btn"
                             title="טופ שחקנים של {{ cl.name }}">📊 טופ שחקנים</button>
+                    <button type="button"
+                            onclick="event.stopPropagation(); event.preventDefault(); window.location='{{ url_for('main.agent_daily_pnl', view_as=cl.entity_id) }}';"
+                            class="ao-top-btn ao-daily-btn"
+                            title="רווח/הפסד יומי של {{ cl.name }}">📅 יומי</button>
                     <span class="muted" style="font-size:0.75rem;">{{ cl.entity_id }}</span>
                 </div>
             </div>

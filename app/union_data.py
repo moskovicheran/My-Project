@@ -1297,69 +1297,27 @@ def _sas_managing_club(club_name, cid_to_name):
     return out
 
 
-def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
-                     archive_upload_ids=None, archive_buckets=None):
-    """Unified-scope totals for an agent.
+def build_agent_scope_preds(uid, M, time_filters=None, period_ids=None):
+    """The canonical "which rows belong to this agent's box" predicate list.
 
-    Each row (in the given period) is counted exactly ONCE if it belongs to
-    the agent's scope — defined as:
-      sa_id in hierarchy  OR  agent_id in hierarchy  OR  club in managed clubs
-    No leakage from external channels and no double-counting of overlap rows.
+    Returns (scope_preds, ctx):
+      scope_preds — list to hand to or_(); EMPTY means nothing is in scope
+                    (callers must treat that as zero, not as "no filter").
+      ctx         — {'all_ids', 'known_agent_ids', 'managed_club_names',
+                     'exclusive', 'shared', 'player_only'} so callers that
+                    narrow to one box (one child SA / one managed club) can
+                    intersect against the same resolved hierarchy.
 
-    Returns dict with total_rake, total_pnl, total_hands, player_count.
+    Extracted verbatim from get_agent_totals so every surface that needs the
+    box scope — totals, the per-day P&L page — counts exactly the same rows.
+    Extend HERE, never in a copy.
 
-    `archive_buckets`: list of {'period_id', 'upload_ids'} for multi-period
-    selections. When provided, supersedes the legacy `archive_period_id` /
-    `archive_upload_ids` pair (which can only represent a single period and
-    silently corrupts multi-period queries). Pass it whenever the caller
-    has it (post-`_resolve_date_uploads`); legacy params remain for older
-    callers.
+    `time_filters` scopes the known-IDs probe to the viewed period;
+    `period_ids` does the same for current-assignment resolution (archive).
     """
-    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, PlayerAssignment
-    from sqlalchemy import func as sqlfunc, or_, and_, not_
+    from sqlalchemy import or_, and_, not_
+    time_filters = list(time_filters or [])
 
-    # Prefer archive_buckets when provided (multi-period correct); fall back
-    # to single archive_period_id+archive_upload_ids for legacy callers.
-    if archive_buckets:
-        use_archive = True
-    else:
-        use_archive = bool(archive_period_id and archive_upload_ids)
-        if use_archive:
-            archive_buckets = [{'period_id': archive_period_id,
-                                'upload_ids': list(archive_upload_ids)}]
-
-    # Cross-source: when the date range covers BOTH the current active cycle
-    # AND a previously archived cycle, split the call into two single-source
-    # runs and sum the monetary totals. Without this, the binary `use_archive`
-    # flag below picks one source and the other half of the range is silently
-    # dropped (e.g. selecting 09–13/05 with active=11–13 and archive=09–10
-    # would show only the archive rake unless we recurse).
-    if use_archive and upload_ids:
-        t_active = get_agent_totals(player_id, upload_ids=upload_ids)
-        t_archive = get_agent_totals(player_id, archive_buckets=archive_buckets)
-        return {
-            'total_rake': round(t_active['total_rake'] + t_archive['total_rake'], 2),
-            'total_pnl': round(t_active['total_pnl'] + t_archive['total_pnl'], 2),
-            'total_hands': t_active['total_hands'] + t_archive['total_hands'],
-            # Distinct player_count across sources isn't trivial without
-            # exposing the player_id set; max is a reasonable approximation
-            # (a player active in both sources counts once; non-overlapping
-            # players from one source still inflate the larger). Refine if
-            # the dashboard ever displays a precise per-source split.
-            'player_count': max(t_active['player_count'], t_archive['player_count']),
-        }
-    M = ArchivedPlayerStats if use_archive else DailyPlayerStats
-    time_filters = []
-    if use_archive:
-        from sqlalchemy import and_ as _and, or_ as _or
-        _clauses = [_and(M.period_id == b['period_id'],
-                         M.upload_id.in_(b['upload_ids']))
-                    for b in archive_buckets]
-        time_filters = [_clauses[0] if len(_clauses) == 1 else _or(*_clauses)]
-    elif upload_ids:
-        time_filters = [M.upload_id.in_(upload_ids)]
-
-    uid = player_id
     known_ids = {uid}
 
     # Known-IDs resolution so hierarchy breadth matches the dashboard even
@@ -1444,8 +1402,7 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
     # stale attributions, dropping players whose latest in-period row IS in
     # scope but whose globally-max upload_id row sits in another period.
     current_scope_pids = get_players_with_current_scope(
-        all_ids, M=M,
-        period_ids=[b['period_id'] for b in archive_buckets] if use_archive else None)
+        all_ids, M=M, period_ids=period_ids)
 
     # Rows that belong to OTHER cards — excluded from this agent's
     # current-scope predicate to prevent double-count. A row is "owned"
@@ -1532,6 +1489,81 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
             ))
         else:
             scope_preds.append(M.player_id.in_(override_in_pids))
+
+    ctx = {'all_ids': all_ids, 'known_agent_ids': known_agent_ids,
+           'managed_club_names': managed_club_names,
+           'exclusive': managed_club_names_exclusive,
+           'shared': managed_club_names_shared,
+           'player_only': managed_club_names_player_only}
+    return scope_preds, ctx
+
+
+def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
+                     archive_upload_ids=None, archive_buckets=None):
+    """Unified-scope totals for an agent.
+
+    Each row (in the given period) is counted exactly ONCE if it belongs to
+    the agent's scope — defined as:
+      sa_id in hierarchy  OR  agent_id in hierarchy  OR  club in managed clubs
+    No leakage from external channels and no double-counting of overlap rows.
+
+    Returns dict with total_rake, total_pnl, total_hands, player_count.
+
+    `archive_buckets`: list of {'period_id', 'upload_ids'} for multi-period
+    selections. When provided, supersedes the legacy `archive_period_id` /
+    `archive_upload_ids` pair (which can only represent a single period and
+    silently corrupts multi-period queries). Pass it whenever the caller
+    has it (post-`_resolve_date_uploads`); legacy params remain for older
+    callers.
+    """
+    from app.models import DailyPlayerStats, ArchivedPlayerStats, SAHierarchy, SARakeConfig, PlayerAssignment
+    from sqlalchemy import func as sqlfunc, or_, and_, not_
+
+    # Prefer archive_buckets when provided (multi-period correct); fall back
+    # to single archive_period_id+archive_upload_ids for legacy callers.
+    if archive_buckets:
+        use_archive = True
+    else:
+        use_archive = bool(archive_period_id and archive_upload_ids)
+        if use_archive:
+            archive_buckets = [{'period_id': archive_period_id,
+                                'upload_ids': list(archive_upload_ids)}]
+
+    # Cross-source: when the date range covers BOTH the current active cycle
+    # AND a previously archived cycle, split the call into two single-source
+    # runs and sum the monetary totals. Without this, the binary `use_archive`
+    # flag below picks one source and the other half of the range is silently
+    # dropped (e.g. selecting 09–13/05 with active=11–13 and archive=09–10
+    # would show only the archive rake unless we recurse).
+    if use_archive and upload_ids:
+        t_active = get_agent_totals(player_id, upload_ids=upload_ids)
+        t_archive = get_agent_totals(player_id, archive_buckets=archive_buckets)
+        return {
+            'total_rake': round(t_active['total_rake'] + t_archive['total_rake'], 2),
+            'total_pnl': round(t_active['total_pnl'] + t_archive['total_pnl'], 2),
+            'total_hands': t_active['total_hands'] + t_archive['total_hands'],
+            # Distinct player_count across sources isn't trivial without
+            # exposing the player_id set; max is a reasonable approximation
+            # (a player active in both sources counts once; non-overlapping
+            # players from one source still inflate the larger). Refine if
+            # the dashboard ever displays a precise per-source split.
+            'player_count': max(t_active['player_count'], t_archive['player_count']),
+        }
+    M = ArchivedPlayerStats if use_archive else DailyPlayerStats
+    time_filters = []
+    if use_archive:
+        from sqlalchemy import and_ as _and, or_ as _or
+        _clauses = [_and(M.period_id == b['period_id'],
+                         M.upload_id.in_(b['upload_ids']))
+                    for b in archive_buckets]
+        time_filters = [_clauses[0] if len(_clauses) == 1 else _or(*_clauses)]
+    elif upload_ids:
+        time_filters = [M.upload_id.in_(upload_ids)]
+
+    scope_preds, _scope_ctx = build_agent_scope_preds(
+        player_id, M, time_filters=time_filters,
+        period_ids=([b['period_id'] for b in archive_buckets]
+                    if use_archive else None))
     # If nothing in scope, fall back to an always-false predicate so the
     # query returns zero (instead of SQL error on empty or_()).
     if not scope_preds:

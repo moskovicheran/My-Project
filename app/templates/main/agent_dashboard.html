@@ -5,6 +5,7 @@
 {% if view_as_username %}
 <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.5rem; align-items:flex-start;">
     <a href="{{ url_for('main.agent_top_players', view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:600;">📊 טופ שחקנים</a>
+    <a href="{{ url_for('main.agent_daily_pnl', view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm" style="color:#7c3aed; font-weight:600;">📅 רווח/הפסד יומי</a>
     <a href="{{ url_for('admin.overview') }}" class="btn btn-outline btn-sm">← חזור לסקירה</a>
 </div>
 {% endif %}
@@ -451,6 +452,9 @@ function toggleExpenseDetails() {
                 <strong style="color:#2e7d32; font-size:1.05rem;">{{ managed_club.name }}</strong>
                 <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showClubExportChoice('{{ managed_club.club_id }}', '{{ managed_club.name }}', '{{ managed_club.real_name|default(managed_club.name) }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
                 <a href="{{ url_for('main.agent_top_players', club=managed_club.name, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
+                {# real_name, never name — 'name' may be a display override
+                   (e.g. 'תוספת' for SPC Un) that matches no club row. #}
+                <a href="{{ url_for('main.agent_daily_pnl', club=managed_club.real_name|default(managed_club.name), view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#7c3aed; font-weight:bold; font-size:0.7rem;">📅 יומי</a>
             </div>
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                 <span class="summary-chip chip-win">R {{ managed_club.total_rake|default(0)|comma }}</span>
@@ -620,6 +624,7 @@ function toggleExpenseDetails() {
             <span class="muted small">({{ my_sa.agents|length }})</span>
         </div>
         <a href="{{ url_for('main.agent_top_players', sa_id=my_sa.sa_id, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
+        <a href="{{ url_for('main.agent_daily_pnl', sa_id=my_sa.sa_id, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#7c3aed; font-weight:bold; font-size:0.7rem;">📅 יומי</a>
     </div>
     <div class="accordion-body" style="display:none; padding:0 0.8rem 0.8rem;">
 
@@ -764,6 +769,7 @@ function toggleExpenseDetails() {
                 </div>
                 <div style="display:flex; gap:0.3rem; align-items:center;">
                     <a href="{{ url_for('main.agent_top_players', sa_id=cs.sa_id, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#4361ee; font-weight:bold; font-size:0.7rem;">📊 טופ שחקנים</a>
+                    <a href="{{ url_for('main.agent_daily_pnl', sa_id=cs.sa_id, view_as=request.args.get('view_as')) }}" onclick="event.stopPropagation();" class="btn btn-outline btn-sm" style="color:#7c3aed; font-weight:bold; font-size:0.7rem;">📅 יומי</a>
                     <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); showExportChoice('{{ cs.sa_id }}', '{{ cs.sa_nick }}')" style="color:#217346; font-weight:bold; font-size:0.7rem;">📥</button>
                 </div>
             </div>
