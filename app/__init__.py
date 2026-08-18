@@ -92,8 +92,13 @@ def create_app():
             from app.routes.main import cycle_view_period
             from app.models import ArchivePeriod
             viewing = cycle_view_period()
+            # id breaks the tie: two cycles can share a first_date (a
+            # re-archive, or an aborted reset that already created its
+            # period), and without it the tab would point at an arbitrary
+            # one of them instead of the cycle just closed.
             latest = (ArchivePeriod.query
-                      .order_by(ArchivePeriod.first_date.desc()).first())
+                      .order_by(ArchivePeriod.first_date.desc(),
+                                ArchivePeriod.id.desc()).first())
             return {'cycle_viewing': viewing, 'prev_cycle': latest}
         except Exception:
             return {'cycle_viewing': None, 'prev_cycle': None}
