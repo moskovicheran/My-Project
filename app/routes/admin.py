@@ -173,7 +173,7 @@ def build_overview_context():
     archive_dates = sorted({d.strftime('%Y-%m-%d') for d in archive_date_objs} - set(active_dates))
 
     # Parse selected dates from URL
-    from app.routes.main import requested_date_filter
+    from app.routes.main import requested_date_filter, picker_dates
     selected_dates = requested_date_filter()
     upload_ids_filter = []
     archive_period_id = None
@@ -324,7 +324,7 @@ def build_overview_context():
         tracked_clubs=tracked_clubs,
         active_dates=active_dates,
         archive_dates=archive_dates,
-        selected_dates=selected_dates,
+        selected_dates=picker_dates(selected_dates),
         protected_sa_ids=protected_sa_ids,
         locked_sa_ids=locked_sa_ids,
         active_clubs_locked=active_clubs_locked,

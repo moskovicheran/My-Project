@@ -14,7 +14,7 @@
         </button>
 
         <span id="ovDpHint" class="dp-hint" {% if selected_dates %}style="display:none;"{% endif %}>
-            ללא סינון = נתונים מחזור נוכחי
+            {% if cycle_viewing %}ללא סינון = כל המחזור הסגור{% else %}ללא סינון = נתונים מחזור נוכחי{% endif %}
         </span>
 
         <div id="ovDpPopup" class="dp-popup" style="display:none;">

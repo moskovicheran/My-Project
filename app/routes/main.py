@@ -110,11 +110,29 @@ def requested_date_filter():
     the overview cards and the exports all land on that cycle at once
     without threading a parameter through every link.
     """
-    raw = request.args.get('dates', '')
-    if raw.strip():
-        return [d.strip() for d in raw.split(',') if d.strip()]
+    picked = explicit_date_filter()
+    if picked:
+        return picked
     period = cycle_view_period()
     return cycle_view_dates(period) if period else []
+
+
+def explicit_date_filter():
+    """Dates the USER actually picked in the calendar, if any."""
+    raw = request.args.get('dates', '')
+    return [d.strip() for d in raw.split(',') if d.strip()] if raw.strip() else []
+
+
+def picker_dates(resolved):
+    """What the calendar picker should show as selected.
+
+    In "previous cycle" mode the dates ARE the mode, not a filter the user
+    applied. Showing them as chips with an "הצג הכל" beside them makes the
+    page read as a filtered report instead of the site as it stood back then,
+    which is the whole point of the mode. So the picker stays empty unless the
+    user picked dates himself — the banner is what says where you are.
+    """
+    return resolved if explicit_date_filter() else []
 
 
 def _resolve_date_uploads(selected_dates):
@@ -503,7 +521,7 @@ def dashboard():
                                    total_hands=total_hands,
                                    player_count=player_count,
                                    available_dates=available_dates,
-                                   selected_dates=selected_dates)
+                                   selected_dates=picker_dates(selected_dates))
 
         # Club not found in data
         return render_template('main/club_dashboard.html',
@@ -1783,7 +1801,7 @@ def dashboard():
                                club_net_rake=club_net_rake,
                                club_keeps_pct=club_keeps_pct,
                                available_dates=available_dates,
-                               selected_dates=selected_dates,
+                               selected_dates=picker_dates(selected_dates),
                                view_as_username=view_as_username,
                                self_other_clubs=self_other_clubs_for_template,
                                agent_transfers=agent_transfers,

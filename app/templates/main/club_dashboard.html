@@ -35,7 +35,7 @@
         </button>
 
         <span id="dpHint" class="dp-hint" {% if selected_dates %}style="display:none;"{% endif %}>
-            ללא סינון = נתונים מחזור נוכחי
+            {% if cycle_viewing %}ללא סינון = כל המחזור הסגור{% else %}ללא סינון = נתונים מחזור נוכחי{% endif %}
         </span>
 
         <div id="calendarPopup" class="dp-popup" style="display:none;">
