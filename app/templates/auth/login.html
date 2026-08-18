@@ -9,10 +9,31 @@
    To drop the whole look, revert this one file — nothing else was touched. #}
 <div class="lg-bg" aria-hidden="true">
     <div class="lg-halo"></div>
-    <span class="lg-card lg-c1">&#9824;</span>
-    <span class="lg-card lg-c2">&#9829;</span>
-    <span class="lg-card lg-c3">&#9830;</span>
-    <span class="lg-card lg-c4">&#9827;</span>
+    <span class="lg-card lg-c1">
+        <i class="lg-ix">A<br>&#9824;</i>
+        <b class="lg-pip">&#9824;</b>
+        <i class="lg-ix lg-ix-b">A<br>&#9824;</i>
+    </span>
+    <span class="lg-card lg-c2 is-red">
+        <i class="lg-ix">K<br>&#9829;</i>
+        <b class="lg-pip">&#9829;</b>
+        <i class="lg-ix lg-ix-b">K<br>&#9829;</i>
+    </span>
+    <span class="lg-card lg-c3 is-red">
+        <i class="lg-ix">Q<br>&#9830;</i>
+        <b class="lg-pip">&#9830;</b>
+        <i class="lg-ix lg-ix-b">Q<br>&#9830;</i>
+    </span>
+    <span class="lg-card lg-c4">
+        <i class="lg-ix">J<br>&#9827;</i>
+        <b class="lg-pip">&#9827;</b>
+        <i class="lg-ix lg-ix-b">J<br>&#9827;</i>
+    </span>
+    <span class="lg-card lg-c5">
+        <i class="lg-ix">10<br>&#9824;</i>
+        <b class="lg-pip">&#9824;</b>
+        <i class="lg-ix lg-ix-b">10<br>&#9824;</i>
+    </span>
 </div>
 
 <div class="lg-wrap">
@@ -59,17 +80,32 @@
     0%, 100% { transform: scale(1);    opacity: .75; }
     50%      { transform: scale(1.18); opacity: 1; }
 }
+/* A real card face: index in both corners (rank over suit, the lower one
+   rotated as on a printed card) and a large centre pip. Built from ♠♥♦♣,
+   which every device has — the Unicode playing-card block (🂡…) renders as
+   tofu on plenty of phones and is not worth the risk on a login screen. */
 .lg-card {
-    position: absolute; bottom: -90px; width: 52px; height: 74px; border-radius: 7px;
-    background: linear-gradient(160deg, #fff, #e8ecf7); color: #1a1a2e;
-    display: grid; place-items: center; font-size: 1.5rem;
+    position: absolute; bottom: -110px; width: 58px; height: 82px; border-radius: 6px;
+    background: linear-gradient(160deg, #fff, #eef1f8); color: #1a1a2e;
+    border: 1px solid rgba(0,0,0,.16);
     box-shadow: 0 8px 20px rgba(0,0,0,.45); opacity: 0;
     animation: lgRise 11s linear infinite; will-change: transform;
 }
-.lg-c1 { right: 12%; }
-.lg-c2 { right: 34%; color: #e0294a; animation-delay: -3s; }
-.lg-c3 { left: 30%;  color: #e0294a; animation-delay: -6s; }
-.lg-c4 { left: 11%;  animation-delay: -8.5s; }
+.lg-card.is-red { color: #d2223f; }
+.lg-ix {
+    position: absolute; top: 3px; left: 5px; font-style: normal; font-weight: 800;
+    font-size: .58rem; line-height: .95; text-align: center;
+}
+.lg-ix-b { top: auto; left: auto; bottom: 3px; right: 5px; transform: rotate(180deg); }
+.lg-pip {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 1.75rem; line-height: 1; font-weight: 400;
+}
+.lg-c1 { right: 11%; }
+.lg-c2 { right: 30%; animation-delay: -2.2s; }
+.lg-c3 { left: 32%;  animation-delay: -4.4s; }
+.lg-c4 { left: 10%;  animation-delay: -6.6s; }
+.lg-c5 { right: 50%; animation-delay: -8.8s; }
 @keyframes lgRise {
     0%   { transform: translateY(0) rotate(0);          opacity: 0; }
     12%  { opacity: .5; }
@@ -135,8 +171,11 @@
     .lg-logo { width: 92px; }
     .lg-title { font-size: .98rem; }
     .lg-halo { width: 190px; height: 190px; margin-left: -95px; top: 11%; }
-    .lg-card { width: 42px; height: 60px; font-size: 1.2rem; }
-    .lg-c2, .lg-c3 { display: none; }
+    .lg-card { width: 46px; height: 65px; }
+    .lg-ix { font-size: .5rem; top: 2px; left: 4px; }
+    .lg-ix-b { bottom: 2px; right: 4px; }
+    .lg-pip { font-size: 1.4rem; }
+    .lg-c2, .lg-c3, .lg-c5 { display: none; }
     .lg-c1 { right: 7%; }
     .lg-c4 { left: 6%; }
 }
