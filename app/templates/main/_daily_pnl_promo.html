@@ -5,31 +5,46 @@
 {% if daily_promo_days %}
 <div class="dpp-card" id="dppCard" hidden>
     <button type="button" class="dpp-x" onclick="dppDismiss()" title="הבנתי, אל תציג שוב">&times;</button>
-    {# Each role gets only the line it can actually use. The daily report
-       needs a manager in scope, so for an admin with no ?view_as the button
-       would just bounce back to the dashboard — it is hidden for him, and he
-       gets the cycle line instead. #}
-    {% if current_user.role != 'admin' %}
-    <div class="dpp-icon">📅</div>
-    <h3>חדש — רווח/הפסד יומי</h3>
+    {# An admin sees BOTH announcements; an agent/club only the daily report,
+       which is the one they can use. The daily report is per-manager, so for
+       an admin it only opens directly from inside a manager's dashboard
+       (?view_as=) — from his own dashboard the button would bounce, so there
+       it points at the overview to pick one instead of dying silently. #}
+    {% set is_admin = current_user.role == 'admin' %}
+    {% set viewing_as = request.args.get('view_as') %}
+
+    <div class="dpp-icon">{% if is_admin %}✨{% else %}📅{% endif %}</div>
+    <h3>{% if is_admin %}חדש באתר{% else %}חדש — רווח/הפסד יומי{% endif %}</h3>
+    {% if not is_admin %}
     <p>הקופסה שלך מפורקת יום‑יום · עקומה מצטברת · פילוח לפי יום בשבוע וסוג משחק</p>
-    <a href="{{ url_for('main.agent_daily_pnl', view_as=request.args.get('view_as')) }}"
+    <a href="{{ url_for('main.agent_daily_pnl', view_as=viewing_as) }}"
        class="dpp-cta dpp-shine">כניסה לדוח היומי ←</a>
     {% else %}
-    <div class="dpp-icon">🕘</div>
-    <h3>חדש — צפייה במחזור קודם</h3>
-    <p>כל האתר — הסקירה, הדשבורדים וכל הקופסאות — כפי שהיו לפני שסגרת את המחזור</p>
-    {% endif %}
 
-    {# Browsing a closed cycle is an admin mode, so an agent must never be
-       offered a button he cannot use. #}
-    {% if prev_cycle and current_user.role == 'admin' %}
-    <div class="dpp-second{% if current_user.role == 'admin' %} dpp-solo{% endif %}">
+    <div class="dpp-row">
+        <div class="dpp-row-title">📅 רווח/הפסד יומי</div>
+        <div class="dpp-row-txt">הקופסה מפורקת יום‑יום · עקומה מצטברת · פילוח לפי יום בשבוע וסוג משחק</div>
+        {% if viewing_as %}
+        <a href="{{ url_for('main.agent_daily_pnl', view_as=viewing_as) }}"
+           class="dpp-cta dpp-shine">כניסה לדוח היומי ←</a>
+        {% else %}
+        <a href="{{ url_for('admin.overview') }}" class="dpp-cta dpp-cta-alt">בחר מנהל בסקירה ←</a>
+        <div class="dpp-sub">הדוח היומי הוא לכל מנהל בנפרד</div>
+        {% endif %}
+    </div>
+
+    {% if prev_cycle %}
+    <div class="dpp-row">
+        <div class="dpp-row-title">🕘 צפייה במחזור קודם</div>
+        <div class="dpp-row-txt">כל האתר — הסקירה, הדשבורדים וכל הקופסאות — כפי שהיו לפני שסגרת את המחזור</div>
         <a href="{{ url_for('admin.cycle_view', period_id=prev_cycle.id) }}"
-           class="dpp-cta dpp-shine{% if current_user.role != 'admin' %} dpp-cta-alt{% endif %}">🕘 צפייה ישירה במחזור קודם ←</a>
+           class="dpp-cta dpp-shine">צפייה ישירה במחזור קודם ←</a>
         <div class="dpp-sub">{{ prev_cycle.label }}</div>
     </div>
     {% endif %}
+
+    {% endif %}
+
     <div class="dpp-days">
         {# Hebrew counts 1 and 2 with their own words — "בעוד 1 ימים" reads broken. #}
         ההודעה תיעלם אוטומטית
@@ -67,7 +82,10 @@
 .dpp-cta-alt { background: rgba(255,255,255,0.14); color: #fff; box-shadow: none;
                border: 1px solid rgba(255,255,255,0.45); font-size: 0.92rem; padding: 0.55rem 1.5rem; }
 .dpp-sub { font-size: 0.72rem; opacity: 0.8; margin-top: 0.4rem; }
-.dpp-solo { border-top: 0; padding-top: 0; margin-top: 0; }
+.dpp-row { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.18); }
+.dpp-row:first-of-type { margin-top: 0.4rem; }
+.dpp-row-title { font-size: 1.02rem; font-weight: 800; margin-bottom: 0.2rem; }
+.dpp-row-txt { font-size: 0.82rem; opacity: 0.85; margin-bottom: 0.7rem; }
 
 /* Shine sweep — a highlight crossing the button, not a blink. */
 @keyframes dppShine { 0% { left: -140%; } 55%, 100% { left: 140%; } }
