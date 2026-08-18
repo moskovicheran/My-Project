@@ -894,8 +894,29 @@ def dashboard():
         from app.models import MoneyTransfer, ArchivedMoneyTransfer
         _viewing = cycle_view_period()
         _XF = ArchivedMoneyTransfer if _viewing else MoneyTransfer
+
+        # Scope = the WHOLE box, the same set /agent/transfers lets him move
+        # money between: his own players, child-SA players, managed-club
+        # players, plus the club and sub-agent wallets. Listing only the direct
+        # players meant a manager whose box is mostly child SAs (Mangisto,
+        # Riko) could make a transfer and then never see it on his dashboard,
+        # while a mostly-direct box (Kenny) saw everything. Guarded — a slow or
+        # failing scope lookup must not take the dashboard down.
+        _panel_ids = set(all_my_player_ids) | {sa_id}
+        try:
+            from app.union_data import get_agent_scope_predicate
+            _sp = get_agent_scope_predicate(sa_id, SM)
+            if _sp is not None:
+                _panel_ids |= {r[0] for r in SM.query.with_entities(SM.player_id).filter(
+                    _sp, and_(SM.role != 'Name Entry', SM.role.isnot(None),
+                              SM.role != '')).distinct().all() if r[0]}
+        except Exception:
+            pass
+        _panel_ids |= {f'__club__{c}' for c in (managed_club_names_list or [])}
+        _panel_ids |= set(child_sa_ids or [])
+
         agent_transfers = []
-        _pids = list(all_my_player_ids | {sa_id})
+        _pids = list(_panel_ids)
         if _pids:
             _q = _XF.query.filter(
                 db.or_(_XF.from_player_id.in_(_pids),
