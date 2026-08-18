@@ -68,6 +68,55 @@ def _apply_hide_breakdown(sheets, pct):
     return out
 
 
+# Session key for the admin's "previous cycle" browsing mode. Holds an
+# ArchivePeriod id; while set, every page that honours the date filter renders
+# that closed cycle instead of the live one.
+CYCLE_VIEW_KEY = 'cycle_view_period'
+
+
+def cycle_view_period():
+    """The archived cycle the admin is currently browsing, or None.
+
+    Admin-only by construction: the key lives in that user's session. The
+    period is re-read every request, so if it gets pruned (archives are culled
+    at 90 days) the mode falls away on its own instead of rendering an empty
+    site.
+    """
+    from flask import session
+    from app.models import ArchivePeriod
+    pid = session.get(CYCLE_VIEW_KEY)
+    if not pid:
+        return None
+    if not (hasattr(current_user, 'role') and current_user.role == 'admin'):
+        return None
+    return ArchivePeriod.query.get(pid)
+
+
+def cycle_view_dates(period):
+    """Every upload date inside an archived cycle, as 'YYYY-MM-DD' strings —
+    the shape `_resolve_date_uploads` expects."""
+    from app.models import ArchivedUpload
+    rows = (ArchivedUpload.query.with_entities(ArchivedUpload.upload_date)
+            .filter(ArchivedUpload.period_id == period.id).distinct().all())
+    return sorted({d[0].strftime('%Y-%m-%d') for d in rows if d[0]})
+
+
+def requested_date_filter():
+    """Dates this request should render.
+
+    An explicit ?dates= always wins, so the calendar picker keeps working
+    inside the mode. With no explicit dates, the "previous cycle" mode
+    supplies the whole archived period — which is what makes the boxes,
+    the overview cards and the exports all land on that cycle at once
+    without threading a parameter through every link.
+    """
+    raw = request.args.get('dates', '')
+    if raw.strip():
+        return [d.strip() for d in raw.split(',') if d.strip()]
+    period = cycle_view_period()
+    return cycle_view_dates(period) if period else []
+
+
 def _resolve_date_uploads(selected_dates):
     """Resolve selected date strings to upload IDs, checking both active and archived data.
 
@@ -312,7 +361,7 @@ def dashboard():
         available_dates = sorted(active_dates | archive_dates, reverse=True)
 
         # Date filter — supports multiple dates: ?dates=2026-03-30,2026-03-31
-        requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        requested_dates = requested_date_filter()
         had_date_filter = bool(requested_dates)
         selected_dates = requested_dates
         upload_ids_filter = []
@@ -508,7 +557,7 @@ def dashboard():
         available_dates = sorted(active_dates | archive_dates, reverse=True)
 
         # Date filter
-        requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+        requested_dates = requested_date_filter()
         had_date_filter = bool(requested_dates)
         selected_dates = requested_dates
         upload_ids_filter = []
@@ -3266,7 +3315,7 @@ def export_player(player_id):
     from sqlalchemy import func as sqlfunc
 
     # Parse ?dates= filter (shared with dashboards)
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -3462,7 +3511,7 @@ def export_agent_account():
     from sqlalchemy import func as sqlfunc, or_, and_
 
     # Date filter
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -3686,7 +3735,7 @@ def export_single_agent(agent_id):
     from sqlalchemy import func as sqlfunc, or_
 
     # Parse ?dates= filter (shared with dashboards)
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -3829,7 +3878,7 @@ def export_agent_players():
     all_sa_ids.extend(child_sa_ids)
 
     # Date filter
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -4287,7 +4336,7 @@ def export_agent_full_box():
     from sqlalchemy import func as sqlfunc, or_ as _or
 
     # Date filter (same logic as export_agent_players)
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -4569,7 +4618,7 @@ def export_agent_club(club_id):
     club_name = request.args.get('name') or resolve_club_name(club_id) or club_id
 
     # Date filter
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -4852,7 +4901,7 @@ def export_club_report():
         return redirect(url_for('main.dashboard'))
 
     # Date filter (shared helper — supports active + archive)
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     had_date_filter = bool(requested_dates)
     selected_dates = requested_dates
     upload_ids_filter = []
@@ -6103,7 +6152,7 @@ def player_record_api(player_id):
     # period buckets. Without this, the drill-down only ever shows
     # active-table sessions and silently hides the archive history that
     # the parent card is actually summing.
-    requested_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    requested_dates = requested_date_filter()
     sessions = []
 
     if requested_dates:

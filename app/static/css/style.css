@@ -972,3 +972,22 @@ body.dark .admin-header { background: linear-gradient(135deg, #0d0d1a 0%, #11112
     /* Hide text, show compact */
     .nav-user { display: none; }
 }
+
+/* ── "previous cycle" browsing mode ──────────────────────────────────────
+   The whole site renders a closed cycle while this is on, so the banner is
+   deliberately loud and always carries its own exit. */
+.cycle-banner {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 1rem; flex-wrap: wrap;
+    background: linear-gradient(120deg, #92400e, #b45309);
+    color: #fff; border-radius: 12px; padding: 0.7rem 1rem; margin-bottom: 0.9rem;
+    box-shadow: 0 3px 14px rgba(146, 64, 14, 0.28);
+}
+.cycle-banner strong { display: block; font-size: 0.95rem; }
+.cycle-banner span { font-size: 0.8rem; opacity: 0.9; }
+.cycle-banner-out {
+    background: #fff; color: #92400e; text-decoration: none; white-space: nowrap;
+    font-weight: 700; font-size: 0.82rem; padding: 0.4rem 0.9rem; border-radius: 999px;
+}
+.admin-tab-cycle { color: #b45309 !important; }
+.admin-tab-cycle-on { background: #b45309 !important; color: #fff !important; }

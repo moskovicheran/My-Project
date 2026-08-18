@@ -84,6 +84,21 @@ def create_app():
             return {'asset_v': '1'}
 
     @app.context_processor
+    def inject_cycle_view():
+        """Drives the "מחזור קודם" admin tab and the banner that warns the
+        whole site is showing a closed cycle. Admin-only and guarded — a
+        failure here must never take a page down."""
+        try:
+            from app.routes.main import cycle_view_period
+            from app.models import ArchivePeriod
+            viewing = cycle_view_period()
+            latest = (ArchivePeriod.query
+                      .order_by(ArchivePeriod.first_date.desc()).first())
+            return {'cycle_viewing': viewing, 'prev_cycle': latest}
+        except Exception:
+            return {'cycle_viewing': None, 'prev_cycle': None}
+
+    @app.context_processor
     def inject_daily_pnl_promo():
         """Countdown for the one-off "רווח/הפסד יומי" announcement card.
 

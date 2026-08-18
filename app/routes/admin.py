@@ -173,7 +173,8 @@ def build_overview_context():
     archive_dates = sorted({d.strftime('%Y-%m-%d') for d in archive_date_objs} - set(active_dates))
 
     # Parse selected dates from URL
-    selected_dates = [d.strip() for d in request.args.get('dates', '').split(',') if d.strip()]
+    from app.routes.main import requested_date_filter
+    selected_dates = requested_date_filter()
     upload_ids_filter = []
     archive_period_id = None
     archive_upload_ids = []
@@ -2139,6 +2140,41 @@ def transfers():
     all_transfers = MoneyTransfer.query.order_by(MoneyTransfer.created_at.desc()).all()
     return render_template('admin/transfers.html',
                            transfers=all_transfers, members=members, balances=balances)
+
+
+@admin_bp.route('/cycle-view/<period_id>')
+@admin_required
+def cycle_view(period_id):
+    """Enter (or leave) "previous cycle" browsing.
+
+    Sets one session key; from then on every page that honours the date filter
+    renders that closed cycle — dashboards, the overview cards, the exports —
+    so the site reads as it did before the cycle was closed. Nothing is
+    written to the data: this only changes which uploads get read.
+
+    /cycle-view/off leaves the mode. An explicit ?dates= still overrides it
+    per-page, so the calendar picker keeps working while inside.
+    """
+    from flask import session
+    from app.models import ArchivePeriod
+    from app.routes.main import CYCLE_VIEW_KEY
+
+    if period_id == 'off':
+        session.pop(CYCLE_VIEW_KEY, None)
+        flash('חזרת למחזור הנוכחי.', 'success')
+        return redirect(url_for('admin.overview'))
+
+    try:
+        period = ArchivePeriod.query.get(int(period_id))
+    except (TypeError, ValueError):
+        period = None
+    if not period:
+        flash('המחזור המבוקש לא נמצא.', 'danger')
+        return redirect(url_for('admin.overview'))
+
+    session[CYCLE_VIEW_KEY] = period.id
+    flash(f'צופה במחזור {period.label}. כל המספרים באתר הם של המחזור הזה.', 'warning')
+    return redirect(url_for('admin.overview'))
 
 
 @admin_bp.route('/notes', methods=['GET', 'POST'])

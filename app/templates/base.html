@@ -43,6 +43,18 @@
     {% endif %}
 
     <main class="container">
+        {# Every number on the page is a closed cycle while this is on, so the
+           warning rides on EVERY page (not just the admin panel) and always
+           carries its own way out. #}
+        {% if cycle_viewing %}
+        <div class="cycle-banner">
+            <div>
+                <strong>🕘 צופה במחזור סגור — {{ cycle_viewing.label }}</strong>
+                <span>כל המספרים באתר, כולל הקופסאות והדשבורדים, הם של המחזור הזה ולא של הנוכחי.</span>
+            </div>
+            <a href="{{ url_for('admin.cycle_view', period_id='off') }}" class="cycle-banner-out">↩ חזור למחזור הנוכחי</a>
+        </div>
+        {% endif %}
         {% if last_upload_time %}
         <div style="text-align:center; font-size:0.75rem; color:#888; padding:0.3rem 0; margin-bottom:0.2rem;">
             עדכון אחרון בוצע ב-{{ last_upload_time }}

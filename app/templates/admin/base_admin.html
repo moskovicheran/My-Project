@@ -21,6 +21,13 @@
 
     <div class="admin-tabs">
         <a href="{{ url_for('admin.overview') }}" class="admin-tab {% if request.endpoint == 'admin.overview' %}active{% endif %}">סקירה</a>
+        {# Browse a closed cycle across the whole site. Turns into an exit
+           button while the mode is on, so there is always one click back. #}
+        {% if cycle_viewing %}
+        <a href="{{ url_for('admin.cycle_view', period_id='off') }}" class="admin-tab admin-tab-cycle-on">↩ צא ממחזור {{ cycle_viewing.label }}</a>
+        {% elif prev_cycle %}
+        <a href="{{ url_for('admin.cycle_view', period_id=prev_cycle.id) }}" class="admin-tab admin-tab-cycle">🕘 מחזור קודם</a>
+        {% endif %}
         <a href="{{ url_for('admin.transfers') }}" class="admin-tab {% if request.endpoint == 'admin.transfers' %}active{% endif %}">העברת כספים</a>
         <a href="{{ url_for('admin.expenses') }}" class="admin-tab {% if request.endpoint == 'admin.expenses' %}active{% endif %}">הוצאות שוטפות</a>
         <a href="{{ url_for('admin.cycle_summary_list') }}" class="admin-tab {% if request.endpoint in ['admin.cycle_summary_list', 'admin.cycle_summary_export', 'admin.cycle_summary_download_archived'] %}active{% endif %}">💰 סיכום גבייה</a>
@@ -38,6 +45,19 @@
 
 {# ── Content ── #}
 <main class="admin-content">
+    {# base_admin is a standalone document (it does NOT extend base.html), so
+       the closed-cycle warning has to be repeated here or the admin panel —
+       the one place the mode is switched on — would be the only page without
+       it. #}
+    {% if cycle_viewing %}
+    <div class="cycle-banner">
+        <div>
+            <strong>🕘 צופה במחזור סגור — {{ cycle_viewing.label }}</strong>
+            <span>כל המספרים באתר, כולל הקופסאות והדשבורדים, הם של המחזור הזה ולא של הנוכחי.</span>
+        </div>
+        <a href="{{ url_for('admin.cycle_view', period_id='off') }}" class="cycle-banner-out">↩ חזור למחזור הנוכחי</a>
+    </div>
+    {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
