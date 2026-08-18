@@ -2,33 +2,153 @@
 {% block title %}התחברות - מועדון S.P.C{% endblock %}
 
 {% block content %}
-<div class="auth-container" style="flex-direction:column; gap:1.5rem;">
-    <div class="auth-logo" style="text-align:center;">
-        <img src="{{ url_for('static', filename='img/spc_logo.png') }}"
-             alt="S.P.C - Social Poker Club"
-             style="max-width:170px; width:100%; height:auto; border-radius:12px;">
-    </div>
-    <div class="auth-card">
-        <h1 class="auth-title" style="font-size:1.35rem; line-height:1.45;">ברוכים הבאים לדף ניהול מועדון S.P.C</h1>
-        <h2 class="auth-subtitle">התחברות</h2>
+{# ── Animated backdrop ───────────────────────────────────────────────────
+   Fixed and behind everything (z-index:0 with the card at 2), so it fills the
+   viewport even though base.html wraps this block in .container. Purely
+   decorative: the form below works identically with CSS or JS disabled.
+   To drop the whole look, revert this one file — nothing else was touched. #}
+<div class="lg-bg" aria-hidden="true">
+    <div class="lg-halo"></div>
+    <span class="lg-card lg-c1">&#9824;</span>
+    <span class="lg-card lg-c2">&#9829;</span>
+    <span class="lg-card lg-c3">&#9830;</span>
+    <span class="lg-card lg-c4">&#9827;</span>
+</div>
 
-        <form method="POST" action="{{ url_for('auth.login') }}">
+<div class="lg-wrap">
+    <div class="lg-panel">
+        <img class="lg-logo" src="{{ url_for('static', filename='img/spc_logo.png') }}"
+             alt="S.P.C - Social Poker Club">
+        <h1 class="lg-title">ניהול מועדון S.P.C</h1>
+        <p class="lg-sub">התחברות</p>
+
+        <form method="POST" action="{{ url_for('auth.login') }}" class="lg-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="form-group">
+            <div class="lg-field">
                 <label for="email">שם משתמש או אימייל</label>
-                <input type="text" id="email" name="email" required placeholder="שם משתמש">
+                <input type="text" id="email" name="email" required placeholder="שם משתמש"
+                       autocomplete="username" autocapitalize="none" autocorrect="off">
             </div>
-            <div class="form-group">
+            <div class="lg-field">
                 <label for="password">סיסמה</label>
-                <input type="password" id="password" name="password" required placeholder="••••••">
+                <input type="password" id="password" name="password" required placeholder="••••••"
+                       autocomplete="current-password">
             </div>
-            <div class="form-group form-check">
+            <label class="lg-check">
                 <input type="checkbox" id="remember" name="remember">
-                <label for="remember">זכור אותי</label>
-            </div>
-            <button type="submit" class="btn btn-primary btn-full">התחבר</button>
+                <span>זכור אותי</span>
+            </label>
+            <button type="submit" class="lg-go">התחבר</button>
         </form>
-
     </div>
 </div>
+
+<style>
+/* backdrop */
+.lg-bg {
+    position: fixed; inset: 0; z-index: 0; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 28%, #1e1b4b 0%, #0b0b1a 72%);
+}
+.lg-halo {
+    position: absolute; top: 14%; left: 50%; width: 260px; height: 260px;
+    margin-left: -130px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(124,58,237,.55), transparent 70%);
+    filter: blur(26px); animation: lgBreathe 4.5s ease-in-out infinite;
+}
+@keyframes lgBreathe {
+    0%, 100% { transform: scale(1);    opacity: .75; }
+    50%      { transform: scale(1.18); opacity: 1; }
+}
+.lg-card {
+    position: absolute; bottom: -90px; width: 52px; height: 74px; border-radius: 7px;
+    background: linear-gradient(160deg, #fff, #e8ecf7); color: #1a1a2e;
+    display: grid; place-items: center; font-size: 1.5rem;
+    box-shadow: 0 8px 20px rgba(0,0,0,.45); opacity: 0;
+    animation: lgRise 11s linear infinite; will-change: transform;
+}
+.lg-c1 { right: 12%; }
+.lg-c2 { right: 34%; color: #e0294a; animation-delay: -3s; }
+.lg-c3 { left: 30%;  color: #e0294a; animation-delay: -6s; }
+.lg-c4 { left: 11%;  animation-delay: -8.5s; }
+@keyframes lgRise {
+    0%   { transform: translateY(0) rotate(0);          opacity: 0; }
+    12%  { opacity: .5; }
+    88%  { opacity: .5; }
+    100% { transform: translateY(-115vh) rotate(240deg); opacity: 0; }
+}
+
+/* card */
+.lg-wrap { position: relative; z-index: 2; display: grid; place-items: center;
+           min-height: calc(100vh - 5rem); padding: 1rem 0; }
+.lg-panel {
+    width: 100%; max-width: 340px; padding: 1.7rem 1.6rem 1.9rem; border-radius: 22px;
+    background: rgba(255,255,255,.06); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,.15); box-shadow: 0 22px 60px rgba(0,0,0,.55);
+    color: #e8e8f0;
+}
+.lg-logo { display: block; width: 118px; height: auto; margin: 0 auto; border-radius: 16px; }
+.lg-title { text-align: center; font-size: 1.05rem; font-weight: 800; margin: .8rem 0 0; color: #fff; }
+.lg-sub { text-align: center; font-size: .78rem; opacity: .7; margin: .2rem 0 0; }
+.lg-form { display: flex; flex-direction: column; gap: .7rem; margin-top: 1rem; }
+.lg-field label { display: block; font-size: .75rem; margin-bottom: .3rem; opacity: .85; }
+.lg-field input {
+    width: 100%; padding: .75rem .9rem; border-radius: 11px; font-size: 1rem;
+    font-family: inherit; outline: none; color: #fff;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
+    transition: border-color .18s, box-shadow .18s, background .18s;
+}
+.lg-field input::placeholder { color: rgba(255,255,255,.38); }
+.lg-field input:focus {
+    border-color: #a78bfa; background: rgba(255,255,255,.11);
+    box-shadow: 0 0 0 3px rgba(167,139,250,.24);
+}
+.lg-check { display: flex; align-items: center; gap: .45rem; font-size: .8rem; opacity: .85; cursor: pointer; }
+.lg-check input { width: auto; }
+.lg-go {
+    width: 100%; padding: .85rem; border: 0; border-radius: 11px; cursor: pointer;
+    font-family: inherit; font-size: 1rem; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, #7c3aed, #2563eb);
+    box-shadow: 0 8px 22px rgba(124,58,237,.45);
+    position: relative; overflow: hidden;
+    transition: transform .12s, filter .2s;
+}
+.lg-go:hover { filter: brightness(1.08); }
+.lg-go:active { transform: translateY(1px); }
+.lg-go::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -140%; width: 45%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.5), transparent);
+    transform: skewX(-18deg); animation: lgSweep 3.2s ease-in-out infinite;
+}
+@keyframes lgSweep { 0% { left: -140%; } 55%, 100% { left: 140%; } }
+
+/* flash messages sit above the backdrop */
+.alert { position: relative; z-index: 2; }
+
+/* ── mobile ──
+   Font-size on the inputs stays at 1rem: anything smaller makes iOS Safari
+   zoom the page on focus and the user then has to pinch back out. Two of the
+   four cards are dropped — on a narrow screen they crowd the panel, and it is
+   four animated layers fewer to paint on a phone. */
+@media (max-width: 640px) {
+    .lg-wrap { min-height: calc(100vh - 3.5rem); padding: .5rem 0; }
+    .lg-panel { max-width: 100%; padding: 1.4rem 1.15rem 1.6rem; border-radius: 18px; }
+    .lg-logo { width: 92px; }
+    .lg-title { font-size: .98rem; }
+    .lg-halo { width: 190px; height: 190px; margin-left: -95px; top: 11%; }
+    .lg-card { width: 42px; height: 60px; font-size: 1.2rem; }
+    .lg-c2, .lg-c3 { display: none; }
+    .lg-c1 { right: 7%; }
+    .lg-c4 { left: 6%; }
+}
+@media (max-width: 380px) {
+    .lg-logo { width: 78px; }
+    .lg-panel { padding: 1.2rem 1rem 1.4rem; }
+}
+
+/* Respect a reduced-motion preference: same design, nothing moving. */
+@media (prefers-reduced-motion: reduce) {
+    .lg-halo, .lg-card, .lg-go::after { animation: none; }
+    .lg-card { opacity: .35; bottom: auto; top: 30%; }
+}
+</style>
 {% endblock %}
