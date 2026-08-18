@@ -11,27 +11,27 @@
     <div class="lg-halo"></div>
     <span class="lg-card lg-c1">
         <i class="lg-ix">A<br>&#9824;</i>
-        <b class="lg-pip">&#9824;</b>
+        <img class="lg-pip" src="{{ url_for('static', filename='img/spc_logo.png') }}" alt="">
         <i class="lg-ix lg-ix-b">A<br>&#9824;</i>
     </span>
     <span class="lg-card lg-c2 is-red">
         <i class="lg-ix">K<br>&#9829;</i>
-        <b class="lg-pip">&#9829;</b>
+        <img class="lg-pip" src="{{ url_for('static', filename='img/spc_logo.png') }}" alt="">
         <i class="lg-ix lg-ix-b">K<br>&#9829;</i>
     </span>
     <span class="lg-card lg-c3 is-red">
         <i class="lg-ix">Q<br>&#9830;</i>
-        <b class="lg-pip">&#9830;</b>
+        <img class="lg-pip" src="{{ url_for('static', filename='img/spc_logo.png') }}" alt="">
         <i class="lg-ix lg-ix-b">Q<br>&#9830;</i>
     </span>
     <span class="lg-card lg-c4">
         <i class="lg-ix">J<br>&#9827;</i>
-        <b class="lg-pip">&#9827;</b>
+        <img class="lg-pip" src="{{ url_for('static', filename='img/spc_logo.png') }}" alt="">
         <i class="lg-ix lg-ix-b">J<br>&#9827;</i>
     </span>
     <span class="lg-card lg-c5">
         <i class="lg-ix">10<br>&#9824;</i>
-        <b class="lg-pip">&#9824;</b>
+        <img class="lg-pip" src="{{ url_for('static', filename='img/spc_logo.png') }}" alt="">
         <i class="lg-ix lg-ix-b">10<br>&#9824;</i>
     </span>
 </div>
@@ -97,9 +97,12 @@
     font-size: .58rem; line-height: .95; text-align: center;
 }
 .lg-ix-b { top: auto; left: auto; bottom: 3px; right: 5px; transform: rotate(180deg); }
+/* The centre pip is the club logo instead of a suit symbol — the corner
+   index still carries the rank and suit, so the card still reads as A♠.
+   Same asset as the panel above, so the browser fetches it once. */
 .lg-pip {
-    position: absolute; inset: 0; display: grid; place-items: center;
-    font-size: 1.75rem; line-height: 1; font-weight: 400;
+    position: absolute; top: 50%; left: 50%; width: 34px; height: 34px;
+    margin: -17px 0 0 -17px; border-radius: 6px; object-fit: contain;
 }
 .lg-c1 { right: 11%; }
 .lg-c2 { right: 30%; animation-delay: -2.2s; }
@@ -174,7 +177,7 @@
     .lg-card { width: 46px; height: 65px; }
     .lg-ix { font-size: .5rem; top: 2px; left: 4px; }
     .lg-ix-b { bottom: 2px; right: 4px; }
-    .lg-pip { font-size: 1.4rem; }
+    .lg-pip { width: 26px; height: 26px; margin: -13px 0 0 -13px; }
     .lg-c2, .lg-c3, .lg-c5 { display: none; }
     .lg-c1 { right: 7%; }
     .lg-c4 { left: 6%; }
