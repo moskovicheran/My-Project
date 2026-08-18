@@ -15,6 +15,13 @@
         <div class="nav-links" id="navLinks">
             {% if current_user.role == 'admin' %}
             <a href="{{ url_for('admin.overview') }}" class="nav-link nav-link-panel">לוח בקרה</a>
+            {# Global mode, so it belongs in the site nav rather than the admin
+               tab strip. Becomes its own exit while it is on. #}
+            {% if cycle_viewing %}
+            <a href="{{ url_for('admin.cycle_view', period_id='off') }}" class="nav-link nav-link-cycle-on">↩ צא ממחזור {{ cycle_viewing.label }}</a>
+            {% elif prev_cycle %}
+            <a href="{{ url_for('admin.cycle_view', period_id=prev_cycle.id) }}" class="nav-link nav-link-cycle">🕘 מחזור קודם</a>
+            {% endif %}
             <a href="{{ url_for('admin.health') }}" class="nav-link nav-link-health {% if request.endpoint == 'admin.health' %}active{% endif %}" title="בדיקת תקינות"><span class="nl-icon">✅</span><span class="nl-label">בדיקת תקינות</span></a>
             {% endif %}
             <a href="{{ url_for('main.dashboard') }}" class="nav-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}">דשבורד</a>

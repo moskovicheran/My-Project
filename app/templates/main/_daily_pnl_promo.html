@@ -5,11 +5,31 @@
 {% if daily_promo_days %}
 <div class="dpp-card" id="dppCard" hidden>
     <button type="button" class="dpp-x" onclick="dppDismiss()" title="הבנתי, אל תציג שוב">&times;</button>
+    {# Each role gets only the line it can actually use. The daily report
+       needs a manager in scope, so for an admin with no ?view_as the button
+       would just bounce back to the dashboard — it is hidden for him, and he
+       gets the cycle line instead. #}
+    {% if current_user.role != 'admin' %}
     <div class="dpp-icon">📅</div>
     <h3>חדש — רווח/הפסד יומי</h3>
     <p>הקופסה שלך מפורקת יום‑יום · עקומה מצטברת · פילוח לפי יום בשבוע וסוג משחק</p>
     <a href="{{ url_for('main.agent_daily_pnl', view_as=request.args.get('view_as')) }}"
        class="dpp-cta dpp-shine">כניסה לדוח היומי ←</a>
+    {% else %}
+    <div class="dpp-icon">🕘</div>
+    <h3>חדש — צפייה במחזור קודם</h3>
+    <p>כל האתר — הסקירה, הדשבורדים וכל הקופסאות — כפי שהיו לפני שסגרת את המחזור</p>
+    {% endif %}
+
+    {# Browsing a closed cycle is an admin mode, so an agent must never be
+       offered a button he cannot use. #}
+    {% if prev_cycle and current_user.role == 'admin' %}
+    <div class="dpp-second{% if current_user.role == 'admin' %} dpp-solo{% endif %}">
+        <a href="{{ url_for('admin.cycle_view', period_id=prev_cycle.id) }}"
+           class="dpp-cta dpp-shine{% if current_user.role != 'admin' %} dpp-cta-alt{% endif %}">🕘 צפייה ישירה במחזור קודם ←</a>
+        <div class="dpp-sub">{{ prev_cycle.label }}</div>
+    </div>
+    {% endif %}
     <div class="dpp-days">
         {# Hebrew counts 1 and 2 with their own words — "בעוד 1 ימים" reads broken. #}
         ההודעה תיעלם אוטומטית
@@ -43,6 +63,11 @@
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
 }
 .dpp-days { font-size: 0.7rem; opacity: 0.8; margin-top: 0.6rem; }
+.dpp-second { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.18); }
+.dpp-cta-alt { background: rgba(255,255,255,0.14); color: #fff; box-shadow: none;
+               border: 1px solid rgba(255,255,255,0.45); font-size: 0.92rem; padding: 0.55rem 1.5rem; }
+.dpp-sub { font-size: 0.72rem; opacity: 0.8; margin-top: 0.4rem; }
+.dpp-solo { border-top: 0; padding-top: 0; margin-top: 0; }
 
 /* Shine sweep — a highlight crossing the button, not a blink. */
 @keyframes dppShine { 0% { left: -140%; } 55%, 100% { left: 140%; } }

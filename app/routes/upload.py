@@ -393,6 +393,12 @@ def reset_all():
         flash('אין הרשאה.', 'danger')
         return redirect(url_for('upload.index'))
 
+    # Leave "previous cycle" browsing: the archive just shifted underneath, so
+    # staying inside would keep showing the cycle BEFORE the one just closed —
+    # and the tab would offer an exit instead of the new cycle.
+    from app.routes.main import CYCLE_VIEW_KEY
+    session.pop(CYCLE_VIEW_KEY, None)
+
     return _archive_and_clear_active()
 
 

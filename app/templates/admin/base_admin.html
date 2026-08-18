@@ -21,13 +21,6 @@
 
     <div class="admin-tabs">
         <a href="{{ url_for('admin.overview') }}" class="admin-tab {% if request.endpoint == 'admin.overview' %}active{% endif %}">סקירה</a>
-        {# Browse a closed cycle across the whole site. Turns into an exit
-           button while the mode is on, so there is always one click back. #}
-        {% if cycle_viewing %}
-        <a href="{{ url_for('admin.cycle_view', period_id='off') }}" class="admin-tab admin-tab-cycle-on">↩ צא ממחזור {{ cycle_viewing.label }}</a>
-        {% elif prev_cycle %}
-        <a href="{{ url_for('admin.cycle_view', period_id=prev_cycle.id) }}" class="admin-tab admin-tab-cycle">🕘 מחזור קודם</a>
-        {% endif %}
         <a href="{{ url_for('admin.transfers') }}" class="admin-tab {% if request.endpoint == 'admin.transfers' %}active{% endif %}">העברת כספים</a>
         <a href="{{ url_for('admin.expenses') }}" class="admin-tab {% if request.endpoint == 'admin.expenses' %}active{% endif %}">הוצאות שוטפות</a>
         <a href="{{ url_for('admin.cycle_summary_list') }}" class="admin-tab {% if request.endpoint in ['admin.cycle_summary_list', 'admin.cycle_summary_export', 'admin.cycle_summary_download_archived'] %}active{% endif %}">💰 סיכום גבייה</a>
