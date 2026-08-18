@@ -369,6 +369,34 @@ class ArchivedPlayerStats(db.Model):
     period = db.relationship('ArchivePeriod', backref='stats')
 
 
+class ArchivedMoneyTransfer(db.Model):
+    """Money transfers of a closed cycle.
+
+    Resetting a cycle DELETES money_transfers (they adjust per-card PnL but not
+    the top box, so leaving them behind produces a phantom delta on the health
+    page). Until this table existed that deletion was permanent and the whole
+    settlement history of a cycle — who paid whom, how much, when, why — was
+    unrecoverable once the cycle closed. Every other active table was already
+    copied to an archive twin before being cleared; this one was the gap.
+    """
+    __tablename__ = 'archived_money_transfers'
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('archive_periods.id'),
+                          nullable=False, index=True)
+    original_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+    from_player_id = db.Column(db.String(120), nullable=False)
+    from_name = db.Column(db.String(100), nullable=False)
+    to_player_id = db.Column(db.String(120), nullable=False)
+    to_name = db.Column(db.String(100), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    description = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime)
+
+    period = db.relationship('ArchivePeriod', backref='transfers')
+
+
 class ArchivedPlayerSession(db.Model):
     __tablename__ = 'archived_player_sessions'
 

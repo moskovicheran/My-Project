@@ -441,6 +441,15 @@ def _archive_and_clear_active():
                 "SELECT :pid, upload_id, player_id, game_type, table_name, blinds, pnl FROM player_sessions"
             ), {'pid': pid})
 
+            # Transfers are DELETED further down (they would otherwise leave a
+            # phantom delta on the health page). Copy them first — before this
+            # they were the one active table with no archive twin, so closing a
+            # cycle destroyed its whole settlement history irrecoverably.
+            db.session.execute(text(
+                "INSERT INTO archived_money_transfers (period_id, original_id, user_id, from_player_id, from_name, to_player_id, to_name, amount, description, created_at) "
+                "SELECT :pid, id, user_id, from_player_id, from_name, to_player_id, to_name, amount, description, created_at FROM money_transfers"
+            ), {'pid': pid})
+
             db.session.execute(text(
                 "INSERT INTO archived_tournament_stats (period_id, upload_id, title, status, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration) "
                 "SELECT :pid, upload_id, title, status, game_type, buyin, fee, reentry, gtd, entries, prize_pool, start, duration FROM tournament_stats"

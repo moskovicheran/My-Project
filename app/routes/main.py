@@ -887,16 +887,24 @@ def dashboard():
 
         # Money transfers touching this agent's players — surfaced as a
         # visible list on the dashboard (the P&L card already nets them in).
-        from app.models import MoneyTransfer
+        # Browsing a closed cycle reads that cycle's archived transfers instead
+        # of the live ones — the live table was emptied by the reset, so
+        # without this the panel would be blank exactly where the history
+        # matters most.
+        from app.models import MoneyTransfer, ArchivedMoneyTransfer
+        _viewing = cycle_view_period()
+        _XF = ArchivedMoneyTransfer if _viewing else MoneyTransfer
         agent_transfers = []
         _pids = list(all_my_player_ids | {sa_id})
         if _pids:
-            _xfers = MoneyTransfer.query.filter(
-                db.or_(MoneyTransfer.from_player_id.in_(_pids),
-                       MoneyTransfer.to_player_id.in_(_pids))
-            ).order_by(MoneyTransfer.created_at.desc()).all()
+            _q = _XF.query.filter(
+                db.or_(_XF.from_player_id.in_(_pids),
+                       _XF.to_player_id.in_(_pids)))
+            if _viewing:
+                _q = _q.filter(_XF.period_id == _viewing.id)
+            _xfers = _q.order_by(_XF.created_at.desc()).all()
             agent_transfers = [{
-                'date': t.created_at.strftime('%d/%m/%Y'),
+                'date': t.created_at.strftime('%d/%m/%Y') if t.created_at else '',
                 'from_name': t.from_name, 'to_name': t.to_name,
                 'amount': round(abs(t.amount), 2),
                 'description': t.description or '',
