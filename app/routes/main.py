@@ -2749,13 +2749,30 @@ def _collection_live_rows(sa_id, start_date, end_date):
                          DailyPlayerStats.role != ''),
                     *date_filters)
             .group_by(DailyPlayerStats.player_id).all())
+    # Money moved between players is part of where a player actually stands, so
+    # it has to be in `base` — otherwise this screen says a player still owes
+    # money he already passed to another player in the same box, and "who
+    # hasn't settled" is wrong for everyone involved in a transfer.
+    # Transfers carry no date, so they only apply to the open-ended window;
+    # a bounded window would count a transfer against days it never belonged to
+    # (the same rule get_agent_totals and the daily page follow).
+    xfers = {}
+    if not start_date and not end_date and rows:
+        from app.union_data import get_transfer_adjustments
+        xfers = get_transfer_adjustments([r[0] for r in rows])
+
     out = {}
     for pid, nick, club, pnl, rake in rows:
-        base = round(float(pnl or 0), 2)
+        raw = round(float(pnl or 0), 2)
+        xf = round(float(xfers.get(pid, 0) or 0), 2)
+        base = round(raw + xf, 2)
         rk = round(float(rake or 0), 2)
-        if base or rk:
+        if base or rk or xf:
             out[pid] = {'nickname': nick or pid, 'club': club or '',
-                        'base': base, 'rake': rk}
+                        'base': base, 'rake': rk,
+                        # kept apart so the screen can SHOW why the figure
+                        # differs from the raw poker result
+                        'raw': raw, 'xfer': xf}
     return out
 
 
@@ -2796,13 +2813,16 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
     src = []
     for pid, d in live.items():
         seen.add(pid)
-        src.append((pid, d['nickname'], d['club'], d['base'], d['rake'], pays.get(pid)))
+        src.append((pid, d['nickname'], d['club'], d['base'], d['rake'],
+                    d.get('xfer', 0), pays.get(pid)))
     for pid, pay in pays.items():
         if pid not in seen:
+            # Frozen cycle: the stored snapshot already had transfers folded in
+            # when it was taken, so there is nothing extra to show.
             src.append((pid, pay.nickname or pid, pay.club or '',
-                        pay.base_amount or 0, pay.total_rake or 0, pay))
+                        pay.base_amount or 0, pay.total_rake or 0, 0, pay))
     receive, minus, settled = [], [], []
-    for pid, nick, club, base, rake, pay in src:
+    for pid, nick, club, base, rake, xfer, pay in src:
         manual_rake = round((pay.manual_rake or 0) if pay else 0, 2)
         is_paid = pay.is_paid if pay else False
         settlement = round(base + manual_rake, 2)
@@ -2825,6 +2845,9 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
         row = {
             'cycle_id': cycle.id, 'player_id': pid, 'nickname': nick, 'club': club,
             'base': round(base, 2), 'rake': round(rake, 2),
+            # shown on the row so the figure never differs from the poker
+            # result without saying why
+            'xfer': round(xfer, 2),
             'manual_rake': manual_rake, 'settlement': settlement,
             'paid_so_far': paid_so_far, 'remaining': remaining,
             'remaining_abs': remaining_abs, 'fully_paid': fully,

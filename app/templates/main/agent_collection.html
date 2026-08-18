@@ -25,7 +25,17 @@
                 <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
                 <span class="muted small">{{ r.club }}</span>
             </td>
-            <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
+            <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">
+                {{ r.base|comma }}
+                {# A player who moved money to another player in the box stands
+                   somewhere else than his poker result says. Show it, so this
+                   figure is never silently different from the game data. #}
+                {% if r.xfer %}
+                <div class="coll-xfer" title="כולל העברות כספים בין שחקנים">
+                    כולל העברות {% if r.xfer > 0 %}+{% endif %}{{ r.xfer|comma }}
+                </div>
+                {% endif %}
+            </td>
             <td data-label="רייק שייצר" class="muted">{{ r.rake|comma }}</td>
             <td data-label="קבלת רייק" class="coll-form">
                 <form method="POST" style="display:flex; gap:0.3rem; margin:0; align-items:center; flex-wrap:wrap;">
@@ -62,6 +72,11 @@
 </table>
 {% else %}<p class="muted small">{{ empty_msg }}</p>{% endif %}
 {% endmacro %}
+
+<style>
+.coll-xfer { font-size: 0.68rem; font-weight: 600; color: #7c3aed; margin-top: 0.1rem; white-space: nowrap; }
+body.dark .coll-xfer { color: #c4b5fd; }
+</style>
 
 {# ── Cycle tabs (only when there's more than the current cycle) ── #}
 {% if cycles|length > 1 %}
@@ -135,7 +150,17 @@
                     <a href="{{ url_for('union.player_detail', player_id=r.player_id) }}" class="player-link">{{ r.nickname }}</a>
                     <span class="muted small">{{ r.club }}</span>
                 </td>
-                <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">{{ r.base|comma }}</td>
+                <td data-label="רווח/הפסד" class="amount {% if r.base >= 0 %}income{% else %}expense{% endif %}">
+                    {{ r.base|comma }}
+                    {# A player who moved money to another player in the box stands
+                       somewhere else than his poker result says. Show it, so this
+                       figure is never silently different from the game data. #}
+                    {% if r.xfer %}
+                    <div class="coll-xfer" title="כולל העברות כספים בין שחקנים">
+                        כולל העברות {% if r.xfer > 0 %}+{% endif %}{{ r.xfer|comma }}
+                    </div>
+                    {% endif %}
+                </td>
                 <td data-label="רייק שייצר" class="muted">{{ r.rake|comma }}</td>
                 <td data-label="קבלת רייק">{{ r.manual_rake|comma }}</td>
                 <td data-label="מגיע" class="amount {% if r.settlement >= 0 %}income{% else %}expense{% endif %}">{{ r.settlement|comma }}</td>
