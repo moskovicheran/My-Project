@@ -243,6 +243,12 @@ def build_overview_context():
         )
         bal_plus_rake = round(totals['total_pnl'] + totals['total_rake'], 2)
         exp = round(float(expense_totals.get(pid, 0) or 0), 2)
+        collected = round(collected_by_agent.get(pid, 0), 2)
+        # "מגיע עוד" = box minus what's already collected — but a collection PAYS
+        # DOWN a debt (negative box) toward zero, so add it when the box is negative.
+        # Pure display; never touches the box/PnL/rake.
+        remaining = round(bal_plus_rake + collected if bal_plus_rake < 0
+                          else bal_plus_rake - collected, 2)
         agents_data.append({
             'username': username, 'player_id': pid,
             'players': totals['player_count'], 'rake': totals['total_rake'],
@@ -251,7 +257,8 @@ def build_overview_context():
             'total_expenses': exp,
             'expense_count': int(expense_counts.get(pid, 0) or 0),
             'balance_after_expenses': round(bal_plus_rake - exp, 2),
-            'collected': round(collected_by_agent.get(pid, 0), 2),
+            'collected': collected,
+            'remaining': remaining,
             'view_only': pid in subordinate,
             'owned_by': manager_label.get(subordinate.get(pid), ''),
         })
@@ -1003,9 +1010,15 @@ def collections_log():
             box = round(float(t['total_pnl'] or 0) + float(t['total_rake'] or 0), 2)
         except Exception:
             box = 0.0
+        # A collection pays DOWN a debt (negative box) toward zero — add it when
+        # the box is negative, subtract when positive. Pure display; box untouched.
+        remaining = round(box + d['collected'] if box < 0
+                          else box - d['collected'], 2)
         agent_totals.append({'agent': d['name'], 'box': box,
                              'collected': d['collected'],
-                             'remaining': round(box - d['collected'], 2)})
+                             'remaining': remaining,
+                             'box_abs': round(abs(box), 2),
+                             'remaining_abs': round(abs(remaining), 2)})
     agent_totals.sort(key=lambda x: -x['collected'])
     return render_template('admin/collections_log.html',
                            rows=rows, agent_totals=agent_totals,

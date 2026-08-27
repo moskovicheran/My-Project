@@ -19,6 +19,12 @@
 .muted { color:#9aa0ad; font-size:0.85rem; }
 .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .agent-chip { display:inline-block; background:#eef3ff; color:#3352cc; border-radius:999px; padding:0.2rem 0.6rem; font-size:0.82rem; font-weight:600; margin:0.2rem; }
+.cl-note-row td { background:#fff8ec; border-bottom:1px solid #f0e3c8; padding:0.5rem 0.9rem; }
+.cl-note { color:#8a6d2f; font-size:0.85rem; line-height:1.5; text-align:right; }
+.cl-note strong { color:#b8791a; }
+.cl-note-plus td { background:#f0fff7; border-bottom:1px solid #d7e8df; }
+.cl-note-plus .cl-note { color:#2f7a55; }
+.cl-note-plus .cl-note strong { color:#159b6d; }
 </style>
 
 <div class="cl-card">
@@ -37,7 +43,7 @@
 
     {% if agent_totals %}
     <div style="margin-top:0.8rem;">
-        <div class="muted" style="margin-bottom:0.4rem;">לפי סוכן — <strong>הקופסה לא זזה</strong>; הגבייה מתועדת מעליה (מגיע עוד = קופסה − נגבה):</div>
+        <div class="muted" style="margin-bottom:0.4rem;">לפי סוכן — <strong>הקופסה לא זזה</strong>; הגבייה מתועדת מעליה (מגיע עוד = היתרה שנשארה לסגור אחרי מה שכבר נגבה):</div>
         <div class="table-scroll"><table class="cl-table">
             <thead><tr><th>סוכן</th><th>קופסה (לא זזה)</th><th>נגבה (בכיס)</th><th>מגיע עוד</th></tr></thead>
             <tbody>
@@ -48,6 +54,19 @@
                 <td class="cl-green">{{ a.collected|comma }}</td>
                 <td class="cl-amber">{{ a.remaining|comma }}</td>
             </tr>
+            {% if a.box < 0 %}
+            <tr class="cl-note-row"><td colspan="4" class="cl-note">
+                ⓘ הקופסה במינוס — הסוכן חייב <strong>{{ a.box_abs|comma }}</strong> (כולל הרייק שחוזר אליו).
+                כבר נגבו <strong>{{ a.collected|comma }}</strong> שנמצאים בכיס הסוכן — מגיע לך לקבל אותם,
+                {% if a.remaining_abs >= 0.01 %}ובנוסף עוד <strong>{{ a.remaining_abs|comma }}</strong> שנשארו לגבייה{% else %}והחוב סגור במלואו{% endif %}.
+            </td></tr>
+            {% elif a.box > 0 %}
+            <tr class="cl-note-row cl-note-plus"><td colspan="4" class="cl-note">
+                ⓘ הקופסה בפלוס — מגיע לסוכן <strong>{{ a.box_abs|comma }}</strong> (כולל הרייק שחוזר אליו).
+                כבר יש בידו <strong>{{ a.collected|comma }}</strong> שנגבו —
+                {% if a.remaining >= 0.01 %}נשאר לתת לו עוד <strong>{{ a.remaining_abs|comma }}</strong>{% elif a.remaining <= -0.01 %}והוא גבה <strong>{{ a.remaining_abs|comma }}</strong> יותר ממה שמגיע לו — עליו להחזיר לך אותם{% else %}והחשבון סגור במלואו{% endif %}.
+            </td></tr>
+            {% endif %}
             {% endfor %}
             </tbody>
         </table></div>
