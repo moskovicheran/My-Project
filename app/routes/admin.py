@@ -1003,22 +1003,35 @@ def collections_log():
     for r in rows:
         d = by_agent.setdefault(r['agent_id'], {'name': r['agent'], 'collected': 0.0})
         d['collected'] = round(d['collected'] + r['collected'], 2)
+    from app.models import RakeConfig
     agent_totals = []
     for aid, d in by_agent.items():
+        gross_rake = 0.0
         try:
             t = get_agent_totals(aid)
-            box = round(float(t['total_pnl'] or 0) + float(t['total_rake'] or 0), 2)
+            gross_rake = float(t['total_rake'] or 0)
+            box = round(float(t['total_pnl'] or 0) + gross_rake, 2)
         except Exception:
             box = 0.0
         # A collection pays DOWN a debt (negative box) toward zero — add it when
         # the box is negative, subtract when positive. Pure display; box untouched.
         remaining = round(box + d['collected'] if box < 0
                           else box - d['collected'], 2)
+        # The agent's rake-deal % (RakeConfig; 100% when no config row) and the
+        # rake that actually comes back to them — shown as info; the box stays gross.
+        rc = RakeConfig.query.filter(
+            RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+            RakeConfig.entity_id == aid).first()
+        rake_pct = float(rc.rake_percent or 0) if rc else 100.0
         agent_totals.append({'agent': d['name'], 'box': box,
                              'collected': d['collected'],
                              'remaining': remaining,
                              'box_abs': round(abs(box), 2),
-                             'remaining_abs': round(abs(remaining), 2)})
+                             'remaining_abs': round(abs(remaining), 2),
+                             'rake_pct': rake_pct,
+                             'rake_pct_disp': ('%g' % round(rake_pct, 2)),
+                             'gross_rake': round(gross_rake, 2),
+                             'rakeback': round(gross_rake * rake_pct / 100.0, 2)})
     agent_totals.sort(key=lambda x: -x['collected'])
     return render_template('admin/collections_log.html',
                            rows=rows, agent_totals=agent_totals,

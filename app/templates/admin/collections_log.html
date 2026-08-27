@@ -25,6 +25,8 @@
 .cl-note-plus td { background:#f0fff7; border-bottom:1px solid #d7e8df; }
 .cl-note-plus .cl-note { color:#2f7a55; }
 .cl-note-plus .cl-note strong { color:#159b6d; }
+.cl-rake { margin-top:0.35rem; padding-top:0.35rem; border-top:1px dashed rgba(0,0,0,0.12); color:#5a6172; font-size:0.82rem; }
+.cl-rake strong { color:#3352cc; }
 </style>
 
 <div class="cl-card">
@@ -54,19 +56,19 @@
                 <td class="cl-green">{{ a.collected|comma }}</td>
                 <td class="cl-amber">{{ a.remaining|comma }}</td>
             </tr>
-            {% if a.box < 0 %}
-            <tr class="cl-note-row"><td colspan="4" class="cl-note">
+            <tr class="cl-note-row {% if a.box > 0 %}cl-note-plus{% endif %}"><td colspan="4" class="cl-note">
+                {% if a.box < 0 %}
                 ⓘ הקופסה במינוס — הסוכן חייב <strong>{{ a.box_abs|comma }}</strong> (כולל הרייק שחוזר אליו).
                 כבר נגבו <strong>{{ a.collected|comma }}</strong> שנמצאים בכיס הסוכן — מגיע לך לקבל אותם,
                 {% if a.remaining_abs >= 0.01 %}ובנוסף עוד <strong>{{ a.remaining_abs|comma }}</strong> שנשארו לגבייה{% else %}והחוב סגור במלואו{% endif %}.
-            </td></tr>
-            {% elif a.box > 0 %}
-            <tr class="cl-note-row cl-note-plus"><td colspan="4" class="cl-note">
+                {% elif a.box > 0 %}
                 ⓘ הקופסה בפלוס — מגיע לסוכן <strong>{{ a.box_abs|comma }}</strong> (כולל הרייק שחוזר אליו).
                 כבר יש בידו <strong>{{ a.collected|comma }}</strong> שנגבו —
                 {% if a.remaining >= 0.01 %}נשאר לתת לו עוד <strong>{{ a.remaining_abs|comma }}</strong>{% elif a.remaining <= -0.01 %}והוא גבה <strong>{{ a.remaining_abs|comma }}</strong> יותר ממה שמגיע לו — עליו להחזיר לך אותם{% else %}והחשבון סגור במלואו{% endif %}.
+                {% endif %}
+                <div class="cl-rake">🎚️ אחוז רייק של הסוכן: <strong>{{ a.rake_pct_disp }}%</strong>
+                    · רייק גולמי {{ a.gross_rake|comma }} · חוזר אליו בפועל <strong>{{ a.rakeback|comma }}</strong></div>
             </td></tr>
-            {% endif %}
             {% endfor %}
             </tbody>
         </table></div>
