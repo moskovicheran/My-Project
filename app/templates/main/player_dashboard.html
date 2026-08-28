@@ -18,7 +18,7 @@
 var _allSessions = {{ sessions | tojson }};  // active + archived (last 90 days)
 var _activeDates = new Set({{ active_dates | tojson }});
 var _dailyStatsMap = {{ daily_stats_map | tojson }};
-var _rakeRefundPct = {{ (0 if current_user.username == 'יבגני' else rake_refund_pct | default(0)) | tojson }};
+var _rakeRefundPct = {{ (0 if current_user.username in ['יבגני', 'דוואי'] else rake_refund_pct | default(0)) | tojson }};
 var _collectionRake = {{ collection_rake | default(0) | tojson }};
 var _selectedDates = []; // array of 0-2 endpoint dates (range-select like agent dashboard)
 
@@ -310,9 +310,10 @@ window.addEventListener('DOMContentLoaded', function() { _initCal(); applyFilter
 </script>
 
 {# ── Stats Cards ── #}
-{# Yevgeni still receives the rake refund (RakeConfig untouched) but must not
-   see the amount — hide the "החזר רייק" card only for his own login. #}
-{% set show_rake_refund = rake_refund and current_user.username != 'יבגני' %}
+{# These players still receive the rake refund (RakeConfig untouched) but must
+   not see the amount — hide the "החזר רייק" card only for their own login.
+   Keep this list in sync with the _rakeRefundPct guard in the <script> above. #}
+{% set show_rake_refund = rake_refund and current_user.username not in ['יבגני', 'דוואי'] %}
 {% set _ncards = 3 %}
 {% if show_rake_refund %}{% set _ncards = _ncards + 1 %}{% endif %}
 {% if collection_rake %}{% set _ncards = _ncards + 1 %}{% endif %}
