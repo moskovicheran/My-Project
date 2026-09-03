@@ -1189,6 +1189,14 @@ def dashboard():
                 cs_current_pids if cs_current_pids else cs_player_ids)
             # Sum ALL rows per player (no per-row sa_id restriction).
             cumul_cs = {}
+            # Same rows, split by the row's own agent_id, so a player who
+            # genuinely played under two agents in the cycle shows his rake
+            # UNDER EACH agent instead of his full total being repeated in
+            # every agent group — that repetition double-counted the box total
+            # (e.g. vandam under Dolar 10 AND Negranoss inflated niroha's box
+            # by his full 1,869). Bucket key matches the display grouping:
+            # a real agent_id, or '(direct)' for no-agent / own-SA rows.
+            per_agent_cs = {}
             if cs_player_ids and cs_sa:
                 _cumul_filters = [SM.player_id.in_(list(cs_player_ids)),
                                   and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
@@ -1208,6 +1216,19 @@ def dashboard():
                     cumul_cs[pid] = {'pnl': round(float(pnl or 0), 2),
                                      'rake': round(float(rake or 0), 2),
                                      'hands': int(hands or 0)}
+                pa_stats = SM.query.with_entities(
+                    SM.player_id, SM.agent_id,
+                    sqlfunc.sum(SM.pnl),
+                    sqlfunc.sum(SM.rake),
+                    sqlfunc.sum(SM.hands),
+                ).filter(*_cumul_filters).group_by(SM.player_id, SM.agent_id).all()
+                for pid, ag, pnl, rake, hands in pa_stats:
+                    bucket = ag if (ag and ag not in ('', '-') and ag != cs_sa) else '(direct)'
+                    d = per_agent_cs.setdefault(pid, {}).setdefault(
+                        bucket, {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
+                    d['pnl'] += float(pnl or 0)
+                    d['rake'] += float(rake or 0)
+                    d['hands'] += int(hands or 0)
 
             # Ensure any player in current scope but not yet in cs['direct']
             # or cs['agents'] is added as a direct member so they appear in
@@ -1256,55 +1277,83 @@ def dashboard():
             # Then fill actual numbers from cumul_cs. When a date filter is
             # active, players without data in the filtered range are dropped
             # from the display.
-            cs_rake = cs_pnl = cs_hands = 0
+            cs_rake = cs_pnl = cs_hands = 0.0
+            _kept_cumul_pids = set()   # DB-backed players — counted ONCE below
+            _seen_direct = set()       # de-dupe repeated direct rows (e.g. the
+                                       # SA's own self-row inserted twice)
             direct_kept = []
             for m in cs.get('direct', []):
                 if cs_current_pids and m['player_id'] not in cs_player_ids:
                     continue  # moved to another SA
+                if m['player_id'] in _seen_direct:
+                    continue  # already shown as a direct line
+                _seen_direct.add(m['player_id'])
                 c = cumul_cs.get(m['player_id'])
                 if c:
-                    m['pnl'] = c['pnl']
-                    m['rake'] = c['rake']
-                    m['hands'] = c.get('hands', 0)
+                    # Split: a direct line shows only the player's no-agent
+                    # rows. A player listed here who actually earned under an
+                    # agent shows 0 on this line — his rake appears under that
+                    # agent's group instead, so the box lines reconcile with
+                    # the box total (no full-total repetition).
+                    d = per_agent_cs.get(m['player_id'], {}).get(
+                        '(direct)', {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
+                    m['pnl'] = round(d['pnl'], 2)
+                    m['rake'] = round(d['rake'], 2)
+                    m['hands'] = int(d.get('hands', 0))
                     direct_kept.append(m)
+                    _kept_cumul_pids.add(m['player_id'])
                 elif not had_date_filter:
                     direct_kept.append(m)
-                # else: filtered view and player has no data in range → drop
-                if m in direct_kept:
+                    # Excel-only player (no DB rows): keep prior contribution.
                     cs_rake += m.get('rake', 0)
                     cs_pnl += m.get('pnl', 0)
                     cs_hands += m.get('hands', 0)
+                # else: filtered view and player has no data in range → drop
             cs['direct'] = direct_kept
             for ag_id_key, ag in list(cs.get('agents', {}).items()):
-                ag_r = ag_p = ag_h = 0
+                ag_r = ag_p = ag_h = 0.0
                 members_kept = []
+                _seen_ag = set()   # de-dupe repeated rows within this agent
                 for m in ag.get('members', []):
+                    if m['player_id'] in _seen_ag:
+                        continue
+                    _seen_ag.add(m['player_id'])
                     c = cumul_cs.get(m['player_id'])
                     if c:
-                        m['pnl'] = c['pnl']
-                        m['rake'] = c['rake']
-                        m['hands'] = c.get('hands', 0)
+                        # Split: this line shows only the rake the player
+                        # earned UNDER THIS agent (0 if none), never his full
+                        # total — that repetition is what double-counted the box.
+                        d = per_agent_cs.get(m['player_id'], {}).get(
+                            ag_id_key, {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
+                        m['pnl'] = round(d['pnl'], 2)
+                        m['rake'] = round(d['rake'], 2)
+                        m['hands'] = int(d.get('hands', 0))
                         members_kept.append(m)
+                        _kept_cumul_pids.add(m['player_id'])
+                        ag_r += m['rake']; ag_p += m['pnl']; ag_h += m['hands']
                     elif not had_date_filter:
                         members_kept.append(m)
-                    # else: drop in filtered view
-                    if m in members_kept:
                         ag_r += m.get('rake', 0)
                         ag_p += m.get('pnl', 0)
                         ag_h += m.get('hands', 0)
+                    # else: drop in filtered view
                 ag['members'] = members_kept
                 ag['total_rake'] = round(ag_r, 2)
                 ag['total_pnl'] = round(ag_p, 2)
-                ag['total_hands'] = ag_h
-                cs_rake += ag_r
-                cs_pnl += ag_p
-                cs_hands += ag_h
+                ag['total_hands'] = int(ag_h)
                 # Drop empty sub-agents when filtered
                 if had_date_filter and not members_kept:
                     cs['agents'].pop(ag_id_key, None)
+            # Box total counts each DB-backed player exactly ONCE (his full
+            # cumulative rake), independent of how many agent groups he is
+            # displayed in — so the box reconciles with the overview card.
+            # Excel-only players (added above) are already folded into cs_rake.
+            cs_rake += sum(cumul_cs[p]['rake'] for p in _kept_cumul_pids)
+            cs_pnl += sum(cumul_cs[p]['pnl'] for p in _kept_cumul_pids)
+            cs_hands += sum(cumul_cs[p].get('hands', 0) for p in _kept_cumul_pids)
             cs['total_rake'] = round(cs_rake, 2)
             cs['total_pnl'] = round(cs_pnl, 2)
-            cs['total_hands'] = cs_hands
+            cs['total_hands'] = int(cs_hands)
 
         # Drop child SAs that have no players at all in the filtered range
         if had_date_filter:
