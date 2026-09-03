@@ -1217,13 +1217,26 @@ def dashboard():
                                      'rake': round(float(rake or 0), 2),
                                      'hands': int(hands or 0)}
                 pa_stats = SM.query.with_entities(
-                    SM.player_id, SM.agent_id,
+                    SM.player_id, SM.agent_id, SM.sa_id,
                     sqlfunc.sum(SM.pnl),
                     sqlfunc.sum(SM.rake),
                     sqlfunc.sum(SM.hands),
-                ).filter(*_cumul_filters).group_by(SM.player_id, SM.agent_id).all()
-                for pid, ag, pnl, rake, hands in pa_stats:
-                    bucket = ag if (ag and ag not in ('', '-') and ag != cs_sa) else '(direct)'
+                ).filter(*_cumul_filters).group_by(
+                    SM.player_id, SM.agent_id, SM.sa_id).all()
+                for pid, ag, sa, pnl, rake, hands in pa_stats:
+                    # Bucket key must match the display grouping: a real agent
+                    # → agent_id; else a player sitting directly under a
+                    # descendant SA (its own sub-group in the box) → that
+                    # sa_id; else the box owner's own direct list → '(direct)'.
+                    # Without the sa_id fallback, rows with no agent under a
+                    # sub-SA (e.g. kasper2007's direct players) landed in
+                    # '(direct)' and showed 0 under their sub-SA group.
+                    if ag and ag not in ('', '-') and ag != cs_sa:
+                        bucket = ag
+                    elif sa and sa not in ('', '-') and sa != cs_sa:
+                        bucket = sa
+                    else:
+                        bucket = '(direct)'
                     d = per_agent_cs.setdefault(pid, {}).setdefault(
                         bucket, {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
                     d['pnl'] += float(pnl or 0)
@@ -1279,6 +1292,24 @@ def dashboard():
             # from the display.
             cs_rake = cs_pnl = cs_hands = 0.0
             _kept_cumul_pids = set()   # DB-backed players — counted ONCE below
+            # Distinct display buckets each player occupies (direct + each
+            # agent group). A player shown in a SINGLE bucket carries his full
+            # cumulative total on that line; one split across several agents
+            # carries each line's own agent share. Either way the visible lines
+            # sum back to the box total (no double-count, nothing hidden).
+            _disp_buckets = {}
+            for _m in cs.get('direct', []):
+                _disp_buckets.setdefault(_m['player_id'], set()).add('(direct)')
+            for _agk, _ag in cs.get('agents', {}).items():
+                for _m in _ag.get('members', []):
+                    _disp_buckets.setdefault(_m['player_id'], set()).add(_agk)
+
+            def _line_share(pid, bucket_key, c):
+                if len(_disp_buckets.get(pid, ())) <= 1:
+                    return c  # sole line for this player → his full total
+                return per_agent_cs.get(pid, {}).get(
+                    bucket_key, {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
+
             _seen_direct = set()       # de-dupe repeated direct rows (e.g. the
                                        # SA's own self-row inserted twice)
             direct_kept = []
@@ -1290,13 +1321,10 @@ def dashboard():
                 _seen_direct.add(m['player_id'])
                 c = cumul_cs.get(m['player_id'])
                 if c:
-                    # Split: a direct line shows only the player's no-agent
-                    # rows. A player listed here who actually earned under an
-                    # agent shows 0 on this line — his rake appears under that
-                    # agent's group instead, so the box lines reconcile with
-                    # the box total (no full-total repetition).
-                    d = per_agent_cs.get(m['player_id'], {}).get(
-                        '(direct)', {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
+                    # Direct line: full total when this is the player's only
+                    # line, else just his no-agent share (his agent rows show
+                    # under their own groups) — so the box lines reconcile.
+                    d = _line_share(m['player_id'], '(direct)', c)
                     m['pnl'] = round(d['pnl'], 2)
                     m['rake'] = round(d['rake'], 2)
                     m['hands'] = int(d.get('hands', 0))
@@ -1320,11 +1348,10 @@ def dashboard():
                     _seen_ag.add(m['player_id'])
                     c = cumul_cs.get(m['player_id'])
                     if c:
-                        # Split: this line shows only the rake the player
-                        # earned UNDER THIS agent (0 if none), never his full
-                        # total — that repetition is what double-counted the box.
-                        d = per_agent_cs.get(m['player_id'], {}).get(
-                            ag_id_key, {'pnl': 0.0, 'rake': 0.0, 'hands': 0})
+                        # Agent line: full total when this is the player's only
+                        # line, else just his share under THIS agent (never his
+                        # full total repeated) — what had double-counted the box.
+                        d = _line_share(m['player_id'], ag_id_key, c)
                         m['pnl'] = round(d['pnl'], 2)
                         m['rake'] = round(d['rake'], 2)
                         m['hands'] = int(d.get('hands', 0))
