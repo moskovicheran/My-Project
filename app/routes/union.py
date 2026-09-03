@@ -408,6 +408,19 @@ def player_detail(player_id):
             flash('אין לך הרשאה לצפות בשחקן זה.', 'danger')
             return redirect(url_for('main.dashboard'))
 
+    # Previous-cycle ("מחזור קודם") view: when the viewer is inside a closed
+    # cycle (or picked archived dates), render this player's record FROM THAT
+    # ARCHIVED PERIOD. Without this the page silently drops back to live data,
+    # so clicking a player inside the cycle tab "jumps" to the current cycle.
+    # Self-contained branch → the live path below is left byte-for-byte intact.
+    from app.routes.main import requested_date_filter, _resolve_date_uploads
+    _req_dates = requested_date_filter()
+    if _req_dates:
+        _active_up, _apid, _auids, _vd, _abuckets = _resolve_date_uploads(_req_dates)
+        if _abuckets and not _active_up:
+            return _player_detail_archive(
+                player_id, _abuckets, request.args.get('club', '').strip())
+
     from app.union_data import get_cumulative_stats, get_agent_scope_predicate
     member_info, sessions, club_entries = get_player_detail(player_id)
 
@@ -841,6 +854,120 @@ def player_detail(player_id):
                            collection_payment=collection_payment,
                            collection_cap=collection_cap,
                            collection_history=collection_history)
+
+
+def _player_detail_archive(player_id, archive_buckets, club_filter):
+    """Render the player-detail page from an ARCHIVED period (previous-cycle
+    mode). Deliberately self-contained: it sources totals, per-club breakdown
+    and the game record from the archive tables for the viewed period, so the
+    live path in player_detail() stays untouched. Scope/collection niceties of
+    the live view are intentionally omitted — a past cycle shows the player's
+    whole record for that cycle (which is exactly what the user asked for)."""
+    from app.models import (ArchivedPlayerStats as APS,
+                            ArchivedPlayerSession as APSess, ArchivedUpload as AU)
+    from app.routes.main import _archive_filter
+    from sqlalchemy import func as _sf, and_ as _and
+
+    _real_role = _and(APS.role != 'Name Entry', APS.role.isnot(None), APS.role != '')
+    _arc = _archive_filter(APS, archive_buckets)
+
+    # Identity from the period (nickname/role/sa/agent/club), not club-filtered.
+    ident = APS.query.with_entities(
+        _sf.max(APS.nickname), _sf.max(APS.role),
+        _sf.max(APS.sa_id), _sf.max(APS.agent_id), _sf.max(APS.club),
+    ).filter(APS.player_id == player_id, _real_role, _arc).first()
+    if not ident or ident[0] is None:
+        return render_template('union/player_detail.html',
+                               member=None, sessions=[], club_entries=[],
+                               player_id=player_id)
+    nick, role, sa_id, agent_id, any_club = ident
+
+    def _nick_of(pid):
+        if not pid or pid in ('', '-'):
+            return '-'
+        n = APS.query.with_entities(_sf.max(APS.nickname)).filter(
+            APS.player_id == pid, APS.nickname.isnot(None), APS.nickname != '').scalar()
+        return n or pid
+    sa_nick = _nick_of(sa_id)
+    agent_nick = _nick_of(agent_id)
+
+    # Per-club totals (apply the optional ?club= filter the managed-club
+    # "רקורד" buttons pass).
+    _tot_filters = [APS.player_id == player_id, _real_role, _arc]
+    if club_filter:
+        _tot_filters.append(APS.club == club_filter)
+    club_rows = APS.query.with_entities(
+        APS.club, _sf.sum(APS.rake), _sf.sum(APS.pnl), _sf.sum(APS.hands),
+    ).filter(*_tot_filters).group_by(APS.club).all()
+    total_rake = round(sum(float(r or 0) for _, r, _, _ in club_rows), 2)
+    total_pnl = round(sum(float(p or 0) for _, _, p, _ in club_rows), 2)
+    total_hands = int(sum(int(h or 0) for _, _, _, h in club_rows))
+    club_entries = [{
+        'club': c, 'rake_total': round(float(r or 0), 2),
+        'pnl_total': round(float(p or 0), 2), 'hands_total': int(h or 0),
+        'sa_nick': sa_nick, 'agent_nick': agent_nick,
+    } for c, r, p, h in club_rows if c]
+    club_entries.sort(key=lambda e: e['rake_total'], reverse=True)
+
+    member_info = {
+        'player_id': player_id, 'nickname': nick, 'role': role or 'Player',
+        'country': '-', 'club': any_club or '-',
+        'sa_nick': sa_nick, 'agent_nick': agent_nick,
+        'pnl_total': total_pnl, 'rake_total': total_rake, 'hands_total': total_hands,
+    }
+
+    # Game record (sessions) for the period.
+    _sess_arc = _archive_filter(APSess, archive_buckets)
+    _au_join = _and(AU.period_id == APSess.period_id,
+                    AU.original_id == APSess.upload_id)
+    sessions = []
+    for s, upload_date in (APSess.query
+                           .join(AU, _au_join)
+                           .add_columns(AU.upload_date)
+                           .filter(APSess.player_id == player_id, _sess_arc)
+                           .order_by(AU.upload_date.asc()).all()):
+        sessions.append({
+            'table_name': s.table_name, 'game_type': s.game_type,
+            'blinds': s.blinds or '',
+            'date': upload_date.strftime('%d/%m/%Y') if upload_date else '',
+            'club_name': '', 'buyin': 0, 'cashout': 0, 'hands': 0, 'rake': 0,
+            'pnl': round(s.pnl, 2),
+        })
+    # Newest first (mirrors the live view's sort).
+    sessions.sort(key=lambda x: x['date'].split('/')[::-1] if x['date'] else [],
+                  reverse=True)
+
+    # Game-type / blinds breakdown — same shape the template renders.
+    game_stats = {}
+    for s in sessions:
+        gt = s.get('game_type', 'Other') or 'Other'
+        gs = game_stats.setdefault(gt, {'count': 0, 'pnl': 0, 'wins': 0,
+                                        'losses': 0, 'blinds': {}})
+        gs['count'] += 1
+        gs['pnl'] = round(gs['pnl'] + s['pnl'], 2)
+        gs['wins' if s['pnl'] >= 0 else 'losses'] += 1
+        b = s.get('blinds', '-') or '-'
+        bs = gs['blinds'].setdefault(b, {'count': 0, 'pnl': 0, 'wins': 0, 'losses': 0})
+        bs['count'] += 1
+        bs['pnl'] = round(bs['pnl'] + s['pnl'], 2)
+        bs['wins' if s['pnl'] >= 0 else 'losses'] += 1
+    total_wins = sum(g['wins'] for g in game_stats.values())
+    total_losses = sum(g['losses'] for g in game_stats.values())
+    total_sessions = sum(g['count'] for g in game_stats.values())
+
+    return render_template('union/player_detail.html',
+                           member=member_info, sessions=sessions,
+                           player_xfers=[], club_entries=club_entries,
+                           total_rake=total_rake, total_pnl=total_pnl,
+                           player_xfer_net=0, pnl_games=total_pnl,
+                           total_hands=total_hands, game_stats=game_stats,
+                           total_sessions=total_sessions, total_wins=total_wins,
+                           total_losses=total_losses,
+                           hierarchy_chain=_build_hierarchy_chain(player_id),
+                           scope_applied=False, scope_sa_id=None,
+                           scope_sa_nick=None, club_filter=club_filter,
+                           collection_payment=None, collection_cap=0.0,
+                           collection_history=[])
 
 
 def _build_hierarchy_chain(player_id):
