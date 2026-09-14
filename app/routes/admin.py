@@ -2026,6 +2026,42 @@ def agent_view(sa_id):
     total_hands = _t['total_hands']
     player_count = _t['player_count']
 
+    # Child-SA cards must use the SAME per-day unified scope as the standalone
+    # card — for the card TOTAL and the per-player member values. Otherwise a
+    # player split across two SAs (moved agents mid-cycle) counts his FULL
+    # cross-SA total under this child SA instead of only his days here (the
+    # get_cumulative_stats override above returns the full per-player total).
+    from app.union_data import build_agent_scope_preds as _basp_cs
+    for cs in child_sas:
+        _csid = cs.get('sa_id')
+        if not _csid:
+            continue
+        _ppcs, _ = _basp_cs(_csid, DailyPlayerStats)
+        _pfcs = or_(*_ppcs) if _ppcs else (DailyPlayerStats.id < 0)
+        _pdm = {r[0]: {'pnl': float(r[1] or 0), 'rake': float(r[2] or 0), 'hands': int(r[3] or 0)}
+                for r in DailyPlayerStats.query.with_entities(
+                    DailyPlayerStats.player_id, sqlfunc.sum(DailyPlayerStats.pnl),
+                    sqlfunc.sum(DailyPlayerStats.rake), sqlfunc.sum(DailyPlayerStats.hands)
+                ).filter(_pfcs, and_(DailyPlayerStats.role != 'Name Entry',
+                    DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')
+                ).group_by(DailyPlayerStats.player_id).all()}
+        for m in cs.get('direct', []):
+            c = _pdm.get(m['player_id'])
+            if c:
+                m['pnl'], m['rake'], m['hands'] = c['pnl'], c['rake'], c['hands']
+        for ag in cs.get('agents', {}).values():
+            for m in ag.get('members', []):
+                c = _pdm.get(m['player_id'])
+                if c:
+                    m['pnl'], m['rake'], m['hands'] = c['pnl'], c['rake'], c['hands']
+            ag['total_rake'] = round(sum(m.get('rake', 0) for m in ag.get('members', [])), 2)
+            ag['total_pnl'] = round(sum(m.get('pnl', 0) for m in ag.get('members', [])), 2)
+            ag['total_hands'] = sum(m.get('hands', 0) for m in ag.get('members', []))
+        _ctcs = _unified(_csid)
+        cs['total_rake'] = _ctcs['total_rake']
+        cs['total_pnl'] = _ctcs['total_pnl']
+        cs['total_hands'] = _ctcs['total_hands']
+
     agents_sorted = dict(sorted(agents_map.items(), key=lambda x: x[1].get('total_rake', 0), reverse=True))
 
     sa_nick = my_sas[0]['sa_nick'] if my_sas else sa_id

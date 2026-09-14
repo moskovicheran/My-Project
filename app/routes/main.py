@@ -1397,6 +1397,46 @@ def dashboard():
             child_sas = [cs for cs in child_sas
                          if cs.get('direct') or cs.get('agents')]
 
+        # Child-SA cards must use the SAME per-day unified scope as their
+        # standalone card — both the card total and per-player member values.
+        # Otherwise a player split across two SAs (moved agents mid-cycle)
+        # counts his FULL cross-SA total here (cumul_cs above) instead of only
+        # his days under this child SA. Current-cycle view only.
+        if not use_archive:
+            from app.union_data import (build_agent_scope_preds as _basp_cs,
+                                        get_agent_totals as _gat_cs)
+            from app.models import DailyPlayerStats as _DPS
+            for cs in child_sas:
+                _csid = cs.get('sa_id')
+                if not _csid:
+                    continue
+                _ppcs, _ = _basp_cs(_csid, _DPS)
+                _pfcs = or_(*_ppcs) if _ppcs else (_DPS.id < 0)
+                _pdm = {r[0]: {'pnl': float(r[1] or 0), 'rake': float(r[2] or 0),
+                               'hands': int(r[3] or 0)}
+                        for r in _DPS.query.with_entities(
+                            _DPS.player_id, sqlfunc.sum(_DPS.pnl),
+                            sqlfunc.sum(_DPS.rake), sqlfunc.sum(_DPS.hands)
+                        ).filter(_pfcs, and_(_DPS.role != 'Name Entry',
+                            _DPS.role.isnot(None), _DPS.role != '')
+                        ).group_by(_DPS.player_id).all()}
+                for m in cs.get('direct', []):
+                    c = _pdm.get(m['player_id'])
+                    if c:
+                        m['pnl'], m['rake'], m['hands'] = c['pnl'], c['rake'], c['hands']
+                for ag in (cs.get('agents') or {}).values():
+                    for m in ag.get('members', []):
+                        c = _pdm.get(m['player_id'])
+                        if c:
+                            m['pnl'], m['rake'], m['hands'] = c['pnl'], c['rake'], c['hands']
+                    ag['total_rake'] = round(sum(m.get('rake', 0) for m in ag.get('members', [])), 2)
+                    ag['total_pnl'] = round(sum(m.get('pnl', 0) for m in ag.get('members', [])), 2)
+                    ag['total_hands'] = int(sum(m.get('hands', 0) for m in ag.get('members', [])))
+                _ct = _gat_cs(_csid)
+                cs['total_rake'] = _ct['total_rake']
+                cs['total_pnl'] = _ct['total_pnl']
+                cs['total_hands'] = _ct['total_hands']
+
         # Find agent nicknames from Excel + DB
         all_nicks_db = dict(SM.query.with_entities(
             SM.player_id, sqlfunc.max(SM.nickname)
