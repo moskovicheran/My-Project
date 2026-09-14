@@ -718,9 +718,19 @@ def dashboard():
         # silently drop the other source — `_stats_union_subquery` UNION-ALLs
         # them so the aggregate covers both. Filters that don't reference
         # `upload_id`/`period_id` are applied to each part before the union.
+        # PER-DAY box scope: same predicate as get_agent_totals / agent-view,
+        # so a player who split time between two agents lands in EACH agent's
+        # dashboard for the days he was under them, and the listed members sum
+        # to the card total. Self is excluded here (added back separately).
+        _pd_period_ids = ([b['period_id'] for b in archive_buckets]
+                          if use_archive else None)
         def _my_players_filter_builder(M):
+            from app.union_data import build_agent_scope_preds
+            _pp, _ = build_agent_scope_preds(sa_id, M, period_ids=_pd_period_ids)
+            _pf = or_(*_pp) if _pp else (M.id < 0)
             flts = [
-                M.player_id.in_(my_player_id_list),
+                _pf,
+                M.player_id != sa_id,
                 and_(M.role != 'Name Entry', M.role.isnot(None), M.role != ''),
             ]
             if _other_owned_clubs:

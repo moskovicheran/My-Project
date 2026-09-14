@@ -1669,9 +1669,14 @@ def agent_view(sa_id):
     # ClubGG: a player's full history moves with them when they change SA.
     # exclude_self=sa_id: the viewed agent's own play is Member Detail,
     # not downline activity — shouldn't appear as "his own direct player".
-    from app.union_data import get_players_with_current_scope
-    current_scope_pids = list(get_players_with_current_scope(
-        all_sa_ids, exclude_self=sa_id))
+    # PER-DAY member list: build the same box scope used by get_agent_totals,
+    # so a player who split time between two agents appears in EACH agent's
+    # card with only the days he was under them, and the listed members sum to
+    # the card total. Self is excluded here — the SA's own play is added back
+    # separately below (with its own club carve-out).
+    from app.union_data import build_agent_scope_preds
+    _scope_preds, _ = build_agent_scope_preds(sa_id, DailyPlayerStats)
+    _scope_flt = or_(*_scope_preds) if _scope_preds else (DailyPlayerStats.id < 0)
     my_players_db = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
         sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
@@ -1679,7 +1684,8 @@ def agent_view(sa_id):
         sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
         sqlfunc.sum(DailyPlayerStats.hands),
     ).filter(
-        DailyPlayerStats.player_id.in_(current_scope_pids) if current_scope_pids else DailyPlayerStats.id < 0,
+        _scope_flt,
+        DailyPlayerStats.player_id != sa_id,
         and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
     ).group_by(DailyPlayerStats.player_id).all()
 

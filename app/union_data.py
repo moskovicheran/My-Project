@@ -1435,14 +1435,31 @@ def build_agent_scope_preds(uid, M, time_filters=None, period_ids=None):
     # current_scope_pids replaces it. Club (managed clubs) and explicit
     # override are orthogonal sources that still apply.
     scope_preds = []
-    if current_scope_pids:
-        if other_managed_names:
-            scope_preds.append(and_(
-                M.player_id.in_(list(current_scope_pids)),
-                not_(M.club.in_(list(other_managed_names))),
-            ))
-        else:
-            scope_preds.append(M.player_id.in_(list(current_scope_pids)))
+    # PER-DAY attribution for genuinely split players, WITHOUT losing the
+    # rows where PPPoker drops the sa/agent entirely (~16% of rake sits in
+    # rows with no attribution — those must NOT vanish from the cards).
+    #   • A row that carries an explicit sa/agent belongs to THAT agent's box
+    #     (per-day): a player who moved mid-cycle shows up in each agent's
+    #     card for the days he was actually under them.
+    #   • A row with NO attribution is recovered to the player's CURRENT sa
+    #     (unchanged from before), so those rows still land in exactly one box.
+    # For any player whose rows all sit under a single sa this is identical to
+    # the old current-scope behaviour; it only splits players that genuinely
+    # have rows under more than one sa. delta=0 is preserved — every row lands
+    # in exactly one box (its explicit sa, or the current sa when unattributed).
+    _hier_pr = list(set(all_ids) | set(known_agent_ids))
+    _no_attr = and_(
+        or_(M.sa_id.is_(None), M.sa_id == '', M.sa_id == '-'),
+        or_(M.agent_id.is_(None), M.agent_id == '', M.agent_id == '-'),
+    )
+    _row_ours = or_(
+        or_(M.sa_id.in_(_hier_pr), M.agent_id.in_(_hier_pr)),
+        and_(M.player_id.in_(list(current_scope_pids)), _no_attr),
+    )
+    if other_managed_names:
+        scope_preds.append(and_(_row_ours, not_(M.club.in_(list(other_managed_names)))))
+    else:
+        scope_preds.append(_row_ours)
     if managed_club_names_exclusive:
         # Clubs only we manage — claim every row there, EXCEPT rows
         # whose player_id is a PLAYER_ONLY SA that registered the same
@@ -1692,14 +1709,31 @@ def get_agent_scope_predicate(sa_id, M=None):
         pass
 
     scope_preds = []
-    if current_scope_pids:
-        if other_managed_names:
-            scope_preds.append(and_(
-                M.player_id.in_(list(current_scope_pids)),
-                not_(M.club.in_(list(other_managed_names))),
-            ))
-        else:
-            scope_preds.append(M.player_id.in_(list(current_scope_pids)))
+    # PER-DAY attribution for genuinely split players, WITHOUT losing the
+    # rows where PPPoker drops the sa/agent entirely (~16% of rake sits in
+    # rows with no attribution — those must NOT vanish from the cards).
+    #   • A row that carries an explicit sa/agent belongs to THAT agent's box
+    #     (per-day): a player who moved mid-cycle shows up in each agent's
+    #     card for the days he was actually under them.
+    #   • A row with NO attribution is recovered to the player's CURRENT sa
+    #     (unchanged from before), so those rows still land in exactly one box.
+    # For any player whose rows all sit under a single sa this is identical to
+    # the old current-scope behaviour; it only splits players that genuinely
+    # have rows under more than one sa. delta=0 is preserved — every row lands
+    # in exactly one box (its explicit sa, or the current sa when unattributed).
+    _hier_pr = list(set(all_ids) | set(known_agent_ids))
+    _no_attr = and_(
+        or_(M.sa_id.is_(None), M.sa_id == '', M.sa_id == '-'),
+        or_(M.agent_id.is_(None), M.agent_id == '', M.agent_id == '-'),
+    )
+    _row_ours = or_(
+        or_(M.sa_id.in_(_hier_pr), M.agent_id.in_(_hier_pr)),
+        and_(M.player_id.in_(list(current_scope_pids)), _no_attr),
+    )
+    if other_managed_names:
+        scope_preds.append(and_(_row_ours, not_(M.club.in_(list(other_managed_names)))))
+    else:
+        scope_preds.append(_row_ours)
     if managed_club_names_exclusive:
         scope_preds.append(M.club.in_(managed_club_names_exclusive))
     if managed_club_names_shared:
