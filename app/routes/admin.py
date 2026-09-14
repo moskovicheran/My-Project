@@ -583,9 +583,24 @@ def health():
          for k, v in unknown_sas.items()
          if abs(v['rake']) + abs(v['pnl']) > 0.01],
         key=lambda x: abs(x['rake']) + abs(x['pnl']), reverse=True)
+    # Players who legitimately span >1 sa_id (a mid-cycle agent move) are NOT
+    # double-counted under the per-day model — each of their rows is attributed
+    # to the agent on that row, and the split is surfaced in the moved-player
+    # pop-up. But this per-row scan still uses current-scope, so it flags them.
+    # Suppress that false positive here (they show in the moved-player alert).
+    _moved_pids = {r[0] for r in DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id
+    ).filter(
+        DailyPlayerStats.role != 'Name Entry',
+        DailyPlayerStats.sa_id.isnot(None),
+        DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-',
+    ).group_by(DailyPlayerStats.player_id).having(
+        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.sa_id)) > 1
+    ).all()}
     overlaps_list = sorted(
         [{'pid': k[0], 'club_key': k[1], **v, 'cards': sorted(v['cards'])}
-         for k, v in overlaps.items() if abs(v['rake']) + abs(v['pnl']) > 0.01],
+         for k, v in overlaps.items()
+         if abs(v['rake']) + abs(v['pnl']) > 0.01 and k[0] not in _moved_pids],
         key=lambda x: abs(x['rake']), reverse=True)
 
     aligned = abs(delta_rake) < 0.01 and abs(delta_pnl) < 0.01
