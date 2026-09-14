@@ -665,8 +665,46 @@ def health():
     extras.sort(key=lambda x: x[1].lower())
     assign_targets.extend(extras)
 
+    # --- Moved players: the SAME player appears under more than one sa_id ----
+    # A player who changed agent mid-cycle needs a per-day settlement split
+    # (his days under each agent settle with that agent). Rare and easy to
+    # miss, so surface it as a pop-up on the health page whenever it happens.
+    _moved_rows = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
+    ).filter(
+        DailyPlayerStats.role != 'Name Entry',
+        DailyPlayerStats.sa_id.isnot(None),
+        DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-',
+    ).group_by(DailyPlayerStats.player_id).having(
+        sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.sa_id)) > 1
+    ).all()
+    moved_players = []
+    for _mpid, _mnick in _moved_rows:
+        _splits = []
+        for _saq, _sp, _sr, _d0, _d1 in DailyPlayerStats.query.with_entities(
+            DailyPlayerStats.sa_id,
+            sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
+            sqlfunc.min(DailyUpload.upload_date), sqlfunc.max(DailyUpload.upload_date),
+        ).join(DailyUpload, DailyUpload.id == DailyPlayerStats.upload_id).filter(
+            DailyPlayerStats.player_id == _mpid,
+            DailyPlayerStats.role != 'Name Entry',
+            DailyPlayerStats.sa_id.isnot(None),
+            DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-',
+        ).group_by(DailyPlayerStats.sa_id).all():
+            _sn = DailyPlayerStats.query.with_entities(
+                sqlfunc.max(DailyPlayerStats.nickname)
+            ).filter(DailyPlayerStats.player_id == _saq).scalar()
+            _splits.append({
+                'sa_id': _saq, 'sa_nick': _sn or _saq,
+                'pnl': round(float(_sp or 0), 2), 'rake': round(float(_sr or 0), 2),
+                'first': _d0.strftime('%d/%m') if hasattr(_d0, 'strftime') else str(_d0 or '-'),
+                'last': _d1.strftime('%d/%m') if hasattr(_d1, 'strftime') else str(_d1 or '-'),
+            })
+        moved_players.append({'player_id': _mpid, 'nickname': _mnick, 'splits': _splits})
+
     return render_template('admin/health.html',
                            last_upload=last_upload,
+                           moved_players=moved_players,
                            top_rake=top_rake, top_pnl=top_pnl,
                            sum_rake=round(sum_rake, 2), sum_pnl=round(sum_pnl, 2),
                            delta_rake=delta_rake, delta_pnl=delta_pnl,
