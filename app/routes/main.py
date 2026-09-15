@@ -860,8 +860,14 @@ def dashboard():
 
         # Adjust PnL by transfers (settlements). Include the SA's own player_id
         # so his own play row reflects transfers where he is the payer/receiver.
+        # ONLY on the unfiltered (cumulative) view: MoneyTransfer rows carry no
+        # upload/date link, so adding all-time settlements onto a date-scoped
+        # P&L inflated the window's number and made it disagree with both the
+        # source site (game-only P&L) and this agent's own XLS export, which
+        # already skips transfers when a date filter is active. Empty dict when
+        # filtered → the loops below add 0, leaving pure in-window game P&L.
         from app.union_data import get_transfer_adjustments
-        xfer_adj = get_transfer_adjustments(all_my_player_ids | {sa_id})
+        xfer_adj = get_transfer_adjustments(all_my_player_ids | {sa_id}) if not had_date_filter else {}
         for m in direct_players:
             m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
         for ag in agents_map.values():
@@ -876,7 +882,10 @@ def dashboard():
         # play shows in its own card, adjusted there). Zero-sum with that side.
         from app.union_data import (get_player_crosses as _gpc,
                                      cross_delta_for_clubs as _cdc)
-        _ml_cross = _gpc(list(all_my_player_ids))
+        # Same rule as transfers above: crosses are all-time redistributions
+        # with no date link, so skip them on a date-filtered view (empty →
+        # the block is skipped and total_pnl stays the pure in-window sum).
+        _ml_cross = _gpc(list(all_my_player_ids)) if not had_date_filter else {}
         if _ml_cross:
             _ml_clubs = {}
             if _my_sub is not None:
@@ -1666,7 +1675,11 @@ def dashboard():
                 # −amount when it's the +side (from_club). Zero-sum per player
                 # across his clubs; never touches the global wallet.
                 from app.union_data import get_player_crosses, cross_delta_for_clubs
-                _cx_club = get_player_crosses([row[0] for row in club_players_db])
+                # Skip on a date-filtered view — crosses are all-time and would
+                # otherwise pollute the window's club P&L (see the agent-card
+                # transfer note above).
+                _cx_club = (get_player_crosses([row[0] for row in club_players_db])
+                            if not had_date_filter else {})
                 club_cross = {pid: cross_delta_for_clubs(cl, club_name)
                               for pid, cl in _cx_club.items()}
 
@@ -1678,7 +1691,8 @@ def dashboard():
                 # player-global and a player with rows BOTH inside and
                 # outside this club would otherwise be counted twice in the
                 # dashboard total (3 such players exist today).
-                club_xfer = get_transfer_adjustments([row[0] for row in club_players_db])
+                club_xfer = (get_transfer_adjustments([row[0] for row in club_players_db])
+                             if not had_date_filter else {})
                 club_xfer = {pid: adj for pid, adj in club_xfer.items()
                              if pid not in all_my_player_ids}
 
@@ -3967,8 +3981,10 @@ def export_single_agent(agent_id):
         *base_filters
     ).group_by(StatsModel.player_id).all()
 
-    # Transfer adjustments only apply to the unfiltered cumulative view
-    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not selected_dates else {}
+    # Transfer adjustments only apply to the unfiltered cumulative view.
+    # Keyed on had_date_filter (matches the on-screen agent card) so the export
+    # and the dashboard row agree on when settlements are included.
+    xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
 
     # Agent/SA nickname (look in both active and archive)
     agent_nick = StatsModel.query.with_entities(
