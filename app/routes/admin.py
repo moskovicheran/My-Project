@@ -1728,11 +1728,16 @@ def agent_view(sa_id):
     # the card total. Self is excluded here — the SA's own play is added back
     # separately below (with its own club carve-out).
     from app.union_data import build_agent_scope_preds
+    from app.routes.main import _split_rows_by_agent, _current_agent_map
     _scope_preds, _ = build_agent_scope_preds(sa_id, DailyPlayerStats)
     _scope_flt = or_(*_scope_preds) if _scope_preds else (DailyPlayerStats.id < 0)
-    my_players_db = DailyPlayerStats.query.with_entities(
-        DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-        sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
+    # Group by (player_id, agent_id) — NOT max(agent_id) — so a player who
+    # played through two agents in this box is split into one row per agent
+    # with his share (same per-row attribution as the agent dashboard).
+    _raw_pa = DailyPlayerStats.query.with_entities(
+        DailyPlayerStats.player_id, DailyPlayerStats.agent_id,
+        sqlfunc.max(DailyPlayerStats.nickname),
+        sqlfunc.max(DailyPlayerStats.club),
         sqlfunc.max(DailyPlayerStats.role),
         sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
         sqlfunc.sum(DailyPlayerStats.hands),
@@ -1740,7 +1745,9 @@ def agent_view(sa_id):
         _scope_flt,
         DailyPlayerStats.player_id != sa_id,
         and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != ''),
-    ).group_by(DailyPlayerStats.player_id).all()
+    ).group_by(DailyPlayerStats.player_id, DailyPlayerStats.agent_id).all()
+    _cur_ag = _current_agent_map([r[0] for r in _raw_pa], DailyPlayerStats)
+    my_players_db = _split_rows_by_agent(_raw_pa, _cur_ag)
 
     # Get actual sa_id per player (for correct direct player filtering)
     player_sa_lookup = dict(DailyPlayerStats.query.with_entities(
@@ -1793,14 +1800,18 @@ def agent_view(sa_id):
             # under niroha02 gets double-rendered on niroha27's view.
             if child_sa_ids:
                 _miss_filters.append(DailyPlayerStats.sa_id.notin_(child_sa_ids))
+            # Group by (player_id, agent_id, sa_id) so a player who played
+            # through two agents is split per agent instead of lumped.
             missing_players = DailyPlayerStats.query.with_entities(
                 DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname),
-                sqlfunc.max(DailyPlayerStats.club), sqlfunc.max(DailyPlayerStats.agent_id),
-                sqlfunc.max(DailyPlayerStats.sa_id),
+                sqlfunc.max(DailyPlayerStats.club), DailyPlayerStats.agent_id,
+                DailyPlayerStats.sa_id,
                 sqlfunc.max(DailyPlayerStats.role),
                 sqlfunc.sum(DailyPlayerStats.pnl), sqlfunc.sum(DailyPlayerStats.rake),
                 sqlfunc.sum(DailyPlayerStats.hands),
-            ).filter(*_miss_filters).group_by(DailyPlayerStats.player_id).all()
+            ).filter(*_miss_filters).group_by(
+                DailyPlayerStats.player_id, DailyPlayerStats.agent_id,
+                DailyPlayerStats.sa_id).all()
             for pid, nick, club, ag_id, sa_id_val, role, pnl, rake, hands in missing_players:
                 pnl = round(float(pnl or 0), 2)
                 rake = round(float(rake or 0), 2)
@@ -1817,12 +1828,21 @@ def agent_view(sa_id):
     # Apply transfer adjustments. Include the SA's own player_id so his own
     # play row reflects transfers where he is the payer/receiver.
     xfer_adj = get_transfer_adjustments(all_my_player_ids | {sa_id})
+    # Apply each player's settlement ONCE — a player split across two agents
+    # now spans multiple member rows, so pin the adjustment to the first.
+    _xfer_seen = set()
     for m in direct_players:
-        m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+        _p = m['player_id']
+        if _p not in _xfer_seen:
+            m['pnl'] = round(m['pnl'] + xfer_adj.get(_p, 0), 2)
+            _xfer_seen.add(_p)
     for ag in agents_map.values():
         ag['total_pnl'] = 0
         for m in ag['members']:
-            m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+            _p = m['player_id']
+            if _p not in _xfer_seen:
+                m['pnl'] = round(m['pnl'] + xfer_adj.get(_p, 0), 2)
+                _xfer_seen.add(_p)
             ag['total_pnl'] += m['pnl']
         ag['total_pnl'] = round(ag['total_pnl'], 2)
 
