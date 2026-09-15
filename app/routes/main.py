@@ -311,6 +311,98 @@ def _format_period_label(selected_dates):
     return ', '.join(d.strftime('%d/%m/%Y') for d in parsed)
 
 
+def _current_agent_map(player_ids, M, archive_buckets=None):
+    """player_id → the agent_id on their most-recent real (non-empty) row.
+
+    Used only to give a player's NO-attribution rows (agent_id empty — PPPoker
+    dropped the SA on that day) a home with the agent he currently plays
+    through, instead of scattering them. Real per-row agent_id values are never
+    overridden by this."""
+    pids = [p for p in set(player_ids or []) if p]
+    if not pids:
+        return {}
+    real_ag = and_(M.agent_id.isnot(None), M.agent_id != '', M.agent_id != '-')
+    flt = [M.player_id.in_(pids), real_ag]
+    if archive_buckets:
+        flt.append(_archive_filter(M, archive_buckets))
+    sub = M.query.with_entities(
+        M.player_id, func.max(M.upload_id).label('mu')
+    ).filter(*flt).group_by(M.player_id).subquery()
+    rows = M.query.with_entities(M.player_id, M.agent_id).join(
+        sub, and_(M.player_id == sub.c.player_id, M.upload_id == sub.c.mu)).all()
+    return {p: a for p, a in rows}
+
+
+def _split_rows_by_agent(raw_rows, current_agent_map=None, overrides_map=None):
+    """Split players across the agents they actually played through.
+
+    `raw_rows`: iterable of (player_id, agent_id, nickname, club, role, pnl,
+    rake, hands) — already grouped by (player_id, agent_id) in SQL. Because the
+    grouping key includes agent_id, a player who played through TWO agents in
+    the box arrives as two rows; this keeps them apart (one member per agent
+    with his share) instead of the old max(agent_id) that lumped his whole
+    history onto a single agent.
+
+    No-attribution rows (agent_id empty/'-') are folded into an agent the
+    player DID play through in this box — his current agent when that agent is
+    among them, else the one he raked most under; if he has none, '' (the
+    caller renders that as direct-under-SA). Either way the row stays inside
+    the box, so card totals and the delta=0 reconciliation are unchanged.
+
+    An agent override (overrides_map[pid]['agent_id']) forces ALL of a player's
+    rows onto that one agent — a manual attachment is deliberate, never split.
+
+    Returns [(pid, nick, club, agent, role, pnl, rake, hands), ...].
+    """
+    overrides_map = overrides_map or {}
+    current_agent_map = current_agent_map or {}
+    raw_rows = list(raw_rows)
+
+    # Non-empty agents each player actually played through here, with rake,
+    # so a no-attribution row can be parked on his real primary agent.
+    attributed = {}   # pid -> {agent: rake}
+    for pid, ag_id, nick, club, role, pnl, rake, hands in raw_rows:
+        if ag_id and ag_id not in ('', '-'):
+            attributed.setdefault(pid, {})
+            attributed[pid][ag_id] = attributed[pid].get(ag_id, 0) + float(rake or 0)
+
+    def _home_for_noattr(pid):
+        ov = overrides_map.get(pid)
+        if ov and ov.get('agent_id'):
+            return ov['agent_id']
+        homes = attributed.get(pid)
+        if homes:
+            cur = current_agent_map.get(pid)
+            if cur in homes:
+                return cur
+            return max(homes.items(), key=lambda kv: kv[1])[0]
+        return ''   # purely unattributed → direct under SA
+
+    acc = {}
+    for pid, ag_id, nick, club, role, pnl, rake, hands in raw_rows:
+        ov = overrides_map.get(pid)
+        if ov and ov.get('agent_id'):
+            eff = ov['agent_id']
+        elif ag_id and ag_id not in ('', '-'):
+            eff = ag_id
+        else:
+            eff = _home_for_noattr(pid)
+        key = (pid, eff)
+        cur = acc.get(key)
+        if cur is None:
+            acc[key] = [pid, nick, club, eff, role,
+                        float(pnl or 0), float(rake or 0), int(hands or 0)]
+        else:
+            cur[1] = cur[1] or nick
+            cur[2] = cur[2] or club
+            cur[4] = cur[4] or role
+            cur[5] += float(pnl or 0)
+            cur[6] += float(rake or 0)
+            cur[7] += int(hands or 0)
+    return [(v[0], v[1], v[2], v[3], v[4], round(v[5], 2), round(v[6], 2), v[7])
+            for v in acc.values()]
+
+
 EXPENSE_CATEGORIES = ['מזון', 'דיור', 'תחבורה', 'בריאות', 'בידור', 'קניות', 'חינוך', 'חשבונות', 'אחר']
 
 
@@ -745,16 +837,25 @@ def dashboard():
         if _my_sub is None:
             my_players_db = []
         else:
-            my_players_db = db.session.query(
+            # Group by (player_id, agent_id) — NOT max(agent_id) — so a player
+            # who played through two agents in this box is split into one row
+            # per agent with his share (per-row attribution). _split_rows_by_agent
+            # folds his no-attribution rows onto his real primary agent and
+            # honours manual overrides.
+            _raw_pa = db.session.query(
                 _my_sub.c.player_id,
+                _my_sub.c.agent_id,
                 sqlfunc.max(_my_sub.c.nickname),
                 sqlfunc.max(_my_sub.c.club),
-                sqlfunc.max(_my_sub.c.agent_id),
                 sqlfunc.max(_my_sub.c.role),
                 sqlfunc.sum(_my_sub.c.pnl),
                 sqlfunc.sum(_my_sub.c.rake),
                 sqlfunc.sum(_my_sub.c.hands),
-            ).group_by(_my_sub.c.player_id).all()
+            ).group_by(_my_sub.c.player_id, _my_sub.c.agent_id).all()
+            _cur_ag = _current_agent_map(
+                [r[0] for r in _raw_pa], SM,
+                archive_buckets if use_archive else None)
+            my_players_db = _split_rows_by_agent(_raw_pa, _cur_ag, overrides_map)
 
         # Build agent structure from DB data
         # First, get actual sa_id per player (for correct direct player filtering)
@@ -868,12 +969,23 @@ def dashboard():
         # filtered → the loops below add 0, leaving pure in-window game P&L.
         from app.union_data import get_transfer_adjustments
         xfer_adj = get_transfer_adjustments(all_my_player_ids | {sa_id}) if not had_date_filter else {}
+        # Apply each player's settlement ONCE. A player split across two agents
+        # now appears in more than one member row, so a naive per-row add would
+        # double his transfer; _xfer_seen pins it to the first row (direct rows
+        # first, then agents).
+        _xfer_seen = set()
         for m in direct_players:
-            m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+            _p = m['player_id']
+            if _p not in _xfer_seen:
+                m['pnl'] = round(m['pnl'] + xfer_adj.get(_p, 0), 2)
+                _xfer_seen.add(_p)
         for ag in agents_map.values():
             ag['total_pnl'] = 0
             for m in ag['members']:
-                m['pnl'] = round(m['pnl'] + xfer_adj.get(m['player_id'], 0), 2)
+                _p = m['player_id']
+                if _p not in _xfer_seen:
+                    m['pnl'] = round(m['pnl'] + xfer_adj.get(_p, 0), 2)
+                    _xfer_seen.add(_p)
                 ag['total_pnl'] += m['pnl']
             ag['total_pnl'] = round(ag['total_pnl'], 2)
 
@@ -893,15 +1005,25 @@ def dashboard():
                         _my_sub.c.player_id, _my_sub.c.club).distinct().all():
                     if _cl:
                         _ml_clubs.setdefault(_pid, set()).add(_cl)
+            # Apply each player's cross ONCE (a split player spans several rows).
+            _cross_seen = set()
             for m in direct_players:
-                _dd = _cdc(_ml_cross.get(m['player_id']), _ml_clubs.get(m['player_id'], set()))
+                _p = m['player_id']
+                if _p in _cross_seen:
+                    continue
+                _dd = _cdc(_ml_cross.get(_p), _ml_clubs.get(_p, set()))
                 if _dd:
                     m['pnl'] = round(m['pnl'] + _dd, 2)
+                _cross_seen.add(_p)
             for ag in agents_map.values():
                 for m in ag['members']:
-                    _dd = _cdc(_ml_cross.get(m['player_id']), _ml_clubs.get(m['player_id'], set()))
+                    _p = m['player_id']
+                    if _p in _cross_seen:
+                        continue
+                    _dd = _cdc(_ml_cross.get(_p), _ml_clubs.get(_p, set()))
                     if _dd:
                         m['pnl'] = round(m['pnl'] + _dd, 2)
+                    _cross_seen.add(_p)
                 ag['total_pnl'] = round(sum(mm['pnl'] for mm in ag['members']), 2)
 
         # Money transfers touching this agent's players — surfaced as a
@@ -3970,16 +4092,27 @@ def export_single_agent(agent_id):
             # Dates were requested but didn't resolve to any upload → return empty, don't silently fall back
             base_filters.append(DailyPlayerStats.upload_id == -1)
 
-    # Get all players under this agent/SA (by agent_id or sa_id)
-    players = StatsModel.query.with_entities(
-        StatsModel.player_id, sqlfunc.max(StatsModel.nickname),
-        sqlfunc.max(StatsModel.club), sqlfunc.max(StatsModel.agent_id),
+    # Get all players under this agent/SA (by agent_id or sa_id), grouped by
+    # (player_id, agent_id) so a player who played through two agents is SPLIT
+    # per agent (matching the on-screen agent card) instead of lumped onto
+    # max(agent_id). _split_rows_by_agent folds no-attribution rows onto the
+    # player's primary agent here.
+    _raw_players = StatsModel.query.with_entities(
+        StatsModel.player_id, StatsModel.agent_id,
+        sqlfunc.max(StatsModel.nickname), sqlfunc.max(StatsModel.club),
         sqlfunc.sum(StatsModel.pnl), sqlfunc.sum(StatsModel.rake),
         sqlfunc.sum(StatsModel.hands),
     ).filter(
         or_(StatsModel.agent_id == agent_id, StatsModel.sa_id == agent_id),
         *base_filters
-    ).group_by(StatsModel.player_id).all()
+    ).group_by(StatsModel.player_id, StatsModel.agent_id).all()
+    _cur_ag = _current_agent_map([r[0] for r in _raw_players], StatsModel,
+                                 archive_buckets if use_archive else None)
+    # helper shape: (pid, agent_id, nick, club, role, pnl, rake, hands)
+    players = _split_rows_by_agent(
+        [(r[0], r[1], r[2], r[3], '', r[4], r[5], r[6]) for r in _raw_players],
+        _cur_ag)
+    # players rows: (pid, nick, club, agent, role, pnl, rake, hands)
 
     # Transfer adjustments only apply to the unfiltered cumulative view.
     # Keyed on had_date_filter (matches the on-screen agent card) so the export
@@ -4002,15 +4135,19 @@ def export_single_agent(agent_id):
     all_rows = []
     agent_groups = {}
     direct_rows = []
+    _xfer_seen = set()   # apply each player's settlement once across his split rows
     for p in players:
-        raw_pnl = round(float(p[4] or 0), 2)
+        pid = p[0]
+        raw_pnl = round(float(p[5] or 0), 2)
+        adj = xfer_adj.get(pid, 0) if pid not in _xfer_seen else 0
+        _xfer_seen.add(pid)
         ag = p[3]
         ag_name = all_nicks.get(ag, ag) if ag and ag != '-' and ag != agent_id else ''
         row = {
-            'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
+            'שחקן': p[1], 'ID': pid, 'קלאב': p[2],
             'סוכן': ag_name,
-            'רווח/הפסד': round(raw_pnl + xfer_adj.get(p[0], 0), 2),
-            'Rake': round(float(p[5] or 0), 2),
+            'רווח/הפסד': round(raw_pnl + adj, 2),
+            'Rake': round(float(p[6] or 0), 2),
         }
         all_rows.append(row)
         if ag_name:
@@ -4132,15 +4269,18 @@ def export_agent_players():
     sheets = {}
 
     # ── Sheet 1: My Players (direct) ──
+    # Group by (player_id, sa_id, agent_id) — NOT max() — so a player who
+    # played through two agents (or split between a child SA and the parent)
+    # is itemised per agent/SA with his share instead of lumped onto one.
     players = SM.query.with_entities(
         SM.player_id, sqlfunc.max(SM.nickname),
-        sqlfunc.max(SM.club), sqlfunc.max(SM.sa_id),
-        sqlfunc.max(SM.agent_id),
+        sqlfunc.max(SM.club), SM.sa_id,
+        SM.agent_id,
         sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake),
         sqlfunc.sum(SM.hands),
     ).filter(
         _or(*_scope_preds), and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != ''), *scope,
-    ).group_by(SM.player_id).all()
+    ).group_by(SM.player_id, SM.sa_id, SM.agent_id).all()
 
     # Transfers only apply to the unfiltered (all-time) view
     xfer_adj = get_transfer_adjustments([p[0] for p in players]) if not had_date_filter else {}
@@ -4151,10 +4291,14 @@ def export_agent_players():
     # raw number in the rollup but a net number in their own sheet. Keyed off the
     # already-computed xfer_adj (player_id -> adjustment).
     _agent_xfer, _sa_xfer, _club_xfer = {}, {}, {}
+    _xfer_ent_seen = set()   # a split player must not add his transfer twice
     for _p in players:
+        if _p[0] in _xfer_ent_seen:
+            continue
         _adj = xfer_adj.get(_p[0], 0)
         if not _adj:
             continue
+        _xfer_ent_seen.add(_p[0])
         _aid = _p[4] if _p[4] and _p[4] != '-' else None
         if _aid:
             _agent_xfer[_aid] = round(_agent_xfer.get(_aid, 0) + _adj, 2)
@@ -4167,13 +4311,16 @@ def export_agent_players():
     agent_groups = {}  # agent_name -> [players]
     child_sa_groups = {}  # child_sa_name -> [players]
     direct_players = []
+    _row_xfer_seen = set()   # settlement + rake-refund applied once per player
     for p in players:
         player_sa = p[3]  # sa_id of this player
         ag_id = p[4] if p[4] and p[4] != '-' else None
         ag_name = all_nicks.get(ag_id, ag_id) if ag_id else None
         raw_pnl = round(float(p[5] or 0), 2)
-        _pnl = round(raw_pnl + xfer_adj.get(p[0], 0), 2)
-        _rr = rake_ref.get(p[0], 0)
+        _once = p[0] not in _row_xfer_seen
+        _row_xfer_seen.add(p[0])
+        _pnl = round(raw_pnl + (xfer_adj.get(p[0], 0) if _once else 0), 2)
+        _rr = rake_ref.get(p[0], 0) if _once else 0
         row = {
             'שחקן': p[1], 'ID': p[0], 'קלאב': p[2],
             'P&L': _pnl,
