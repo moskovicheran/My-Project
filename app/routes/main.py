@@ -1088,9 +1088,10 @@ def dashboard():
                     sqlfunc.sum(SM.rake),
                     sqlfunc.sum(SM.hands),
                 ).filter(*_own_filters).first()
-                if own_stats and (float(own_stats[0] or 0) != 0 or float(own_stats[1] or 0) != 0):
+                _ag_xfer = round(xfer_adj.get(ag_id, 0), 2)
+                if own_stats and (float(own_stats[0] or 0) != 0 or float(own_stats[1] or 0) != 0 or _ag_xfer != 0):
                     ag_nick = ag.get('nick', ag_id)
-                    own_pnl = round(float(own_stats[0] or 0) + xfer_adj.get(ag_id, 0), 2)
+                    own_pnl = round(float(own_stats[0] or 0) + _ag_xfer, 2)
                     own_rake = round(float(own_stats[1] or 0), 2)
                     own_hands = int(own_stats[2] or 0)
                     member = {'player_id': ag_id, 'nickname': ag_nick, 'role': 'Player',
@@ -1169,12 +1170,24 @@ def dashboard():
                 sqlfunc.max(SM.nickname),
                 sqlfunc.sum(SM.pnl), sqlfunc.sum(SM.rake), sqlfunc.sum(SM.hands),
             ).filter(*_self_filters).first()
-            if _self_row and (float(_self_row[1] or 0) != 0 or float(_self_row[2] or 0) != 0):
-                _own_pnl = round(float(_self_row[1] or 0) + xfer_adj.get(sa_id, 0), 2)
-                _own_rake = round(float(_self_row[2] or 0), 2)
-                _own_hands = int(_self_row[3] or 0)
+            _self_play_pnl = float(_self_row[1] or 0) if _self_row else 0.0
+            _self_play_rake = float(_self_row[2] or 0) if _self_row else 0.0
+            _self_xfer = round(xfer_adj.get(sa_id, 0), 2)
+            # Show the self-row when the SA has own play OR a personal transfer
+            # (e.g. a manager who received/paid a settlement). Without the
+            # transfer trigger, a manager with no play row of their own would be
+            # missing here while their card total (get_agent_totals) already
+            # folds the transfer in — the box list wouldn't reconcile with the
+            # card, so a manager couldn't see WHERE the amount came from.
+            if _self_play_pnl != 0 or _self_play_rake != 0 or _self_xfer != 0:
+                _own_pnl = round(_self_play_pnl + _self_xfer, 2)
+                _own_rake = round(_self_play_rake, 2)
+                _own_hands = int(_self_row[3] or 0) if _self_row else 0
+                _own_nick = (_self_row[0] if _self_row and _self_row[0] else None) \
+                    or SM.query.with_entities(sqlfunc.max(SM.nickname)).filter(
+                        SM.player_id == sa_id).scalar() or sa_id
                 direct_players.insert(0, {
-                    'player_id': sa_id, 'nickname': _self_row[0] or sa_id,
+                    'player_id': sa_id, 'nickname': _own_nick,
                     'role': 'Super Agent', 'pnl': _own_pnl, 'rake': _own_rake,
                     'hands': _own_hands, 'overridden': False,
                 })
@@ -4840,6 +4853,27 @@ def export_agent_full_box():
         }
         sa_groups.setdefault(sa_name, []).append(row)
 
+    # Manager self-line(s): a transfer whose counterparty is the manager's OWN
+    # identity (an SA/agent id) has no player row, so add an explicit line here.
+    # This makes the sheet reconcile with the dashboard card (get_agent_totals,
+    # which folds these in) and lets the reader see WHERE a manager-level
+    # transfer amount comes from instead of an unexplained shift in the total.
+    _mgr_ids = set()
+    if not had_date_filter:
+        _mgr_ids = (set(_scope_sa_ids) | _known_ag) - {p[0] for p in players}
+        _mgr_adj = get_transfer_adjustments(list(_mgr_ids)) if _mgr_ids else {}
+        for _mid, _amt in _mgr_adj.items():
+            _amt = round(_amt, 2)
+            if _amt == 0:
+                continue
+            _mnick = all_nicks.get(_mid, _mid)
+            sa_groups.setdefault(_mnick, []).append({
+                'שחקן': _mnick + ' (העברה)',
+                'ID': _mid, 'קלאב': '', 'Super Agent': _mnick, 'סוכן': '',
+                'P&L': _amt, 'Rake': 0.0, 'קבלת רייק': 0.0,
+                'סה"כ לתשלום': _amt, 'ידיים': 0,
+            })
+
     # Sort SAs by total rake desc; within each SA sort players by rake desc.
     # Empty-SA bucket is forced to the end so named SAs read as a list first.
     sa_order = sorted(
@@ -4946,7 +4980,7 @@ def export_agent_full_box():
 
     return _make_excel(sheets,
                        f'{current_user.username}{suffix}_full_box.xlsx',
-                       period_label=period_label, transfer_pids=[p[0] for p in players])
+                       period_label=period_label, transfer_pids=[p[0] for p in players] + list(_mgr_ids))
 
 
 @main_bp.route('/export/agent/club/<club_id>')
