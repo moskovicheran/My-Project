@@ -3911,8 +3911,13 @@ def export_agent_account():
         ).filter(or_(DailyPlayerStats.sa_id.in_(_scope_sa_ids),
                      DailyPlayerStats.agent_id.in_(_scope_sa_ids))).distinct().all()
         all_pids = list({r[0] for r in scope_rows})
-        if all_pids:
-            xfer_adj = get_transfer_adjustments(all_pids)
+        # Include the manager's own identity ids (an SA/agent with no play row of
+        # their own) so a personal transfer to/from the manager reaches the
+        # account P&L and reconciles with the dashboard card.
+        _mgr_only = [i for i in _scope_sa_ids if i and i not in set(all_pids)]
+        _xfer_ids = list(set(all_pids) | set(_mgr_only))
+        if _xfer_ids:
+            xfer_adj = get_transfer_adjustments(_xfer_ids)
             personal_pnl = round(personal_pnl + sum(xfer_adj.values()), 2)
             for pid, sa, ag in scope_rows:
                 adj = xfer_adj.get(pid, 0)
@@ -4063,7 +4068,7 @@ def export_agent_account():
     _acct_pids = [r[0] for r in DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id).filter(or_(
         DailyPlayerStats.sa_id.in_(_scope_sa_ids),
-        DailyPlayerStats.agent_id.in_(_scope_sa_ids))).distinct().all()]
+        DailyPlayerStats.agent_id.in_(_scope_sa_ids))).distinct().all()] + list(_scope_sa_ids)
     return _make_excel(sheets, f'{current_user.username}{suffix}_account.xlsx',
                        period_label=period_label, transfer_pids=_acct_pids)
 
