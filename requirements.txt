@@ -1,3 +1,12 @@
+# SQLAlchemy MUST stay pinned to a 2.0.x release. 2.1 switched the default
+# Postgres driver from psycopg2 to psycopg (v3), which is NOT installed → the app
+# crashes at db.init_app on a fresh build ("ModuleNotFoundError: No module named
+# 'psycopg'") and every route returns 500. Pinning to 2.0.x keeps the psycopg2
+# dialect that matches psycopg2-binary below. (Reverting code does NOT help — a
+# revert still rebuilds fresh and re-pulls 2.1.) The other deps are intentionally
+# left unpinned: they resolve to versions with prebuilt wheels and have been
+# building + importing fine; pinning them to newer local versions caused slow
+# source-compile builds.
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
@@ -5,6 +14,7 @@ Flask-WTF==1.2.1
 Werkzeug==3.0.1
 WTForms==3.1.2
 email-validator==2.1.0
+SQLAlchemy==2.0.48
 gunicorn
 psycopg2-binary
 pandas
