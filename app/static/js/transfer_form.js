@@ -102,21 +102,24 @@
                 var max = 0;
                 if (p > 0) max = p;
                 else if (p < 0 && r !== null && r > 0) max = Math.min(Math.abs(p), r);
-                else if (p < 0) max = Math.abs(p);  // debt transfer to a non-creditor
                 amt.max = max > 0 ? max : '';
             }
         }
     }
 
-    // Block submit until both sides were actually picked from the list.
-    // A payer in debt paying a non-creditor is allowed: it is a DEBT TRANSFER
-    // (part of the payer's debt moves to the receiver). The server caps it by
-    // the payer's own debt.
+    // Block submit until both sides were actually picked from the list, and
+    // stop minus→minus (a player in debt can only pay someone in plus).
     window.validateTransfer = function () {
         var from = document.getElementById('fromKey');
         var to = document.getElementById('toKey');
         if (!from || !from.value || !to || !to.value) {
             alert('יש לבחור משלם ומקבל מהרשימה.');
+            return false;
+        }
+        if (!clubInvolved() &&
+            selected.from !== null && selected.from < 0 &&
+            selected.to !== null && selected.to <= 0) {
+            alert('לא ניתן להעביר ממינוס למינוס — שחקן בחוב יכול להעביר רק לשחקן בפלוס.');
             return false;
         }
         return true;

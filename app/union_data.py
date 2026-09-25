@@ -1607,16 +1607,6 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
         pids = [r[0] for r in M.query.with_entities(
             sqlfunc.distinct(M.player_id)
         ).filter(or_(*scope_preds)).all()]
-        # Also count transfers whose counterparty is one of THIS card's own
-        # identity ids (the manager's SA/agent ids), not just its players.
-        # A manager who personally receives/pays a settlement has no play row
-        # of their own, so without this the adjustment would land in no card
-        # at all — the card wouldn't move and it would break reconciliation
-        # with the top box. Ids are deduped, so an id that is also a player
-        # here is still counted once.
-        pids = list(set(pids)
-                    | set(_scope_ctx.get('all_ids') or [])
-                    | set(_scope_ctx.get('known_agent_ids') or []))
         if pids:
             xfer = get_transfer_adjustments(pids)
             total_pnl = round(total_pnl + sum(xfer.values()), 2)
@@ -2133,23 +2123,17 @@ def resolve_transfer(payer_pid, payer_name, recv_pid, recv_name, amount):
         # Give: payer's balance drops, receiver's rises → positive amount.
         return (True, payer_pid, payer_name, recv_pid, recv_name, amount, '')
     elif payer_bal < 0:
-        if recv_bal > 0:
-            # Settle against a creditor: capped by min(debt, credit).
-            cap = round(min(abs(payer_bal), recv_bal), 2)
-            cap_msg = (f'חוב {payer_name}: {abs(payer_bal):.2f}, '
-                       f'זכות {recv_name}: {recv_bal:.2f}')
-        else:
-            # Receiver is NOT in plus: DEBT TRANSFER — part of the payer's debt
-            # moves to the receiver, who goes into / deeper into minus. Used e.g.
-            # when a manager takes over a player's debt. Capped by the payer's
-            # own debt so the payer can't overshoot into plus.
-            cap = round(abs(payer_bal), 2)
-            cap_msg = f'חוב {payer_name}: {abs(payer_bal):.2f}'
+        if recv_bal <= 0:
+            return (False, None, None, None, None, 0,
+                    f'לא ניתן להעביר ממינוס למינוס — {recv_name} אינו בפלוס. '
+                    f'שחקן בחוב יכול להעביר רק לשחקן בפלוס (להסדרת חוב).')
+        cap = round(min(abs(payer_bal), recv_bal), 2)
         if amount > cap:
             return (False, None, None, None, None, 0,
-                    f'חריגה! מקסימום: {cap:.2f} ({cap_msg}).')
-        # Payer's debt shrinks (balance rises); the receiver's balance drops by
-        # the same amount → negative stored amount carries that direction.
+                    f'חריגה! מקסימום: {cap:.2f} (חוב {payer_name}: {abs(payer_bal):.2f}, '
+                    f'זכות {recv_name}: {recv_bal:.2f}).')
+        # Debt settlement: payer's debt shrinks (balance rises), receiver's
+        # credit shrinks → negative amount carries that direction.
         return (True, payer_pid, payer_name, recv_pid, recv_name, -amount, '')
     else:
         return (False, None, None, None, None, 0,
