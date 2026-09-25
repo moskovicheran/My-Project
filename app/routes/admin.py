@@ -620,6 +620,12 @@ def health():
     for si in sa_info:
         in_scope_pids |= si['cur']
         in_scope_pids |= si['ov']
+        # A card's own identity ids (the manager's SA/agent ids). get_agent_totals
+        # now folds transfers to/from these into that card, so a settlement whose
+        # counterparty is a manager (no play row of their own) IS reconciled — it
+        # must count as in-scope here too, or it gets falsely flagged as an
+        # asymmetric "one side out of scope" delta source.
+        in_scope_pids |= si['hier']
     relevant_clubs = list(all_managed | tracked_clubs)
     if relevant_clubs:
         in_scope_pids |= {r[0] for r in DailyPlayerStats.query.with_entities(
