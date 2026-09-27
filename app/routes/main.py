@@ -1632,9 +1632,16 @@ def dashboard():
                 pct = player_rake_configs.get(m['player_id'], 0)
                 if pct:
                     refund = round(m['rake'] * pct / 100, 2)
+                    # Nested under an agent: this player's rake is already inside
+                    # the agent's total_rake, and his refund is already deducted
+                    # from the agent's cut (see _player_refunds_in). The SA keeps
+                    # nothing extra from this row — it's shown only so the refund
+                    # is tracked for payout. Mark it so it doesn't inflate the
+                    # SA's "שלי"/"נשאר לי" (its rake would otherwise double-count).
                     players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
                                               'player_id': m['player_id'],
-                                              'total_rake': m['rake'], 'refund': refund})
+                                              'total_rake': m['rake'], 'refund': refund,
+                                              'nested': True, 'under': ag.get('nick')})
 
         # Combined rake refund list (agents + players + child SAs)
         # For agents / child SAs: refund shown is NET of player refunds that
@@ -1672,6 +1679,8 @@ def dashboard():
                                      'player_id': p.get('player_id'),
                                      'total_rake': p['total_rake'], 'refund': p['refund'],
                                      'self_kept': p.get('self_kept', False),
+                                     'nested': p.get('nested', False),
+                                     'under': p.get('under'),
                                      'type': 'player'})
         # Child SAs with their own RakeConfig — same net-of-downstream-refunds
         # treatment: collect their direct + agent-member players, deduct any
@@ -1702,6 +1711,23 @@ def dashboard():
                     'type': 'agent',
                 })
         total_rake_refund = round(sum(r['refund'] for r in rake_refund_list), 2)
+
+        # Per-row "שלי" — what the SA actually keeps from this row.
+        #  - Agent / child-SA rows carry 'gross' (rake × their %). The SA keeps
+        #    the remainder of the WHOLE group: total_rake − gross. Using the NET
+        #    'refund' here would fold the group's own player-rakebacks back into
+        #    the SA's keep (they're paid from the agent's cut, not the SA's),
+        #    over-stating it — that was the aladin/Dudi bug.
+        #  - Nested player rows are already inside their agent's group, so the SA
+        #    keeps nothing extra here (0); the row exists only to track the payout.
+        #  - Direct player / self rows: total_rake − refund, as before.
+        for r in rake_refund_list:
+            if 'gross' in r:
+                r['my_keep'] = round(r['total_rake'] - r['gross'], 2)
+            elif r.get('nested'):
+                r['my_keep'] = 0.0
+            else:
+                r['my_keep'] = round(r['total_rake'] - r['refund'], 2)
 
         # kenny777 ONLY: players with no rake config count as 100% kept toward
         # "נשאר לי". Summed straight from the player structures (direct + agent

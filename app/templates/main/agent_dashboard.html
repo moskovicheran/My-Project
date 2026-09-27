@@ -236,7 +236,11 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
             <div style="display:flex; gap:0.6rem 1rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                 <span class="muted">רייק {{ r.total_rake|comma }}</span>
                 <span style="color:#667eea; font-weight:700;" title="החזר לשחקן">החזר {{ r.refund|comma }}</span>
-                <span style="color:#0f9b7d; font-weight:700;" title="שלי — כמה נשאר לך מהשחקן הזה (רייק − החזר)">שלי {{ (r.total_rake - r.refund)|round(2)|comma }}</span>
+                {% if r.get('nested') %}
+                <span class="muted" style="font-size:0.72rem;" title="הרייק של השחקן הזה כבר נכלל בקבוצת הסוכן — מה שנשאר לך מחושב בשורת הסוכן">נכלל אצל {{ r.under }}</span>
+                {% else %}
+                <span style="color:#0f9b7d; font-weight:700;" title="שלי — כמה נשאר לך מהשחקן/סוכן הזה">שלי {{ r.my_keep|comma }}</span>
+                {% endif %}
             </div>
             {% else %}
             <div style="display:flex; gap:1rem; align-items:center;">
@@ -251,12 +255,12 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
             <span style="color:#667eea;">{{ total_rake_refund|comma }}</span>
         </div>
         {% if show_rake_extras %}
-        {# Gross = ONLY the player rows shown here (their rake). NOT total_rake,
-           which for managers with managed clubs also includes club rake — that
-           has its own separate "club rake" panel. Keeping it to the panel's own
-           rows makes "נשאר לי" the true player-side kept rake, and it ties out
-           exactly to the sum of the per-row "שלי". #}
-        {% set players_gross = rake_refund_list|sum(attribute='total_rake') %}
+        {# Gross = the panel's own rows (player rake), NOT total_rake for the whole
+           SA (which for managers with managed clubs also includes club rake — that
+           has its own separate "club rake" panel). Nested rows (a player inside an
+           agent's group) are EXCLUDED: their rake is already counted in the agent
+           row's total_rake, so including it here would double-count. #}
+        {% set players_gross = rake_refund_list|rejectattr('nested')|sum(attribute='total_rake') %}
         {# unconfigured_player_rake is computed ONLY for kenny777 (0 otherwise):
            his players with no rake config, counted 100% kept (player rake only). #}
         {% set unconf = unconfigured_player_rake|default(0) %}
@@ -272,7 +276,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
         {% endif %}
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.6rem; padding:0.7rem 0.8rem; background:#e9fbf6; border:1px solid #b8ede0; border-radius:10px; font-weight:800; font-size:1.05rem;">
             <span style="color:#0f9b7d;">💰 נשאר לי אחרי ההחזר</span>
-            <span style="color:#0f9b7d;">{{ (players_gross + unconf - total_rake_refund)|round(2)|comma }}</span>
+            <span style="color:#0f9b7d;">{{ (rake_refund_list|sum(attribute='my_keep') + unconf)|round(2)|comma }}</span>
         </div>
         {% if unconf > 0.005 %}
         <div style="font-size:0.74rem; color:#0f9b7d; margin-top:0.4rem; line-height:1.35; font-weight:600;">
