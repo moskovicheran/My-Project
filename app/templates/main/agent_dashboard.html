@@ -174,7 +174,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
        it just duplicates the "רייק אישי" value (personal_rake × 100 / 100). #}
     {% if my_rake_pct is defined and my_rake_pct and my_rake_pct < 100 %}
     <div class="stat-card" style="cursor:pointer; border:2px solid #2ec4b6;" onclick="toggleMyRake()">
-        <div class="stat-label" style="color:#2ec4b6;">הרייק שלי{% if not hide_personal_breakdown %} ({{ my_rake_pct|int }}%){% endif %}</div>
+        <div class="stat-label" style="color:#2ec4b6;">הרייק שלי{% if show_my_pct|default(not hide_personal_breakdown) %} ({{ my_rake_pct|int }}%){% endif %}</div>
         <div class="stat-value" style="color:#2ec4b6;">{{ my_rake_earning|comma }}</div>
     </div>
     {% endif %}

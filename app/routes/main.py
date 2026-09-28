@@ -15,6 +15,11 @@ INCOME_CATEGORIES = ['משכורת', 'פרילנס', 'השקעות', 'מתנה',
 # "הרייק שלי (X%)" and net/percentage helper columns/rows are stripped.
 AGENTS_HIDE_PERSONAL_BREAKDOWN = {'9319-6677', '7622-3272', '2348-7516'}  # Shlomi (sarbuvx), BlindersT, shiraz44
 
+# Subset of the above who should still see the "(X%)" badge next to "הרייק שלי"
+# on their dashboard card — the gross "רייק אישי" stays hidden, but they know
+# which percentage their net earning represents.
+AGENTS_SHOW_NET_PCT = {'2348-7516'}  # shiraz44
+
 
 def _hide_breakdown_pct(sa_id):
     """Return the agent's own rakeback % when their Excel exports should
@@ -2027,6 +2032,9 @@ def dashboard():
         net_rake_after_expenses = round(net_rake - total_expenses, 2)
 
         hide_personal_breakdown = sa_id in AGENTS_HIDE_PERSONAL_BREAKDOWN
+        # Show the net "(X%)" badge when not hiding the breakdown at all, OR
+        # for agents explicitly opted into seeing their own percentage.
+        show_my_pct = (not hide_personal_breakdown) or (sa_id in AGENTS_SHOW_NET_PCT)
 
         # Manual rake refunds this agent has entered in the collection table —
         # shown as its own card + drill-down panel on the dashboard.
@@ -2135,7 +2143,8 @@ def dashboard():
                                view_as_username=view_as_username,
                                self_other_clubs=self_other_clubs_for_template,
                                agent_transfers=agent_transfers,
-                               hide_personal_breakdown=hide_personal_breakdown)
+                               hide_personal_breakdown=hide_personal_breakdown,
+                               show_my_pct=show_my_pct)
 
     # Admin preview of any player's dashboard via ?view_player=<player_id>
     _admin_view_player = None
