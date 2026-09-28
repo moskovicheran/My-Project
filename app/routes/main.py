@@ -104,10 +104,17 @@ def _insert_agent_rake(sheets, pct_by_sheet):
         factor = pct / 100.0
         new_rows = []
         for row in rows:
+            # A "נטו סוכן (X%)" footer already carries the NET in its Rake cell —
+            # don't multiply it again; leave its Agent Rake blank.
+            _first = str(next(iter(row.values()), '') or '')
+            _is_net_row = _first.startswith('נטו סוכן')
             nr = {}
             for k, v in row.items():
                 if k == 'Rake':
-                    nr['Agent Rake'] = round(v * factor, 2) if isinstance(v, (int, float)) else ''
+                    if _is_net_row:
+                        nr['Agent Rake'] = ''
+                    else:
+                        nr['Agent Rake'] = round(v * factor, 2) if isinstance(v, (int, float)) else ''
                 nr[k] = v
             new_rows.append(nr)
         out[name] = new_rows
@@ -4065,10 +4072,12 @@ def export_agent_account():
         rake = round(float(csa[0] or 0), 2)
         pnl = round(float(csa[1] or 0) + xfer_by_sa.get(csa_id, 0), 2)
         if rake or pnl or (csa[2] or 0):
+            _apct = _rake_pct_for(csa_id)
             sa_summary_rows.append({
                 'Super Agent': nick_map.get(csa_id, csa_id),
                 'ID': csa_id,
                 'שחקנים': int(csa[2] or 0),
+                'Agent Rake': round(rake * _apct / 100, 2) if _apct is not None else '',
                 'Rake': rake, 'P&L': pnl,
             })
     sa_summary_rows.sort(key=lambda r: r['Rake'], reverse=True)
@@ -4076,6 +4085,8 @@ def export_agent_account():
         sa_summary_rows.append({
             'Super Agent': 'סה"כ', 'ID': '',
             'שחקנים': sum(r['שחקנים'] for r in sa_summary_rows),
+            'Agent Rake': round(sum(r['Agent Rake'] for r in sa_summary_rows
+                                    if isinstance(r.get('Agent Rake'), (int, float))), 2),
             'Rake': round(sum(r['Rake'] for r in sa_summary_rows), 2),
             'P&L': round(sum(r['P&L'] for r in sa_summary_rows), 2),
         })
@@ -4096,10 +4107,12 @@ def export_agent_account():
     for ag in agent_stats:
         rake = round(float(ag[1] or 0), 2)
         pnl = round(float(ag[2] or 0) + xfer_by_agent.get(ag[0], 0), 2)
+        _apct = _rake_pct_for(ag[0])
         agent_summary_rows.append({
             'סוכן': nick_map.get(ag[0], ag[0]),
             'ID': ag[0],
             'שחקנים': int(ag[3] or 0),
+            'Agent Rake': round(rake * _apct / 100, 2) if _apct is not None else '',
             'Rake': rake, 'P&L': pnl,
         })
     agent_summary_rows.sort(key=lambda r: r['Rake'], reverse=True)
@@ -4107,6 +4120,8 @@ def export_agent_account():
         agent_summary_rows.append({
             'סוכן': 'סה"כ', 'ID': '',
             'שחקנים': sum(r['שחקנים'] for r in agent_summary_rows),
+            'Agent Rake': round(sum(r['Agent Rake'] for r in agent_summary_rows
+                                    if isinstance(r.get('Agent Rake'), (int, float))), 2),
             'Rake': round(sum(r['Rake'] for r in agent_summary_rows), 2),
             'P&L': round(sum(r['P&L'] for r in agent_summary_rows), 2),
         })
@@ -4452,6 +4467,9 @@ def export_agent_players():
     # Reverse lookup: agent name -> agent player_id
     nicks_to_id = {v: k for k, v in all_nicks.items()}
 
+    # Agent-Rake % per player-list sheet (each sub-agent by its own %).
+    pct_by_sheet = {}
+
     # Create sheet per agent
     for ag_name, ag_players in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
         ag_players.sort(key=lambda x: x['Rake'], reverse=True)
@@ -4472,6 +4490,7 @@ def export_agent_players():
                 'קבלת רייק': '', 'סה"כ לתשלום': '',
             })
         sheets[ag_name[:31]] = ag_players
+        pct_by_sheet[ag_name[:31]] = _rake_pct_for(ag_pid)
 
     # Create sheet per child SA
     import re
@@ -4495,6 +4514,7 @@ def export_agent_players():
             })
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', csa_name)[:31] or 'SA'
         sheets[safe_name] = csa_players
+        pct_by_sheet[safe_name] = _rake_pct_for(csa_pid)
 
     # Direct players sheet
     if direct_players:
@@ -4507,6 +4527,7 @@ def export_agent_players():
             'סה"כ לתשלום': round(sum(r['סה"כ לתשלום'] for r in direct_players), 2),
         })
         sheets['שחקנים ישירים'] = direct_players
+        pct_by_sheet['שחקנים ישירים'] = _rake_pct_for(sa_id)
 
     # ── Sheet 2: My Agents ──
     _agent_filters = [
@@ -4609,6 +4630,7 @@ def export_agent_players():
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
+    sheets = _insert_agent_rake(sheets, pct_by_sheet)
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{current_user.username}{suffix}_players.xlsx',
                        period_label=period_label, transfer_pids=[p[0] for p in players])
@@ -4923,12 +4945,33 @@ def export_agent_full_box():
         if p[4] and p[4] != '-':
             e['sa'] = p[4]
 
+    # Agent-Rake % per row: what the player's own agent (or SA, if he's direct
+    # under one) receives = rake × that entity's %. Preloaded in one query.
+    from app.models import RakeConfig as _RC
+    _fb_ent_ids = set()
+    for e in by_player.values():
+        if e['agent']:
+            _fb_ent_ids.add(e['agent'])
+        if e['sa']:
+            _fb_ent_ids.add(e['sa'])
+    _fb_pct = {rc.entity_id: rc.rake_percent for rc in _RC.query.filter(
+        _RC.entity_type.in_(['sub_agent', 'agent']),
+        _RC.entity_id.in_(list(_fb_ent_ids))).all()} if _fb_ent_ids else {}
+
+    def _fb_row_pct(e):
+        if e['agent'] and e['agent'] in _fb_pct:
+            return _fb_pct[e['agent']]
+        if e['sa'] and e['sa'] in _fb_pct:
+            return _fb_pct[e['sa']]
+        return None
+
     sa_groups = {}  # sa_name -> [row dicts]
     for pid, e in by_player.items():
         sa_name = all_nicks.get(e['sa'], e['sa']) if e['sa'] else ''
         ag_name = all_nicks.get(e['agent'], e['agent']) if e['agent'] else ''
         _pnl = round(e['pnl'] + xfer_adj.get(pid, 0), 2)   # net = game + transfer
         _rr = rake_ref.get(pid, 0)
+        _apct = _fb_row_pct(e)
         row = {
             'שחקן': e['nick'],
             'ID': pid,
@@ -4936,6 +4979,7 @@ def export_agent_full_box():
             'Super Agent': sa_name,
             'סוכן': ag_name,
             'P&L': _pnl,
+            'Agent Rake': round(e['rake'] * _apct / 100, 2) if _apct is not None else '',
             'Rake': round(e['rake'], 2),
             'קבלת רייק': round(_rr, 2),
             'סה"כ לתשלום': round(_pnl + _rr, 2),
@@ -4960,7 +5004,7 @@ def export_agent_full_box():
             sa_groups.setdefault(_mnick, []).append({
                 'שחקן': _mnick + ' (העברה)',
                 'ID': _mid, 'קלאב': '', 'Super Agent': _mnick, 'סוכן': '',
-                'P&L': _amt, 'Rake': 0.0, 'קבלת רייק': 0.0,
+                'P&L': _amt, 'Agent Rake': '', 'Rake': 0.0, 'קבלת רייק': 0.0,
                 'סה"כ לתשלום': _amt, 'ידיים': 0,
             })
 
@@ -4994,6 +5038,8 @@ def export_agent_full_box():
         rows.append({
             'שחקן': 'סה"כ', 'ID': '', 'קלאב': '', 'Super Agent': '', 'סוכן': '',
             'P&L': round(sum(r['P&L'] for r in data_rows), 2),
+            'Agent Rake': round(sum(r['Agent Rake'] for r in data_rows
+                                    if isinstance(r.get('Agent Rake'), (int, float))), 2),
             'Rake': round(sum(r['Rake'] for r in data_rows), 2),
             'קבלת רייק': round(sum(r['קבלת רייק'] for r in data_rows), 2),
             'סה"כ לתשלום': round(sum(r['סה"כ לתשלום'] for r in data_rows), 2),
@@ -5046,7 +5092,7 @@ def export_agent_full_box():
                 _after = round(float(_r.get('P&L') or 0) + _rb, 2)
                 _nr = {}
                 for _k, _v in _r.items():
-                    if _k in ('ידיים', 'קלאב'):
+                    if _k in ('ידיים', 'קלאב', 'Agent Rake'):
                         continue
                     if _k == 'Rake' and _rb and not _is_total:
                         # rake, with the % he receives shown in a small green line
@@ -5142,6 +5188,7 @@ def export_agent_club(club_id):
 
     all_rows = []
     sa_groups = {}   # sa_name -> [rows]
+    sa_name_to_id = {}   # SA nick → id, for the Agent-Rake % lookup
     no_sa_rows = []
     for p in players:
         sa_name = all_nicks.get(p[2], p[2]) if p[2] and p[2] != '-' else ''
@@ -5158,10 +5205,12 @@ def export_agent_club(club_id):
             if sa_name not in sa_groups:
                 sa_groups[sa_name] = []
             sa_groups[sa_name].append(row)
+            sa_name_to_id.setdefault(sa_name, p[2])
         else:
             no_sa_rows.append(row)
 
     sheets = {}
+    pct_by_sheet = {}   # each SA sheet by its own %
 
     if full_mode:
         # Group by Super Agent so the single sheet reads as an organized list:
@@ -5207,6 +5256,7 @@ def export_agent_club(club_id):
             })
             safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sa_name)[:31] or 'SA'
             sheets[safe_name] = sa_rows_clean
+            pct_by_sheet[safe_name] = _rake_pct_for(sa_name_to_id.get(sa_name))
 
         if no_sa_rows:
             no_sa_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'סוכן': r['סוכן'],
@@ -5224,6 +5274,7 @@ def export_agent_club(club_id):
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
+    sheets = _insert_agent_rake(sheets, pct_by_sheet)
     if current_user.role == 'agent' and current_user.player_id:
         sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(current_user.player_id))
     return _make_excel(sheets, f'{club_name}{suffix}_report.xlsx',
@@ -5357,6 +5408,7 @@ def export_agent_period():
             sheets['משחקים'] = sess_rows
 
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else current_user.username
+    sheets = _insert_agent_rake(sheets, {f'{from_date} - {to_date}': _rake_pct_for(sa_id)})
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx',
                        transfer_pids=[p[0] for p in players])
