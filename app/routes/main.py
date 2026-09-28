@@ -73,6 +73,47 @@ def _apply_hide_breakdown(sheets, pct):
     return out
 
 
+def _rake_pct_for(entity_id):
+    """The configured rake % for an agent / super-agent (sub_agent/agent
+    RakeConfig), or None when nothing is configured for them."""
+    if not entity_id or entity_id in ('', '-'):
+        return None
+    from app.models import RakeConfig
+    rc = RakeConfig.query.filter(
+        RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+        RakeConfig.entity_id == entity_id).first()
+    return rc.rake_percent if rc else None
+
+
+def _insert_agent_rake(sheets, pct_by_sheet):
+    """Add an 'Agent Rake' column (net = Rake × the agent's %) immediately
+    BEFORE the 'Rake' column, for every sheet whose agent has a configured %.
+
+    - pct_by_sheet: {sheet_name: pct_or_None}. A sheet whose pct is None (agent
+      has no RakeConfig) is left untouched — no column is added (per request:
+      "לא להציב כלום אם לא מוגדר").
+    - Only sheets whose rows carry a numeric-friendly 'Rake' column are touched;
+      non-numeric Rake cells (blank/total placeholders) stay blank.
+    """
+    out = {}
+    for name, rows in sheets.items():
+        pct = pct_by_sheet.get(name)
+        if pct is None or not rows or 'Rake' not in rows[0]:
+            out[name] = rows
+            continue
+        factor = pct / 100.0
+        new_rows = []
+        for row in rows:
+            nr = {}
+            for k, v in row.items():
+                if k == 'Rake':
+                    nr['Agent Rake'] = round(v * factor, 2) if isinstance(v, (int, float)) else ''
+                nr[k] = v
+            new_rows.append(nr)
+        out[name] = new_rows
+    return out
+
+
 # Session key for the admin's "previous cycle" browsing mode. Holds an
 # ArchivePeriod id; while set, every page that honours the date filter renders
 # that closed cycle instead of the live one.
@@ -4187,6 +4228,7 @@ def export_single_agent(agent_id):
 
     all_rows = []
     agent_groups = {}
+    agent_name_to_id = {}   # sub-agent nick → its id, for the Agent-Rake % lookup
     direct_rows = []
     _xfer_seen = set()   # apply each player's settlement once across his split rows
     for p in players:
@@ -4207,10 +4249,14 @@ def export_single_agent(agent_id):
             if ag_name not in agent_groups:
                 agent_groups[ag_name] = []
             agent_groups[ag_name].append(row)
+            agent_name_to_id.setdefault(ag_name, ag)
         else:
             direct_rows.append(row)
 
     sheets = {}
+    # Agent-Rake %: each sheet keyed to its own agent. Sub-agent sheets use the
+    # sub-agent's %, the report agent's own players use the report agent's %.
+    pct_by_sheet = {}
 
     if full_mode:
         # Single sheet with all players sorted by rake
@@ -4221,6 +4267,7 @@ def export_single_agent(agent_id):
             'Rake': round(sum(r['Rake'] for r in all_rows), 2),
         })
         sheets[agent_nick[:31]] = all_rows
+        pct_by_sheet[agent_nick[:31]] = _rake_pct_for(agent_id)
     else:
         # Sheet per sub-agent
         for ag_name, ag_rows in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
@@ -4234,6 +4281,7 @@ def export_single_agent(agent_id):
             })
             safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
             sheets[safe_name] = ag_rows_clean
+            pct_by_sheet[safe_name] = _rake_pct_for(agent_name_to_id.get(ag_name))
 
         if direct_rows:
             dr_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'קלאב': r['קלאב'],
@@ -4245,10 +4293,12 @@ def export_single_agent(agent_id):
                 'Rake': round(sum(r['Rake'] for r in dr_clean), 2),
             })
             sheets['שחקנים ישירים'] = dr_clean
+            pct_by_sheet['שחקנים ישירים'] = _rake_pct_for(agent_id)
 
     if not sheets:
         sheets[agent_nick[:31]] = []
 
+    sheets = _insert_agent_rake(sheets, pct_by_sheet)
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
     return _make_excel(sheets, f'{agent_nick}{suffix}_players.xlsx', period_label=period_label,
