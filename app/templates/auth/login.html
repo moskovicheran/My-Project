@@ -2,133 +2,198 @@
 {% block title %}התחברות - מועדון S.P.C{% endblock %}
 
 {% block content %}
-{# Light, static scene — the keychain tag is the only thing that ever moves,
-   and only at two moments: page load, and while a login is in flight.
+{# Split-brand login. The logo is one image drawn on two clipped halves so it can
+   flip like a coin on load and get "sliced" apart when a login is submitted.
    Reverting this one file restores the previous screen; nothing else is touched. #}
-<div class="lg-scene" aria-hidden="true"><div class="lg-wash"></div></div>
+<div class="spc-bg" aria-hidden="true"></div>
 
-<div class="lg-wrap">
-    <div class="lg-panel">
-        {# Two-sided tag. The back is a real face, not the logo mirrored —
-           without it the image reads as flipped for half of every turn. #}
-        <div class="lg-kc" id="lgKc">
-            <div class="lg-kc-in">
-                <div class="lg-kc-face lg-kc-front">
-                    <img src="{{ url_for('static', filename='img/spc_logo.png') }}"
-                         alt="S.P.C - Social Poker Club">
-                </div>
-                <div class="lg-kc-face lg-kc-back" aria-hidden="true">&#9824;</div>
-            </div>
-        </div>
+<div class="spc-wrap">
+  <div class="spc-shell">
 
-        <h1 class="lg-title">ניהול מועדון S.P.C</h1>
-        <p class="lg-sub">התחברות</p>
+    <aside class="spc-brand">
+      <div class="spc-logo" id="spcLogo" aria-label="S.P.C - Social Poker Club">
+        <div class="spc-half spc-top"></div>
+        <div class="spc-half spc-bottom"></div>
+        <div class="spc-slash"></div>
+      </div>
+      <div class="spc-divider"></div>
+      <p class="spc-tagline">מערכת ניהול המועדון — סוכנים ושחקנים במקום אחד</p>
+      <ul class="spc-feats">
+        <li><span class="spc-dot"></span> מעקב יומי אחר רווחים</li>
+        <li><span class="spc-dot"></span> ניהול מועדונים</li>
+        <li><span class="spc-dot"></span> דוחות און ליין</li>
+      </ul>
+    </aside>
 
-        <form method="POST" action="{{ url_for('auth.login') }}" class="lg-form" id="lgForm">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="lg-field">
-                <label for="email">שם משתמש או אימייל</label>
-                <input type="text" id="email" name="email" required placeholder="שם משתמש"
-                       autocomplete="username" autocapitalize="none" autocorrect="off">
+    <main class="spc-formwrap">
+      <div class="spc-inner">
+        <h1 class="spc-welcome">ברוך שובך</h1>
+        <p class="spc-sub">התחבר כדי להיכנס למערכת</p>
+
+        <form method="POST" action="{{ url_for('auth.login') }}" class="spc-form" id="spcForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <div class="spc-field">
+            <label for="email">שם משתמש או אימייל</label>
+            <div class="spc-inp"><span class="spc-ic">👤</span>
+              <input type="text" id="email" name="email" required placeholder="שם משתמש"
+                     autocomplete="username" autocapitalize="none" autocorrect="off">
             </div>
-            <div class="lg-field">
-                <label for="password">סיסמה</label>
-                <input type="password" id="password" name="password" required placeholder="••••••"
-                       autocomplete="current-password">
+          </div>
+          <div class="spc-field">
+            <label for="password">סיסמה</label>
+            <div class="spc-inp"><span class="spc-ic">🔒</span>
+              <input type="password" id="password" name="password" required placeholder="••••••"
+                     autocomplete="current-password">
             </div>
-            <label class="lg-check">
-                <input type="checkbox" id="remember" name="remember">
-                <span>זכור אותי</span>
-            </label>
-            <button type="submit" class="lg-go">התחבר</button>
+          </div>
+          <label class="spc-check">
+            <input type="checkbox" id="remember" name="remember">
+            <span>זכור אותי</span>
+          </label>
+          <button type="submit" class="spc-go">התחבר</button>
         </form>
-    </div>
+
+        <p class="spc-foot">© Social Poker Club · כל הזכויות שמורות</p>
+      </div>
+    </main>
+
+  </div>
 </div>
 
 <style>
-/* scene */
-.lg-scene { position: fixed; inset: 0; z-index: 0; overflow: hidden;
-            background: linear-gradient(170deg, #f8f9fd, #eef1f8); }
-.lg-wash { position: absolute; width: 560px; height: 560px; border-radius: 50%;
-           top: -210px; left: 50%; margin-left: -280px;
-           background: radial-gradient(circle, rgba(99,102,241,.10), transparent 68%); }
+  /* full-bleed dark background, covers body + container margins */
+  .spc-bg{
+    position:fixed;inset:0;z-index:0;
+    background:
+      radial-gradient(90% 55% at 50% 34%, rgba(74,144,217,.18) 0%, transparent 55%),
+      radial-gradient(120% 120% at 50% 118%, rgba(212,175,55,.09) 0%, transparent 50%),
+      #05060a;
+  }
+  .spc-wrap{position:relative;z-index:2;display:grid;place-items:center;min-height:calc(100vh - 5rem)}
+  .alert{position:relative;z-index:2}
 
-.lg-wrap { position: relative; z-index: 2; display: grid; place-items: center;
-           min-height: calc(100vh - 5rem); padding: 1rem 0; }
-.lg-panel { width: 100%; max-width: 330px; padding: 1.9rem 1.7rem 2rem; border-radius: 18px;
-            background: #fff; border: 1px solid #e6e9f2; box-shadow: 0 10px 34px rgba(28,35,66,.09); }
+  .spc-shell{
+    width:100%;max-width:940px;display:flex;overflow:hidden;
+    border-radius:24px;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
 
-/* keychain tag */
-.lg-kc { width: 96px; height: 96px; margin: 0 auto; perspective: 640px; }
-.lg-kc-in { position: relative; width: 100%; height: 100%; transform-style: preserve-3d;
-            animation: lgSpinOnce 1.5s cubic-bezier(.3,.8,.3,1) 1 both; }
-.lg-kc-face { position: absolute; inset: 0; border-radius: 14px;
-              backface-visibility: hidden; overflow: hidden; }
-.lg-kc-front img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 14px; }
-.lg-kc-back { transform: rotateY(180deg); background: linear-gradient(150deg, #1b2133, #0e1220);
-              display: grid; place-items: center; color: #5b76c9; font-size: 2.1rem;
-              border: 1px solid rgba(255,255,255,.08); }
-@keyframes lgSpinOnce { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+  /* brand panel */
+  .spc-brand{
+    position:relative;flex:0 0 44%;overflow:hidden;color:#fff;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:44px 30px;perspective:1000px;
+    background:
+      radial-gradient(90% 55% at 50% 40%, rgba(74,144,217,.20) 0%, transparent 55%),
+      radial-gradient(120% 120% at 50% 120%, rgba(212,175,55,.10) 0%, transparent 50%),
+      #000;
+  }
+  .spc-logo{
+    position:relative;z-index:2;width:220px;max-width:80%;aspect-ratio:1/1;transform-style:preserve-3d;
+    animation:spcIntro 2.8s cubic-bezier(.25,.85,.25,1) both, spcGlow 4.5s ease-in-out 2.8s infinite;
+  }
+  .spc-half{
+    position:absolute;inset:0;width:100%;height:100%;
+    background:url("{{ url_for('static', filename='img/spc_logo.png') }}") center/contain no-repeat;
+    transition:transform .75s cubic-bezier(.55,0,.2,1) .1s, opacity .75s ease .1s;
+  }
+  .spc-top{clip-path:polygon(0 0,100% 0,100% 44%,0 56%)}
+  .spc-bottom{clip-path:polygon(0 56%,100% 44%,100% 100%,0 100%)}
+  .spc-slash{
+    position:absolute;top:50%;left:-20%;width:140%;height:2px;z-index:3;pointer-events:none;
+    background:linear-gradient(90deg,transparent,#fff 45%,#eaf4ff 55%,transparent);
+    box-shadow:0 0 14px rgba(255,255,255,.9);
+    transform:translate(-60%,-50%) rotate(-12deg);opacity:0;
+  }
+  .spc-logo.is-cut .spc-top{transform:translate(-14px,-52px) rotate(-7deg);opacity:0}
+  .spc-logo.is-cut .spc-bottom{transform:translate(14px,52px) rotate(7deg);opacity:0}
+  .spc-logo.is-cut .spc-slash{animation:spcSlash .55s ease-out}
 
-/* While the login is in flight the tag keeps turning — the page is waiting on
-   the server, and this is the only feedback that the tap registered. The class
-   is added on submit; the form still posts normally, so it also works with JS
-   disabled (just without the spin). */
-.lg-kc-in.is-busy { animation: lgSpinLoop 1.1s linear infinite; }
-@keyframes lgSpinLoop { to { transform: rotateY(360deg); } }
+  @keyframes spcIntro{
+    0%{opacity:0;transform:rotateY(-720deg) scale(.8)}
+    18%{opacity:1}
+    100%{opacity:1;transform:rotateY(0deg) scale(1)}
+  }
+  @keyframes spcGlow{
+    0%,100%{filter:drop-shadow(0 10px 26px rgba(74,144,217,.20))}
+    50%{filter:drop-shadow(0 12px 38px rgba(74,144,217,.46))}
+  }
+  @keyframes spcSlash{
+    0%{opacity:0;transform:translate(-60%,-50%) rotate(-12deg)}
+    25%{opacity:1}
+    100%{opacity:0;transform:translate(60%,-50%) rotate(-12deg)}
+  }
 
-/* text + form */
-.lg-title { text-align: center; font-size: 1.02rem; font-weight: 700; margin: .8rem 0 0; color: #1a1f36; }
-.lg-sub { text-align: center; font-size: .76rem; margin: .18rem 0 0; color: #5b6480; }
-.lg-form { display: flex; flex-direction: column; gap: .75rem; margin-top: 1.05rem; }
-.lg-field label { display: block; font-size: .75rem; margin-bottom: .3rem; color: #5b6480; }
-.lg-field input { width: 100%; padding: .78rem .9rem; border-radius: 10px; font-size: 1rem;
-                  font-family: inherit; outline: none; background: #f6f7fb;
-                  border: 1px solid #e3e6f0; color: #1a1f36;
-                  transition: border-color .16s, box-shadow .16s, background .16s; }
-.lg-field input::placeholder { color: #a2aac0; }
-.lg-field input:focus { border-color: #6366f1; background: #fff; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
-.lg-check { display: flex; align-items: center; gap: .45rem; font-size: .78rem; color: #5b6480; cursor: pointer; }
-.lg-check input { width: auto; }
-.lg-go { width: 100%; padding: .82rem; border: 0; border-radius: 10px; cursor: pointer;
-         font-family: inherit; font-size: 1rem; font-weight: 700;
-         background: #4f46e5; color: #fff; transition: filter .16s, transform .1s; }
-.lg-go:hover { filter: brightness(1.05); }
-.lg-go:active { transform: translateY(1px); }
-.lg-go[aria-busy="true"] { filter: brightness(.92); cursor: default; }
+  .spc-divider{position:relative;z-index:2;width:70px;height:2px;margin:22px 0 0;
+    background:linear-gradient(90deg,transparent,#d4af37,transparent)}
+  .spc-tagline{position:relative;z-index:2;margin-top:18px;text-align:center;
+    color:#c9d2e8;font-size:.9rem;line-height:1.7;max-width:230px}
+  .spc-feats{position:relative;z-index:2;margin-top:22px;display:flex;flex-direction:column;gap:10px;padding:0;list-style:none}
+  .spc-feats li{display:flex;align-items:center;gap:10px;font-size:.82rem;color:#aeb7d0}
+  .spc-dot{width:7px;height:7px;border-radius:50%;background:#d4af37;flex:0 0 auto;box-shadow:0 0 8px rgba(212,175,55,.6)}
 
-.alert { position: relative; z-index: 2; }
+  /* form panel */
+  .spc-formwrap{flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px 44px}
+  .spc-inner{width:100%;max-width:340px;margin:0 auto}
+  .spc-welcome{text-align:right;font-size:1.5rem;font-weight:700;letter-spacing:-.01em;color:#1a1f36;margin:0}
+  .spc-sub{text-align:right;color:#8a90a6;font-size:.9rem;margin:6px 0 30px}
+  .spc-form{display:flex;flex-direction:column;gap:0}
+  .spc-field{margin-bottom:18px}
+  .spc-field label{display:block;text-align:right;font-size:.82rem;font-weight:600;margin-bottom:7px;color:#3a4160}
+  .spc-inp{position:relative}
+  .spc-ic{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:1.05rem;opacity:.5;pointer-events:none}
+  .spc-inp input{width:100%;padding:14px 44px 14px 14px;border:1.5px solid #e4e7f0;border-radius:12px;
+    background:#f7f8fc;font-size:16px;font-family:inherit;color:#1a1f36;
+    transition:border-color .15s, box-shadow .15s, background .15s}
+  .spc-inp input::placeholder{color:#aab0c4}
+  .spc-inp input:focus{outline:none;border-color:#4361ee;background:#fff;box-shadow:0 0 0 3px rgba(67,97,238,.14)}
+  .spc-check{display:flex;align-items:center;gap:7px;margin:-2px 0 24px;font-size:.82rem;color:#3a4160;cursor:pointer}
+  .spc-check input{width:16px;height:16px;accent-color:#4361ee}
+  .spc-go{width:100%;border:none;border-radius:12px;padding:15px;cursor:pointer;font-family:inherit;
+    background:#4361ee;color:#fff;font-size:1rem;font-weight:700;letter-spacing:.02em;
+    box-shadow:0 8px 20px rgba(67,97,238,.28);transition:background .15s, transform .1s, box-shadow .15s}
+  .spc-go:hover{background:#3451d1;transform:translateY(-1px);box-shadow:0 10px 26px rgba(67,97,238,.34)}
+  .spc-go:active{transform:translateY(0)}
+  .spc-go[aria-busy="true"]{filter:brightness(.92);cursor:default}
+  .spc-foot{margin-top:26px;text-align:center;font-size:.72rem;color:#aab0c4;letter-spacing:.03em}
 
-/* mobile — input font-size stays 1rem so iOS Safari does not zoom on focus */
-@media (max-width: 640px) {
-    .lg-wrap { min-height: calc(100vh - 3.5rem); padding: .5rem 0; }
-    .lg-panel { max-width: 100%; padding: 1.5rem 1.2rem 1.7rem; border-radius: 16px; }
-    .lg-kc { width: 84px; height: 84px; }
-    .lg-kc-back { font-size: 1.8rem; }
-}
-@media (max-width: 380px) {
-    .lg-kc { width: 72px; height: 72px; }
-    .lg-panel { padding: 1.3rem 1.05rem 1.5rem; }
-}
+  /* mobile — brand becomes a top banner, form below */
+  @media (max-width:720px){
+    .spc-wrap{min-height:calc(100vh - 3.5rem)}
+    .spc-shell{flex-direction:column;max-width:420px;border-radius:18px}
+    .spc-brand{flex:0 0 auto;padding:34px 24px 30px}
+    .spc-logo{width:148px}
+    .spc-tagline{font-size:.82rem;margin-top:12px;max-width:260px}
+    .spc-feats{display:none}
+    .spc-divider{margin-top:16px}
+    .spc-formwrap{padding:30px 24px 34px}
+    .spc-welcome{font-size:1.35rem}
+    .spc-sub{margin-bottom:24px}
+  }
+  @media (max-width:380px){
+    .spc-brand{padding:28px 18px 26px}
+    .spc-logo{width:128px}
+    .spc-formwrap{padding:26px 18px 30px}
+  }
 
-/* Someone who turned animations off gets the same screen, standing still. */
-@media (prefers-reduced-motion: reduce) {
-    .lg-kc-in, .lg-kc-in.is-busy { animation: none; }
-}
+  /* animations off → same screen, standing still */
+  @media (prefers-reduced-motion:reduce){
+    .spc-logo{animation:none}
+    .spc-half,.spc-slash{transition:none;animation:none}
+  }
 </style>
 
 <script>
-(function () {
-    var form = document.getElementById('lgForm');
-    var tag  = document.querySelector('#lgKc .lg-kc-in');
-    if (!form || !tag) return;
-    form.addEventListener('submit', function () {
-        // No preventDefault — the form submits as usual; this only starts the
-        // spin and marks the button busy until the browser navigates away.
-        tag.classList.add('is-busy');
-        var btn = form.querySelector('.lg-go');
-        if (btn) { btn.setAttribute('aria-busy', 'true'); btn.textContent = 'מתחבר…'; }
-    });
+(function(){
+  var form=document.getElementById('spcForm');
+  var logo=document.getElementById('spcLogo');
+  if(!form||!logo) return;
+  form.addEventListener('submit',function(){
+    // No preventDefault — the form posts normally; this only plays the slice as
+    // the page hands off, and marks the button busy. Works with JS off too.
+    logo.classList.add('is-cut');
+    var btn=form.querySelector('.spc-go');
+    if(btn){btn.setAttribute('aria-busy','true');btn.textContent='מתחבר…';}
+  });
 })();
 </script>
 {% endblock %}
