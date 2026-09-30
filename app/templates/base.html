@@ -75,33 +75,7 @@
             {% endif %}
         {% endwith %}
 
-        {% if archive_warnings %}
-        {# Small dismissible corner toast (was a full-width banner). Shown once
-           per session until the user closes it. #}
-        <div class="spc-toast" id="backupToast" role="status" hidden>
-            <button type="button" class="spc-toast-x" aria-label="סגור" onclick="dismissBackupToast()">&times;</button>
-            <span class="spc-toast-ic">&#9888;</span>
-            <div class="spc-toast-body">
-                {% for aw in archive_warnings %}
-                <div class="spc-toast-line">נתוני תקופה <strong>{{ aw.label }}</strong> יימחקו בעוד <strong>{{ aw.days_left }} ימים</strong> — זה הזמן לגבות!</div>
-                {% endfor %}
-            </div>
-        </div>
-        <script>
-        function dismissBackupToast(){
-            var t=document.getElementById('backupToast'); if(!t) return;
-            t.classList.remove('show');
-            try{ sessionStorage.setItem('spcBackupToastDismissed','1'); }catch(e){}
-            setTimeout(function(){ t.hidden=true; }, 300);
-        }
-        (function(){
-            var t=document.getElementById('backupToast'); if(!t) return;
-            try{ if(sessionStorage.getItem('spcBackupToastDismissed')==='1') return; }catch(e){}
-            requestAnimationFrame(function(){ t.hidden=false;
-                requestAnimationFrame(function(){ t.classList.add('show'); }); });
-        })();
-        </script>
-        {% endif %}
+        {# Backup reminder shows only on the admin page (see admin/base_admin.html). #}
 
         {% block content %}{% endblock %}
     </main>
