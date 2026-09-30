@@ -76,12 +76,31 @@
         {% endwith %}
 
         {% if archive_warnings %}
-        {% for aw in archive_warnings %}
-        <div class="alert alert-warning" style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:0.7rem 1rem; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem;">
-            <span style="font-size:1.2rem;">&#9888;</span>
-            <span>נתוני תקופה <strong>{{ aw.label }}</strong> יימחקו בעוד <strong>{{ aw.days_left }} ימים</strong> — זה הזמן לגבות!</span>
+        {# Small dismissible corner toast (was a full-width banner). Shown once
+           per session until the user closes it. #}
+        <div class="spc-toast" id="backupToast" role="status" hidden>
+            <button type="button" class="spc-toast-x" aria-label="סגור" onclick="dismissBackupToast()">&times;</button>
+            <span class="spc-toast-ic">&#9888;</span>
+            <div class="spc-toast-body">
+                {% for aw in archive_warnings %}
+                <div class="spc-toast-line">נתוני תקופה <strong>{{ aw.label }}</strong> יימחקו בעוד <strong>{{ aw.days_left }} ימים</strong> — זה הזמן לגבות!</div>
+                {% endfor %}
+            </div>
         </div>
-        {% endfor %}
+        <script>
+        function dismissBackupToast(){
+            var t=document.getElementById('backupToast'); if(!t) return;
+            t.classList.remove('show');
+            try{ sessionStorage.setItem('spcBackupToastDismissed','1'); }catch(e){}
+            setTimeout(function(){ t.hidden=true; }, 300);
+        }
+        (function(){
+            var t=document.getElementById('backupToast'); if(!t) return;
+            try{ if(sessionStorage.getItem('spcBackupToastDismissed')==='1') return; }catch(e){}
+            requestAnimationFrame(function(){ t.hidden=false;
+                requestAnimationFrame(function(){ t.classList.add('show'); }); });
+        })();
+        </script>
         {% endif %}
 
         {% block content %}{% endblock %}
