@@ -141,6 +141,18 @@ body.dark .sa-pick-opt.pinned { background:#3a3520; }
 </script>
 {% endif %}
 
+{% if archive_warnings %}
+<!-- Backup reminder — a calm line here instead of a nagging toast on every screen -->
+<div class="health-card" style="border-right:4px solid #ffc107; display:flex; align-items:center; gap:0.6rem;">
+    <span style="font-size:1.3rem; flex:0 0 auto;">&#9888;</span>
+    <div>
+        {% for aw in archive_warnings %}
+        <div style="line-height:1.5;">נתוני תקופה <strong>{{ aw.label }}</strong> יימחקו בעוד <strong>{{ aw.days_left }} ימים</strong> — זה הזמן לגבות!</div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% if unknown_clubs or unknown_sas %}
 <div class="alert-new">
     <h3>⚠️ מידע חדש — נא לשייך</h3>

@@ -81,33 +81,6 @@ body {
 .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
 .alert-info    { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
 
-/* Backup reminder toast — small dismissible corner notice (was a full-width
-   banner). Shown once per session until dismissed. */
-.spc-toast {
-    position: fixed; z-index: 3000; bottom: 18px; left: 18px; max-width: 330px;
-    display: flex; align-items: flex-start; gap: 10px;
-    background: #fff8e1; border: 1px solid #ffc107; border-radius: 12px;
-    padding: 12px 14px 12px 36px; box-shadow: 0 12px 34px rgba(28,35,66,.20);
-    color: #7a5b00; font-size: .86rem; line-height: 1.55;
-    transform: translateY(16px); opacity: 0;
-    transition: transform .3s ease, opacity .3s ease;
-}
-.spc-toast.show { transform: none; opacity: 1; }
-.spc-toast-ic { font-size: 1.2rem; line-height: 1.2; flex: 0 0 auto; }
-.spc-toast-body { flex: 1; }
-.spc-toast-line + .spc-toast-line { margin-top: 6px; }
-.spc-toast-x {
-    position: absolute; top: 6px; left: 8px; background: none; border: 0;
-    font-size: 1.15rem; line-height: 1; cursor: pointer; color: #9a7b1a;
-    padding: 2px 6px; border-radius: 6px;
-}
-.spc-toast-x:hover { background: rgba(0,0,0,.06); }
-body.dark .spc-toast { background: #3a3320; border-color: #8a6d1a; color: #f0d98a; }
-body.dark .spc-toast-x { color: #d8bd6a; }
-@media (max-width: 640px) {
-    .spc-toast { left: 10px; right: 10px; bottom: 10px; max-width: none; }
-}
-
 /* Auth */
 .auth-container {
     display: flex;
