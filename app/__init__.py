@@ -117,6 +117,19 @@ def create_app():
         return {'daily_promo_days': left if left > 0 else 0}
 
     @app.context_processor
+    def inject_kenny_hero():
+        """Countdown for the trial dark "hero" banner on Kenny777's dashboard.
+
+        Self-expiring: past KENNY_HERO_UNTIL the value is 0 and the banner stops
+        rendering — no deploy, no cleanup job. Remove this processor and the
+        template block once the trial is over (or kept permanently).
+        """
+        from datetime import date
+        from app.models import KENNY_HERO_UNTIL
+        left = (KENNY_HERO_UNTIL - date.today()).days + 1
+        return {'kenny_hero_days': left if left > 0 else 0}
+
+    @app.context_processor
     def inject_last_upload():
         from datetime import timedelta
         from app.models import DailyUpload

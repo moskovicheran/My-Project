@@ -61,6 +61,15 @@ class AdminNote(db.Model):
 from datetime import date as _date
 DAILY_PNL_PROMO_UNTIL = _date(2026, 8, 20)
 
+# TRIAL of the dark "hero" summary banner on Kenny777's agent dashboard only.
+# Shown until the END of this date (inclusive), then it disappears on its own —
+# no deploy needed (the check is server-side at render time).
+#   • extend  → bump this date
+#   • keep permanently → remove the `kenny_hero_days` gate in agent_dashboard.html
+#   • remove early → set this to a past date
+# Inclusive of both ends: 01→04 Oct is the four-day trial asked for.
+KENNY_HERO_UNTIL = _date(2026, 10, 4)
+
 
 # RETIRED synthetic "house" account. The return-to-house / distribute-from-house
 # forms were removed from every dashboard: a house row has only one real side,
