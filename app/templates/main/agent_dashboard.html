@@ -137,6 +137,9 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
   .kenny-hero .kh-big{font-size:2.7rem;font-weight:800;margin:4px 0 0;line-height:1.04;color:#eef4ff;
     text-shadow:0 1px 0 rgba(255,255,255,.14), 0 4px 16px rgba(74,144,217,.35);font-variant-numeric:tabular-nums}
   .kenny-hero .kh-big.neg{color:#ff8a98;text-shadow:0 1px 0 rgba(255,255,255,.10), 0 4px 16px rgba(239,68,88,.35)}
+  .kenny-hero .kh-trend{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:999px}
+  .kenny-hero .kh-trend.up{background:rgba(54,211,154,.15);color:#36d39a}
+  .kenny-hero .kh-trend.down{background:rgba(255,90,110,.16);color:#ff8a98}
   .kenny-hero .kh-mini{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;position:relative}
   .kenny-hero .kh-c{position:relative;border-radius:15px;padding:12px 14px;
     background:linear-gradient(160deg,rgba(255,255,255,.11),rgba(255,255,255,.035));
@@ -153,6 +156,9 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
       <div class="kh-lbl">&#9830; רווח / הפסד · התקופה</div>
       <div class="kh-big {% if (total_pnl|default(0)) < 0 %}neg{% endif %}"
            data-kh="{{ (total_pnl|default(0))|round|int }}" data-kh-sign="1">0</div>
+      {% if kenny_prev_pct is not none %}
+      <div><span class="kh-trend {% if kenny_prev_pct >= 0 %}up{% else %}down{% endif %}">{% if kenny_prev_pct >= 0 %}&#9650;{% else %}&#9660;{% endif %} {{ kenny_prev_pct|abs }}% מהמחזור הקודם</span></div>
+      {% endif %}
     </div>
     <svg class="kh-spark" viewBox="0 0 132 42" preserveAspectRatio="none">
       <polyline points="0,34 19,29 38,31 57,20 76,23 95,12 114,15 132,5" fill="none" stroke="#36d39a" stroke-width="2.5" stroke-linecap="round"/>

@@ -2160,7 +2160,31 @@ def dashboard():
         except Exception:
             pass
 
+        # TRIAL (Kenny777 hero banner): % change of total_pnl vs the previous
+        # closed cycle. Kenny only, whole current cycle only (no date filter),
+        # not while browsing an archived cycle. Self-contained + guarded so a
+        # failure here can never take the dashboard down.
+        kenny_prev_pct = None
+        if sa_id == '7526-3392' and not selected_dates and not cycle_view_period():
+            try:
+                from app.models import ArchivePeriod, ArchivedUpload
+                _prev = ArchivePeriod.query.order_by(ArchivePeriod.first_date.desc()).first()
+                if _prev:
+                    _uids = [u.original_id for u in ArchivedUpload.query
+                             .filter_by(period_id=_prev.id).all()]
+                    if _uids:
+                        from app.union_data import get_agent_totals
+                        _pp = get_agent_totals(sa_id, archive_buckets=[
+                            {'period_id': _prev.id, 'upload_ids': _uids}])
+                        _prev_pnl = _pp.get('total_pnl') or 0
+                        if _prev_pnl:
+                            kenny_prev_pct = round(
+                                (total_pnl - _prev_pnl) / abs(_prev_pnl) * 100, 1)
+            except Exception:
+                kenny_prev_pct = None
+
         return render_template('main/agent_dashboard.html',
+                               kenny_prev_pct=kenny_prev_pct,
                                coll_total_owed=coll_total_owed,
                                coll_collected=coll_collected,
                                coll_remaining=coll_remaining,
