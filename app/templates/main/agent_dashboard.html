@@ -121,32 +121,46 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
    KENNY_HERO_UNTIL (see app/models.py + inject_kenny_hero). Remove this whole
    block (and the constant/processor) to end the trial. ── #}
 {% if kenny_hero_days and (view_as_username or current_user.username) == 'Kenny777' %}
+{# "נשאר לי" = same figure as the "💰 נשאר לי אחרי ההחזר" line in the rake panel. #}
+{% set kh_keep = (rake_refund_list|default([])|sum(attribute='my_keep') + (unconfigured_player_rake|default(0))) %}
 <style>
-  .kenny-hero{position:relative;border-radius:20px;padding:18px;overflow:hidden;margin-bottom:1.2rem;
-    background:linear-gradient(145deg,#15233f,#101627);border:1px solid rgba(212,175,55,.30);
-    box-shadow:0 16px 36px rgba(16,22,39,.35);color:#eef1fa}
-  .kenny-hero::after{content:"\2660";position:absolute;left:-10px;bottom:-26px;font-size:7rem;color:rgba(255,255,255,.03);pointer-events:none}
-  .kenny-hero .kh-lbl{font-size:.82rem;color:#9aa4c0}
-  .kenny-hero .kh-big{font-size:2.5rem;font-weight:800;margin:6px 0 2px;color:#eef4ff;text-shadow:0 2px 10px rgba(74,144,217,.25);font-variant-numeric:tabular-nums}
-  .kenny-hero .kh-big.neg{color:#ff8a98}
-  .kenny-hero .kh-spark{position:absolute;top:16px;left:16px;width:96px;height:38px}
-  .kenny-hero .kh-mini{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-  .kenny-hero .kh-c{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:11px 13px}
-  .kenny-hero .kh-c .l{font-size:.72rem;color:#9aa4c0}
-  .kenny-hero .kh-c .v{font-size:1.25rem;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
+  .kenny-hero{position:relative;max-width:720px;border-radius:22px;padding:20px 22px;overflow:hidden;margin-bottom:1.3rem;
+    background:linear-gradient(145deg,#1b2a4a 0%,#131a2e 55%,#0d1322 100%);
+    border:1px solid rgba(212,175,55,.28);color:#eef1fa;
+    box-shadow:0 1px 0 rgba(255,255,255,.08) inset, 0 26px 46px -16px rgba(0,0,0,.70), 0 3px 8px rgba(0,0,0,.40)}
+  .kenny-hero::before{content:"";position:absolute;inset:0;border-radius:22px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.07),transparent 28%)}
+  .kenny-hero::after{content:"\2660";position:absolute;left:-14px;bottom:-30px;font-size:8rem;color:rgba(255,255,255,.035);pointer-events:none}
+  .kenny-hero .kh-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;position:relative}
+  .kenny-hero .kh-lbl{font-size:.85rem;color:#aeb8d4}
+  .kenny-hero .kh-spark{width:132px;height:42px;opacity:.9;flex:0 0 auto}
+  .kenny-hero .kh-big{font-size:2.7rem;font-weight:800;margin:4px 0 0;line-height:1.04;color:#eef4ff;
+    text-shadow:0 1px 0 rgba(255,255,255,.14), 0 4px 16px rgba(74,144,217,.35);font-variant-numeric:tabular-nums}
+  .kenny-hero .kh-big.neg{color:#ff8a98;text-shadow:0 1px 0 rgba(255,255,255,.10), 0 4px 16px rgba(239,68,88,.35)}
+  .kenny-hero .kh-mini{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;position:relative}
+  .kenny-hero .kh-c{position:relative;border-radius:15px;padding:12px 14px;
+    background:linear-gradient(160deg,rgba(255,255,255,.11),rgba(255,255,255,.035));
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:0 1px 0 rgba(255,255,255,.09) inset, 0 10px 20px -10px rgba(0,0,0,.65)}
+  .kenny-hero .kh-c .l{font-size:.74rem;color:#aeb8d4}
+  .kenny-hero .kh-c .v{font-size:1.3rem;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
   .kenny-hero .kh-c .v.gold{color:#f4d97b}.kenny-hero .kh-c .v.green{color:#36d39a}
-  @media(min-width:760px){.kenny-hero .kh-mini{max-width:420px}}
+  @media(max-width:460px){.kenny-hero .kh-big{font-size:2.3rem}.kenny-hero .kh-spark{width:104px}}
 </style>
 <div class="kenny-hero">
-  <svg class="kh-spark" viewBox="0 0 96 38" preserveAspectRatio="none">
-    <polyline points="0,30 14,26 28,28 42,18 56,20 70,11 84,13 96,5" fill="none" stroke="#36d39a" stroke-width="2.5" stroke-linecap="round"/>
-  </svg>
-  <div class="kh-lbl">&#9830; רווח / הפסד · התקופה</div>
-  <div class="kh-big {% if (total_pnl|default(0)) < 0 %}neg{% endif %}"
-       data-kh="{{ (total_pnl|default(0))|round|int }}" data-kh-sign="1">0</div>
+  <div class="kh-top">
+    <div>
+      <div class="kh-lbl">&#9830; רווח / הפסד · התקופה</div>
+      <div class="kh-big {% if (total_pnl|default(0)) < 0 %}neg{% endif %}"
+           data-kh="{{ (total_pnl|default(0))|round|int }}" data-kh-sign="1">0</div>
+    </div>
+    <svg class="kh-spark" viewBox="0 0 132 42" preserveAspectRatio="none">
+      <polyline points="0,34 19,29 38,31 57,20 76,23 95,12 114,15 132,5" fill="none" stroke="#36d39a" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
   <div class="kh-mini">
+    <div class="kh-c"><div class="l">נשאר לי (אחרי הגדרת רייק)</div><div class="v green" data-kh="{{ kh_keep|round|int }}">0</div></div>
     <div class="kh-c"><div class="l">סך Rake</div><div class="v gold" data-kh="{{ (total_rake|default(0))|round|int }}">0</div></div>
-    <div class="kh-c"><div class="l">הרייק שלי</div><div class="v green" data-kh="{{ (my_rake_earning|default(0))|round|int }}">0</div></div>
   </div>
 </div>
 <script>
