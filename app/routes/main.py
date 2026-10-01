@@ -2165,6 +2165,7 @@ def dashboard():
         # not while browsing an archived cycle. Self-contained + guarded so a
         # failure here can never take the dashboard down.
         kenny_prev_pct = None
+        kenny_prev_cmp = None
         if sa_id == '7526-3392' and not selected_dates and not cycle_view_period():
             try:
                 from app.models import ArchivePeriod, ArchivedUpload
@@ -2180,11 +2181,25 @@ def dashboard():
                         if _prev_pnl:
                             kenny_prev_pct = round(
                                 (total_pnl - _prev_pnl) / abs(_prev_pnl) * 100, 1)
+                            # Breakdown behind the % badge: prev vs current per metric.
+                            kenny_prev_cmp = {
+                                'label': _prev.label,
+                                'prev_pnl': round(_prev_pnl, 2),
+                                'cur_pnl': round(total_pnl, 2),
+                                'prev_rake': round(_pp.get('total_rake') or 0, 2),
+                                'cur_rake': round(total_rake, 2),
+                                'prev_players': int(_pp.get('player_count') or 0),
+                                'cur_players': int(player_count),
+                                'prev_hands': int(_pp.get('total_hands') or 0),
+                                'cur_hands': int(total_hands),
+                            }
             except Exception:
                 kenny_prev_pct = None
+                kenny_prev_cmp = None
 
         return render_template('main/agent_dashboard.html',
                                kenny_prev_pct=kenny_prev_pct,
+                               kenny_prev_cmp=kenny_prev_cmp,
                                coll_total_owed=coll_total_owed,
                                coll_collected=coll_collected,
                                coll_remaining=coll_remaining,

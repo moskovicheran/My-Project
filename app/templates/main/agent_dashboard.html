@@ -138,8 +138,22 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
     text-shadow:0 1px 0 rgba(255,255,255,.14), 0 4px 16px rgba(74,144,217,.35);font-variant-numeric:tabular-nums}
   .kenny-hero .kh-big.neg{color:#ff8a98;text-shadow:0 1px 0 rgba(255,255,255,.10), 0 4px 16px rgba(239,68,88,.35)}
   .kenny-hero .kh-trend{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:999px}
+  .kenny-hero .kh-trend{border:0;font-family:inherit}
+  .kenny-hero button.kh-trend{cursor:pointer}
   .kenny-hero .kh-trend.up{background:rgba(54,211,154,.15);color:#36d39a}
   .kenny-hero .kh-trend.down{background:rgba(255,90,110,.16);color:#ff8a98}
+  .kenny-hero .kh-caret{font-size:.68rem;opacity:.75;margin-inline-start:2px}
+  .kenny-hero .kh-cmp{margin-top:14px;border-radius:14px;padding:12px 14px;position:relative;
+    background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.09)}
+  .kenny-hero .kh-cmp-h{font-size:.82rem;color:#cfd6ea;font-weight:700;margin-bottom:8px}
+  .kenny-hero .kh-cmp-t{width:100%;border-collapse:collapse;font-size:.82rem}
+  .kenny-hero .kh-cmp-t th{color:#9aa4c0;font-weight:600;text-align:left;padding:4px 6px}
+  .kenny-hero .kh-cmp-t th:first-child{text-align:right}
+  .kenny-hero .kh-cmp-t td{padding:5px 6px;border-top:1px solid rgba(255,255,255,.07);text-align:left;font-variant-numeric:tabular-nums}
+  .kenny-hero .kh-cmp-t td:first-child{text-align:right;color:#cfd6ea}
+  .kenny-hero .kh-cmp-t td.up{color:#36d39a;font-weight:700}
+  .kenny-hero .kh-cmp-t td.down{color:#ff8a98;font-weight:700}
+  .kenny-hero .kh-cmp-note{font-size:.72rem;color:#9aa4c0;margin-top:9px;line-height:1.45}
   .kenny-hero .kh-mini{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;position:relative}
   .kenny-hero .kh-c{position:relative;border-radius:15px;padding:12px 14px;
     background:linear-gradient(160deg,rgba(255,255,255,.11),rgba(255,255,255,.035));
@@ -157,7 +171,7 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
       <div class="kh-big {% if (total_pnl|default(0)) < 0 %}neg{% endif %}"
            data-kh="{{ (total_pnl|default(0))|round|int }}" data-kh-sign="1">0</div>
       {% if kenny_prev_pct is not none %}
-      <div><span class="kh-trend {% if kenny_prev_pct >= 0 %}up{% else %}down{% endif %}">{% if kenny_prev_pct >= 0 %}&#9650;{% else %}&#9660;{% endif %} {{ kenny_prev_pct|abs }}% מהמחזור הקודם</span></div>
+      <div><button type="button" class="kh-trend {% if kenny_prev_pct >= 0 %}up{% else %}down{% endif %}"{% if kenny_prev_cmp %} onclick="toggleKhCmp()" title="פירוט מול המחזור הקודם"{% endif %}>{% if kenny_prev_pct >= 0 %}&#9650;{% else %}&#9660;{% endif %} {{ kenny_prev_pct|abs }}% מהמחזור הקודם{% if kenny_prev_cmp %} <span class="kh-caret">▾</span>{% endif %}</button></div>
       {% endif %}
     </div>
     <svg class="kh-spark" viewBox="0 0 132 42" preserveAspectRatio="none">
@@ -168,8 +182,28 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
     <div class="kh-c"><div class="l">נשאר לי (אחרי הגדרת רייק)</div><div class="v green" data-kh="{{ kh_keep|round|int }}">0</div></div>
     <div class="kh-c"><div class="l">סך Rake</div><div class="v gold" data-kh="{{ (total_rake|default(0))|round|int }}">0</div></div>
   </div>
+  {% if kenny_prev_cmp %}
+  <div id="khCmp" class="kh-cmp" hidden>
+    <div class="kh-cmp-h">השוואה למחזור הקודם ({{ kenny_prev_cmp.label }})</div>
+    <table class="kh-cmp-t">
+      <thead><tr><th></th><th>מחזור קודם</th><th>נוכחי</th><th>שינוי</th></tr></thead>
+      <tbody>
+        {% set dp = kenny_prev_cmp.cur_pnl - kenny_prev_cmp.prev_pnl %}
+        <tr><td>רווח/הפסד</td><td>{{ kenny_prev_cmp.prev_pnl|comma }}</td><td>{{ kenny_prev_cmp.cur_pnl|comma }}</td><td class="{% if dp >= 0 %}up{% else %}down{% endif %}">{% if dp >= 0 %}+{% endif %}{{ dp|round(2)|comma }}</td></tr>
+        {% set dr = kenny_prev_cmp.cur_rake - kenny_prev_cmp.prev_rake %}
+        <tr><td>סך Rake</td><td>{{ kenny_prev_cmp.prev_rake|comma }}</td><td>{{ kenny_prev_cmp.cur_rake|comma }}</td><td class="{% if dr >= 0 %}up{% else %}down{% endif %}">{% if dr >= 0 %}+{% endif %}{{ dr|round(2)|comma }}</td></tr>
+        {% set dpl = kenny_prev_cmp.cur_players - kenny_prev_cmp.prev_players %}
+        <tr><td>שחקנים</td><td>{{ kenny_prev_cmp.prev_players }}</td><td>{{ kenny_prev_cmp.cur_players }}</td><td class="{% if dpl >= 0 %}up{% else %}down{% endif %}">{% if dpl >= 0 %}+{% endif %}{{ dpl }}</td></tr>
+        {% set dh = kenny_prev_cmp.cur_hands - kenny_prev_cmp.prev_hands %}
+        <tr><td>ידיים</td><td>{{ kenny_prev_cmp.prev_hands|comma }}</td><td>{{ kenny_prev_cmp.cur_hands|comma }}</td><td class="{% if dh >= 0 %}up{% else %}down{% endif %}">{% if dh >= 0 %}+{% endif %}{{ dh|comma }}</td></tr>
+      </tbody>
+    </table>
+    <div class="kh-cmp-note">&#8505;&#65039; המחזור הנוכחי עדיין מצטבר — ההשוואה היא מול מחזור שלם, אז בתחילת מחזור ייתכן פער זמני.</div>
+  </div>
+  {% endif %}
 </div>
 <script>
+function toggleKhCmp(){ var e=document.getElementById('khCmp'); if(e) e.hidden=!e.hidden; }
 (function(){
   var els=document.querySelectorAll('.kenny-hero [data-kh]');
   if(!els.length) return;
