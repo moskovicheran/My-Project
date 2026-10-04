@@ -1,7 +1,7 @@
 import os
-from flask import Flask
+from flask import Flask, request, redirect, flash, url_for
 from flask_login import LoginManager
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from config import Config
 from app.models import db, User
 
@@ -352,6 +352,26 @@ def create_app():
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        # Auth pages carry a CSRF token tied to the session. Mobile browsers
+        # restore these from the back-forward cache (bfcache) after the 20-min
+        # session has expired, so the stale token no longer matches and the
+        # next submit fails with "CSRF tokens do not match". no-store makes the
+        # page bfcache-ineligible, so the browser always fetches a fresh token.
+        if request.blueprint == 'auth':
+            response.headers['Cache-Control'] = 'no-store, max-age=0'
         return response
+
+    # A CSRF failure (almost always a stale token from a page left open past
+    # the session timeout) should not dump a raw error page on the user. Flash
+    # a friendly notice and redirect to a fresh GET of the same page — which
+    # issues a new token — so the browser does automatically what the user
+    # currently does by hand (refresh, then retry).
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        flash('פג תוקף הטופס, נסה שוב.', 'warning')
+        target = request.referrer
+        if not target or not target.startswith(request.host_url):
+            target = url_for('auth.login')
+        return redirect(target)
 
     return app
