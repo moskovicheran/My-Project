@@ -2069,6 +2069,14 @@ def agent_view(sa_id):
                         'hands': int(sa_own[3] or 0),
                     })
 
+    # Include players relocated under a child SA via a manual override. The
+    # raw sa_id-based queries above miss them (their uploaded sa_id still names
+    # the old SA), so without this they appear on the child SA's own dashboard
+    # but vanish when the child SA is shown as a nested card here. Mirrors the
+    # override-aware current-scope the main dashboard's child_sas path uses.
+    from app.union_data import augment_child_sas_with_overrides
+    augment_child_sas_with_overrides(child_sas, DailyPlayerStats)
+
     # Recalculate totals for child_sas after adding missing agents/players
     for cs in child_sas:
         cs_rake = cs_pnl = cs_hands = 0

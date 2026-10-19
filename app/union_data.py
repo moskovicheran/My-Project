@@ -1981,6 +1981,92 @@ def apply_player_overrides(rows, sa_key='sa_id', agent_key='agent_id',
     return rows
 
 
+def augment_child_sas_with_overrides(child_sas, M=None, period_ids=None):
+    """Add players whose CURRENT ownership (honoring manual PlayerAssignment
+    overrides) is a child SA, but whose raw sa_id/agent_id point elsewhere so
+    the raw `sa_id == child` queries never find them.
+
+    Background: a regular agent (or player) relocated under a child SA via a
+    manual override shows correctly on that child SA's OWN dashboard — both the
+    agent dashboard and /admin/agent-view/<child> resolve membership through
+    `build_agent_scope_preds` / `get_players_with_current_scope`, which apply
+    overrides. But when the SAME child SA is rendered as a nested card under
+    its PARENT (the agent-view child_sas section), membership is built purely
+    from raw `sa_id`/`agent_id`, so an overridden-in player is missing there.
+    The main dashboard's child_sas path already handles this via current-scope;
+    this helper brings agent-view's nested cards to parity.
+
+    Mutates `child_sas` in place. Each missing player is placed under its
+    override's agent card (created if absent) when the override names an agent,
+    otherwise in the child SA's direct list. Card/box totals are NOT touched —
+    the caller recomputes them from the (now complete) member lists afterwards.
+    """
+    from app.models import DailyPlayerStats
+    from sqlalchemy import func as sqlfunc
+    if M is None:
+        M = DailyPlayerStats
+    overrides = get_player_overrides()
+    for cs in child_sas:
+        cs_sa = cs.get('sa_id')
+        if not cs_sa:
+            continue
+        # Current-ownership scope for this child SA and everything under it,
+        # honoring overrides (same breadth the child's own dashboard uses).
+        scope_ids = [cs_sa] + get_sa_descendants(cs_sa)
+        current_pids = get_players_with_current_scope(
+            scope_ids, M=M, period_ids=period_ids)
+        shown = {m['player_id'] for m in cs.get('direct', [])}
+        for ag in cs.get('agents', {}).values():
+            for m in ag.get('members', []):
+                shown.add(m['player_id'])
+        scope_set = set(scope_ids)
+        # Only add players RELOCATED into this scope by an explicit override.
+        # A player naturally in scope (raw sa_id) is already handled by the
+        # caller's raw queries; restricting to overrides keeps this change
+        # from altering any other SA's existing rendering.
+        missing = set()
+        for pid in current_pids - shown - {cs_sa}:
+            ov = overrides.get(pid)
+            if ov and ((ov.get('sa_id') in scope_set) or
+                       (ov.get('agent_id') in scope_set)):
+                missing.add(pid)
+        if not missing:
+            continue
+        cumul = get_cumulative_stats(list(missing))
+        nick_ids = list(missing) + [cs_sa]
+        for pid in missing:
+            ov = overrides.get(pid) or {}
+            if ov.get('agent_id'):
+                nick_ids.append(ov['agent_id'])
+        nicks = dict(M.query.with_entities(
+            M.player_id, sqlfunc.max(M.nickname)
+        ).filter(M.player_id.in_(nick_ids)).group_by(M.player_id).all())
+        for pid in missing:
+            c = cumul.get(pid) or {}
+            row = {
+                'player_id': pid,
+                'nickname': nicks.get(pid) or c.get('nickname') or pid,
+                'role': 'Player',
+                'pnl': round(float(c.get('pnl', 0) or 0), 2),
+                'rake': round(float(c.get('rake', 0) or 0), 2),
+                'hands': int(c.get('hands', 0) or 0),
+            }
+            ov = overrides.get(pid) or {}
+            ov_ag = ov.get('agent_id') or ''
+            if ov_ag and ov_ag not in ('', '-') and ov_ag != cs_sa:
+                agents = cs.setdefault('agents', {})
+                card = agents.get(ov_ag)
+                if card is None:
+                    card = {'id': ov_ag, 'nick': nicks.get(ov_ag, ov_ag),
+                            'members': [], 'total_pnl': 0,
+                            'total_rake': 0, 'total_hands': 0}
+                    agents[ov_ag] = card
+                card['members'].append(row)
+            else:
+                cs.setdefault('direct', []).append(row)
+    return child_sas
+
+
 def get_transfer_adjustments(player_ids):
     """Returns dict of player_id → adjustment amount for PnL.
     A transfer moves balance from sender to receiver: sender (from) sent money
