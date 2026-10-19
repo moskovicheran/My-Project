@@ -1459,7 +1459,13 @@ def dashboard():
                     _displayed_pids.add(m['player_id'])
             _missing_from_display = cs_player_ids - _displayed_pids
             if _missing_from_display:
-                _nick_lookup = list(_missing_from_display) + cs_scope_ids
+                # Override agent_ids of the missing players — so an agent
+                # moved here via an override keeps its own agent row (and we
+                # have its nickname for the card label).
+                _ov_agent_ids = [ (overrides_map.get(_p) or {}).get('agent_id')
+                                  for _p in _missing_from_display ]
+                _ov_agent_ids = [a for a in _ov_agent_ids if a and a not in ('', '-')]
+                _nick_lookup = list(_missing_from_display) + cs_scope_ids + _ov_agent_ids
                 _nicks_map = dict(SM.query.with_entities(
                     SM.player_id, sqlfunc.max(SM.nickname)
                 ).filter(SM.player_id.in_(_nick_lookup)
@@ -1483,8 +1489,20 @@ def dashboard():
                         'role': 'Player',
                         'pnl': 0, 'rake': 0, 'hands': 0,
                     }
+                    # A player relocated here by an explicit override that
+                    # names an agent keeps its agent row: group it under that
+                    # agent's card (created if needed) instead of flattening
+                    # it into the child SA's direct list. This is what lets a
+                    # regular agent moved under this child SA show as an agent
+                    # row with its player, matching the child SA's own view.
+                    _ov_ag = (overrides_map.get(_mpid) or {}).get('agent_id') or ''
                     _owner = _owner_of.get(_mpid)
-                    if _owner and _owner != cs_sa:
+                    if _ov_ag and _ov_ag not in ('', '-') and _ov_ag != cs_sa:
+                        _grp = cs.setdefault('agents', {}).setdefault(
+                            _ov_ag, {'nick': _nicks_map.get(_ov_ag, _ov_ag),
+                                     'members': []})
+                        _grp['members'].append(_row)
+                    elif _owner and _owner != cs_sa:
                         _grp = cs.setdefault('agents', {}).setdefault(
                             _owner, {'nick': _nicks_map.get(_owner, _owner),
                                      'members': []})
