@@ -1234,8 +1234,19 @@ def get_players_with_current_scope(scope_ids, M=None, exclude_self=None,
     ).all()
 
     scope_set = {s for s in scope_ids if s}
+    # Manual overrides (PlayerAssignment) are an explicit statement of who owns
+    # a player NOW, so they win over the raw latest-row sa/agent here — the one
+    # place "current ownership" is decided. This moves an overridden player's
+    # membership wholesale to his assigned SA/agent: he counts in the target
+    # box and disappears from the box his uploaded sa_id/agent_id named, instead
+    # of showing in both.
+    _ovr = get_player_overrides()
     current_pids = set()
     for pid, sa, ag in rows:
+        ov = _ovr.get(pid)
+        if ov and (ov.get('sa_id') or ov.get('agent_id')):
+            sa = ov.get('sa_id') or ''
+            ag = ov.get('agent_id') or ''
         if (sa and sa in scope_set) or (ag and ag in scope_set):
             current_pids.add(pid)
     if exclude_self:
