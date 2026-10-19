@@ -1387,10 +1387,14 @@ def build_agent_scope_preds(uid, M, time_filters=None, period_ids=None):
     ).distinct().all()
     known_agent_ids = {r[0] for r in known_agent_ids_rows if r[0]}
     override_in_pids = []
+    override_any_pids = []   # players carrying ANY explicit manual override
     override_target_set = set(all_ids) | known_agent_ids
     for ov in get_all_player_assignments():
         ov_sa = ov.assigned_sa_id or ''
         ov_ag = ov.assigned_agent_id or ''
+        if not (ov_sa or ov_ag):
+            continue
+        override_any_pids.append(ov.player_id)
         if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
             override_in_pids.append(ov.player_id)
 
@@ -1456,6 +1460,16 @@ def build_agent_scope_preds(uid, M, time_filters=None, period_ids=None):
         or_(M.sa_id.in_(_hier_pr), M.agent_id.in_(_hier_pr)),
         and_(M.player_id.in_(list(current_scope_pids)), _no_attr),
     )
+    # A manual override is authoritative: a player attached to an SA/agent via
+    # PlayerAssignment is placed by that override ALONE (added below through
+    # override_in_pids, to whichever box it targets). Exclude every overridden
+    # player from the raw-hierarchy / current-scope predicate so he is not ALSO
+    # claimed by the box his uploaded sa_id/agent_id happens to name. Without
+    # this, relocating an already-attributed player double-counts him (old box
+    # via his raw rows + new box via the override). override_in_pids re-adds the
+    # ones that belong to THIS box, so each row still lands in exactly one box.
+    if override_any_pids:
+        _row_ours = and_(_row_ours, not_(M.player_id.in_(override_any_pids)))
     if other_managed_names:
         scope_preds.append(and_(_row_ours, not_(M.club.in_(list(other_managed_names)))))
     else:
@@ -1691,9 +1705,13 @@ def get_agent_scope_predicate(sa_id, M=None):
     known_agent_ids = {r[0] for r in known_agent_ids_rows if r[0]}
     override_target_set = set(all_ids) | known_agent_ids
     override_in_pids = []
+    override_any_pids = []   # players carrying ANY explicit manual override
     for ov in get_all_player_assignments():
         ov_sa = ov.assigned_sa_id or ''
         ov_ag = ov.assigned_agent_id or ''
+        if not (ov_sa or ov_ag):
+            continue
+        override_any_pids.append(ov.player_id)
         if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
             override_in_pids.append(ov.player_id)
 
@@ -1740,6 +1758,16 @@ def get_agent_scope_predicate(sa_id, M=None):
         or_(M.sa_id.in_(_hier_pr), M.agent_id.in_(_hier_pr)),
         and_(M.player_id.in_(list(current_scope_pids)), _no_attr),
     )
+    # A manual override is authoritative: a player attached to an SA/agent via
+    # PlayerAssignment is placed by that override ALONE (added below through
+    # override_in_pids, to whichever box it targets). Exclude every overridden
+    # player from the raw-hierarchy / current-scope predicate so he is not ALSO
+    # claimed by the box his uploaded sa_id/agent_id happens to name. Without
+    # this, relocating an already-attributed player double-counts him (old box
+    # via his raw rows + new box via the override). override_in_pids re-adds the
+    # ones that belong to THIS box, so each row still lands in exactly one box.
+    if override_any_pids:
+        _row_ours = and_(_row_ours, not_(M.player_id.in_(override_any_pids)))
     if other_managed_names:
         scope_preds.append(and_(_row_ours, not_(M.club.in_(list(other_managed_names)))))
     else:
