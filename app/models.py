@@ -68,8 +68,9 @@ DAILY_PNL_PROMO_UNTIL = _date(2026, 8, 20)
 #   • keep permanently → remove the `kenny_hero_days` gate in agent_dashboard.html
 #   • remove early → set this to a past date
 # Inclusive of both ends: 01→04 Oct was the original four-day trial; extended
-# through 20 Oct 2026 at the user's request (brought back after it self-expired).
-KENNY_HERO_UNTIL = _date(2026, 10, 20)
+# through 20 Oct 2026, then brought back again on 21 Oct 2026 at the user's
+# request and extended through 04 Nov 2026.
+KENNY_HERO_UNTIL = _date(2026, 11, 4)
 
 
 # RETIRED synthetic "house" account. The return-to-house / distribute-from-house
