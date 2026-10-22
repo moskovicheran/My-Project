@@ -117,10 +117,11 @@ var _allPlayers = _allPlayersRaw.filter(function(p) {
 });
 </script>
 
-{# ── TRIAL: dark "hero" summary banner — Kenny777 only, self-expiring on
-   KENNY_HERO_UNTIL (see app/models.py + inject_kenny_hero). Remove this whole
-   block (and the constant/processor) to end the trial. ── #}
-{% if kenny_hero_days and (view_as_username or current_user.username) == 'Kenny777' %}
+{# ── Dark "hero" summary banner — Kenny777 only. Shipped as a dated trial
+   (KENNY_HERO_UNTIL) and made PERMANENT on 22 Oct 2026: the date gate and its
+   `inject_kenny_hero` processor were removed, so only the username gates it.
+   Remove this whole block to take the banner away. ── #}
+{% if (view_as_username or current_user.username) == 'Kenny777' %}
 {# "נשאר לי" = same figure as the "💰 נשאר לי אחרי ההחזר" line in the rake panel. #}
 {% set kh_keep = (rake_refund_list|default([])|sum(attribute='my_keep') + (unconfigured_player_rake|default(0))) %}
 <style>
