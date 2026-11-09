@@ -2859,103 +2859,15 @@ def agents():
                            player_overrides=player_overrides)
 
 
-@admin_bp.route('/expenses', methods=['GET', 'POST'])
-@admin_required
-def expenses():
-    if request.method == 'POST':
-        action = request.form.get('action')
-
-        try:
-            if action == 'add':
-                description = request.form.get('description', '').strip()
-                try:
-                    amount = float(request.form.get('amount', 0))
-                except ValueError:
-                    amount = 0
-                if description and amount > 0:
-                    exp = SharedExpense(user_id=current_user.id, description=description, amount=amount)
-                    db.session.add(exp)
-                    db.session.commit()
-                    flash(f'הוצאה ({amount}) נוספה.', 'success')
-                else:
-                    flash('יש למלא תיאור וסכום.', 'danger')
-
-            elif action == 'charge':
-                exp_id = request.form.get('expense_id')
-                exp = SharedExpense.query.get(exp_id)
-                # Form sends one selected_agents per checked manager. If the
-                # field is missing entirely (legacy submit) we fall back to
-                # all agents — preserves the old "charge everyone" semantics.
-                selected_pids = request.form.getlist('selected_agents')
-                if exp and not exp.charged:
-                    if selected_pids:
-                        agents = User.query.filter_by(role='agent').filter(
-                            User.player_id.in_(selected_pids)).all()
-                    else:
-                        agents = User.query.filter_by(role='agent').filter(
-                            User.player_id.isnot(None)).all()
-                    if not agents:
-                        flash('יש לבחור לפחות מנהל אחד לחיוב.', 'warning')
-                    else:
-                        share = round(exp.amount / len(agents), 2)
-                        for agent in agents:
-                            charge = ExpenseCharge(expense_id=exp.id,
-                                                  agent_player_id=agent.player_id,
-                                                  agent_name=agent.username,
-                                                  charge_amount=share)
-                            db.session.add(charge)
-                        exp.charged = True
-                        db.session.commit()
-                        flash(f'חויבו {len(agents)} סוכנים, {share} לכל אחד.', 'success')
-
-            elif action == 'delete':
-                exp_id = request.form.get('expense_id')
-                exp = SharedExpense.query.get(exp_id)
-                if exp and not exp.charged:
-                    db.session.delete(exp)
-                    db.session.commit()
-                    flash('הוצאה נמחקה.', 'success')
-                elif exp and exp.charged:
-                    flash('לא ניתן למחוק הוצאה שכבר חויבה.', 'warning')
-
-            elif action == 'force_delete':
-                exp_id = request.form.get('expense_id')
-                exp = SharedExpense.query.get(exp_id)
-                if exp:
-                    db.session.delete(exp)
-                    db.session.commit()
-                    flash('הוצאה וכל החיובים שלה נמחקו.', 'success')
-        except Exception as e:
-            db.session.rollback()
-            import logging
-            logging.getLogger(__name__).error(f'Expense error: {e}')
-            flash('שגיאה בביצוע הפעולה.', 'danger')
-
-        return redirect(url_for('admin.expenses'))
-
-    all_expenses = SharedExpense.query.order_by(SharedExpense.created_at.desc()).all()
-    recent_charges = ExpenseCharge.query.order_by(ExpenseCharge.created_at.desc()).limit(50).all()
-    all_agents = User.query.filter_by(role='agent').filter(User.player_id.isnot(None)).order_by(User.username).all()
-    # Split into "active" (OVERVIEW_MANAGERS — the 6 cards on /admin/) and "other"
-    active_pids = {pid for _, pid in OVERVIEW_MANAGERS}
-    active_agents = [a for a in all_agents if a.player_id in active_pids]
-    other_agents  = [a for a in all_agents if a.player_id not in active_pids]
-    return render_template('admin/expenses.html',
-                           expenses=all_expenses, charges=recent_charges,
-                           agents_count=len(all_agents),
-                           active_agents=active_agents,
-                           other_agents=other_agents)
-
-
 # Air-box participants = the 6 overview managers + the tracked club the user
 # asked to include. Each is charged a CUSTOM share that pays its box toward
 # zero; the pooled total is gifted out to players.
 AIRBOX_CLUBS = [('פוקר בדופק גבוהה', '170653')]
 
 
-@admin_bp.route('/airbox', methods=['GET', 'POST'])
+@admin_bp.route('/expenses', methods=['GET', 'POST'])
 @admin_required
-def airbox():
+def expenses():
     from app.models import AirBoxExpense, AirBoxCharge, AirBoxGift
     from app.union_data import (get_agent_totals, get_club_totals,
                                 get_airbox_pool_balance)
@@ -3055,7 +2967,7 @@ def airbox():
             import logging
             logging.getLogger(__name__).error(f'Airbox error: {e}')
             flash('שגיאה בביצוע הפעולה.', 'danger')
-        return redirect(url_for('admin.airbox'))
+        return redirect(url_for('admin.expenses'))
 
     # GET — participants with their LIVE box (already reflects prior charges).
     participants = []
@@ -3086,7 +2998,7 @@ def airbox():
     players = sorted(({'id': pid, 'nick': nick} for pid, nick in seen.items()),
                      key=lambda p: p['nick'].lower())
 
-    return render_template('admin/airbox.html',
+    return render_template('admin/expenses.html',
                            participants=participants, expenses=expenses,
                            gifts=gifts, pool=pool, players=players)
 
