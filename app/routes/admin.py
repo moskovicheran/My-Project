@@ -2947,6 +2947,150 @@ def expenses():
                            other_agents=other_agents)
 
 
+# Air-box participants = the 6 overview managers + the tracked club the user
+# asked to include. Each is charged a CUSTOM share that pays its box toward
+# zero; the pooled total is gifted out to players.
+AIRBOX_CLUBS = [('פוקר בדופק גבוהה', '170653')]
+
+
+@admin_bp.route('/airbox', methods=['GET', 'POST'])
+@admin_required
+def airbox():
+    from app.models import AirBoxExpense, AirBoxCharge, AirBoxGift
+    from app.union_data import (get_agent_totals, get_club_totals,
+                                get_airbox_pool_balance)
+
+    participant_defs = list(OVERVIEW_MANAGERS) + list(AIRBOX_CLUBS)
+    valid_ids = {pid for _, pid in participant_defs}
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        try:
+            if action == 'add':
+                description = request.form.get('description', '').strip()
+                try:
+                    amount = round(float(request.form.get('amount', 0)), 2)
+                except ValueError:
+                    amount = 0
+                if description and amount > 0:
+                    db.session.add(AirBoxExpense(
+                        description=description, amount=amount,
+                        created_by_user_id=current_user.id))
+                    db.session.commit()
+                    flash(f'הוצאה ({amount}) נוספה.', 'success')
+                else:
+                    flash('יש למלא תיאור וסכום.', 'danger')
+
+            elif action == 'charge':
+                exp = AirBoxExpense.query.get(request.form.get('expense_id'))
+                if exp and not exp.charged:
+                    name_by_id = {pid: name for name, pid in participant_defs}
+                    picked = []
+                    total = 0.0
+                    for _, pid in participant_defs:
+                        raw = (request.form.get(f'amt_{pid}', '') or '').strip()
+                        if not raw:
+                            continue
+                        try:
+                            a = round(float(raw), 2)
+                        except ValueError:
+                            continue
+                        if a > 0:
+                            picked.append((pid, a))
+                            total += a
+                    total = round(total, 2)
+                    if not picked:
+                        flash('יש להזין סכום לפחות למשתתף אחד.', 'warning')
+                    elif abs(total - exp.amount) > 0.01:
+                        flash(f'סכום החלוקה ({total:,.2f}) חייב להסתכם לסכום '
+                              f'ההוצאה ({exp.amount:,.2f}).', 'danger')
+                    else:
+                        for pid, a in picked:
+                            db.session.add(AirBoxCharge(
+                                expense_id=exp.id, manager_player_id=pid,
+                                manager_name=name_by_id.get(pid, pid), amount=a))
+                        exp.charged = True
+                        db.session.commit()
+                        flash(f'חולק בין {len(picked)} משתתפים → נכנס לקופסא '
+                              f'באוויר.', 'success')
+
+            elif action == 'gift':
+                player_id = (request.form.get('player_id', '') or '').strip()
+                player_name = (request.form.get('player_name', '') or '').strip()
+                note = (request.form.get('note', '') or '').strip()
+                try:
+                    amount = round(float(request.form.get('amount', 0)), 2)
+                except ValueError:
+                    amount = 0
+                pool = get_airbox_pool_balance()
+                if not player_id or amount <= 0:
+                    flash('יש לבחור שחקן וסכום חיובי.', 'danger')
+                elif amount > pool + 0.01:
+                    flash(f'אין מספיק בקופסא באוויר. יתרה: {pool:,.2f}.', 'danger')
+                else:
+                    db.session.add(AirBoxGift(
+                        player_id=player_id, player_name=player_name or player_id,
+                        amount=amount, note=note,
+                        created_by_user_id=current_user.id))
+                    db.session.commit()
+                    flash(f'מתנה של {amount:,.2f} ל-{player_name or player_id} '
+                          f'בוצעה.', 'success')
+
+            elif action == 'delete_expense':
+                exp = AirBoxExpense.query.get(request.form.get('expense_id'))
+                if exp:
+                    db.session.delete(exp)  # cascades to its charges
+                    db.session.commit()
+                    flash('ההוצאה וחיוביה נמחקו (הקופסא באוויר עודכנה).',
+                          'success')
+
+            elif action == 'delete_gift':
+                g = AirBoxGift.query.get(request.form.get('gift_id'))
+                if g:
+                    db.session.delete(g)
+                    db.session.commit()
+                    flash('המתנה בוטלה (הסכום חזר לקופסא באוויר).', 'success')
+        except Exception as e:
+            db.session.rollback()
+            import logging
+            logging.getLogger(__name__).error(f'Airbox error: {e}')
+            flash('שגיאה בביצוע הפעולה.', 'danger')
+        return redirect(url_for('admin.airbox'))
+
+    # GET — participants with their LIVE box (already reflects prior charges).
+    participants = []
+    for name, pid in OVERVIEW_MANAGERS:
+        t = get_agent_totals(pid)
+        participants.append({'name': name, 'id': pid, 'kind': 'manager',
+                             'box': round(t['total_pnl'] + t['total_rake'], 2)})
+    for name, cid in AIRBOX_CLUBS:
+        t = get_club_totals(cid)
+        participants.append({'name': name, 'id': cid, 'kind': 'club',
+                             'box': round(t['total_pnl'] + t['total_rake'], 2)})
+
+    expenses = AirBoxExpense.query.order_by(AirBoxExpense.created_at.desc()).all()
+    gifts = AirBoxGift.query.order_by(AirBoxGift.created_at.desc()).all()
+    pool = get_airbox_pool_balance()
+
+    # Player options for the gift dropdown — distinct current-cycle players.
+    from app.models import DailyPlayerStats
+    player_rows = (DailyPlayerStats.query
+                   .with_entities(DailyPlayerStats.player_id,
+                                  DailyPlayerStats.nickname)
+                   .filter(DailyPlayerStats.role != 'Name Entry')
+                   .distinct().all())
+    seen = {}
+    for pid, nick in player_rows:
+        if pid not in seen and nick and nick not in ('nan', '-'):
+            seen[pid] = nick
+    players = sorted(({'id': pid, 'nick': nick} for pid, nick in seen.items()),
+                     key=lambda p: p['nick'].lower())
+
+    return render_template('admin/airbox.html',
+                           participants=participants, expenses=expenses,
+                           gifts=gifts, pool=pool, players=players)
+
+
 @admin_bp.route('/top-players')
 @admin_required
 def top_players():

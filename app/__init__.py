@@ -163,10 +163,12 @@ def create_app():
         try:
             from app.models import (BotSuspectDismissal, ProtectedAgent,
                                      CollectionCycle, PlayerPayment, PlayerCross,
-                                     ArchivedMoneyTransfer)
+                                     ArchivedMoneyTransfer,
+                                     AirBoxExpense, AirBoxCharge, AirBoxGift)
             for _newtbl in (BotSuspectDismissal, ProtectedAgent,
                             CollectionCycle, PlayerPayment, PlayerCross,
-                            ArchivedMoneyTransfer):
+                            ArchivedMoneyTransfer,
+                            AirBoxExpense, AirBoxCharge, AirBoxGift):
                 _newtbl.__table__.create(db.engine, checkfirst=True)
             # `frozen` was added to collection_cycles after it first shipped.
             # Ensure it exists here too — the main column-migration block

@@ -534,3 +534,63 @@ class BotSuspectDismissal(db.Model):
 
     def __repr__(self):
         return f'<BotSuspectDismissal {self.player_id}>'
+
+
+# ── Air-box (קופסא באוויר) ──
+# Custom-split current-expense → floating pool → gift to a player.
+# Deliberately independent of SharedExpense/ExpenseCharge (equal-split, and a
+# plain away-from-zero subtraction) and of MoneyTransfer/'מתנה'. Here each
+# manager's custom share pays their box DOWN TOWARD ZERO as a real adjustment
+# inside get_agent_totals, the total collects in the pool, and gifts credit a
+# player out of the pool.
+
+class AirBoxExpense(db.Model):
+    __tablename__ = 'airbox_expenses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    description = db.Column(db.String(200), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    charged = db.Column(db.Boolean, default=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    charges = db.relationship('AirBoxCharge', backref='expense',
+                              cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<AirBoxExpense {self.description} {self.amount}>'
+
+
+class AirBoxCharge(db.Model):
+    """One manager's custom share of an AirBoxExpense — the source of the real
+    toward-zero deduction on that manager's box."""
+    __tablename__ = 'airbox_charges'
+
+    id = db.Column(db.Integer, primary_key=True)
+    expense_id = db.Column(db.Integer, db.ForeignKey('airbox_expenses.id'),
+                           nullable=False)
+    manager_player_id = db.Column(db.String(20), nullable=False, index=True)
+    manager_name = db.Column(db.String(100), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<AirBoxCharge {self.manager_player_id} {self.amount}>'
+
+
+class AirBoxGift(db.Model):
+    """A gift of chips from the air-box pool to a player. Reduces the pool and
+    credits the player. Independent of MoneyTransfer / the 'מתנה' category."""
+    __tablename__ = 'airbox_gifts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
+    player_name = db.Column(db.String(100), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    note = db.Column(db.String(200), default='')
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'),
+                                   nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<AirBoxGift {self.player_id} {self.amount}>'

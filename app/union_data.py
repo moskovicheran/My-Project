@@ -1645,6 +1645,20 @@ def get_agent_totals(player_id, upload_ids=None, archive_period_id=None,
         if pids:
             xfer = get_transfer_adjustments(pids)
             total_pnl = round(total_pnl + sum(xfer.values()), 2)
+            # Air-box gifts credit the receiving player's PnL (same mechanism,
+            # a NEW table). Flows to wherever that player is counted.
+            gifts = get_airbox_gift_adjustments(pids)
+            total_pnl = round(total_pnl + sum(gifts.values()), 2)
+
+    # Air-box manager charge — this manager's custom share of current-expenses
+    # pays their box DOWN TOWARD ZERO (reduce magnitude) as a real adjustment,
+    # so every view of their box reflects it. Keyed by the manager's own id,
+    # current-cycle only (charges are not dated per upload).
+    if not use_archive and not upload_ids:
+        _ab = get_airbox_manager_charge(player_id)
+        if _ab:
+            _box = total_pnl + total_rake
+            total_pnl = round(total_pnl + (_ab if _box < 0 else -_ab), 2)
 
     return {
         'total_rake': total_rake, 'total_pnl': total_pnl,
@@ -1905,6 +1919,14 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
     total_pnl = round(float(stats[2] or 0), 2)
     total_hands = int(stats[3] or 0)
 
+    # Air-box charge — a club can be an air-box participant too. Its custom
+    # share pays its box TOWARD ZERO (real adjustment), current-cycle only.
+    if not use_archive and not upload_ids:
+        _ab = get_airbox_manager_charge(club_id)
+        if _ab:
+            _box = total_pnl + total_rake
+            total_pnl = round(total_pnl + (_ab if _box < 0 else -_ab), 2)
+
     # Net rake = club's configured keep-percent. No config → 0% kept (neutral).
     club_rc = RakeConfig.query.filter_by(entity_type='club', entity_id=club_id).first()
     rake_pct = club_rc.rake_percent if club_rc else 0
@@ -2097,6 +2119,40 @@ def get_transfer_adjustments(player_ids):
 def apply_transfer_adjustment(pnl, player_id, adjustments):
     """Apply transfer adjustment to a raw PnL value."""
     return round(pnl + adjustments.get(player_id, 0), 2)
+
+
+def get_airbox_manager_charge(manager_player_id):
+    """Total air-box current-expense a manager has been charged (sum of their
+    AirBoxCharge rows). The caller applies it TOWARD ZERO on the box."""
+    from app.models import AirBoxCharge, db
+    from sqlalchemy import func
+    if not manager_player_id:
+        return 0.0
+    v = db.session.query(func.sum(AirBoxCharge.amount)).filter(
+        AirBoxCharge.manager_player_id == str(manager_player_id)).scalar()
+    return round(float(v or 0), 2)
+
+
+def get_airbox_gift_adjustments(player_ids):
+    """Returns dict player_id → total air-box gifts received (PnL credit)."""
+    from app.models import AirBoxGift, db
+    from sqlalchemy import func
+    if not player_ids:
+        return {}
+    rows = db.session.query(
+        AirBoxGift.player_id, func.sum(AirBoxGift.amount)
+    ).filter(AirBoxGift.player_id.in_(list(player_ids))
+    ).group_by(AirBoxGift.player_id).all()
+    return {pid: round(float(v or 0), 2) for pid, v in rows if v}
+
+
+def get_airbox_pool_balance():
+    """Running air-box balance = sum of all charges − sum of all gifts."""
+    from app.models import AirBoxCharge, AirBoxGift, db
+    from sqlalchemy import func
+    charged = db.session.query(func.sum(AirBoxCharge.amount)).scalar() or 0
+    gifted = db.session.query(func.sum(AirBoxGift.amount)).scalar() or 0
+    return round(float(charged) - float(gifted), 2)
 
 
 def get_player_crosses(player_ids):
