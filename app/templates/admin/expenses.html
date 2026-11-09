@@ -8,8 +8,9 @@
   .ab-pool{background:linear-gradient(135deg,#f3eeff,#fff);border:1px solid #d8c9ff;border-radius:14px;padding:1rem 1.2rem}
   .ab-pool .lbl{color:#7a6bb0;font-size:.82rem}
   .ab-pool .bal{font-size:2.1rem;font-weight:800;color:#7c4dff;font-variant-numeric:tabular-nums;line-height:1.1}
-  .ab-card{background:#fff;border:1px solid #e3e8f2;border-radius:14px;padding:1rem 1.2rem}
+  .ab-card{background:#fff;border:1px solid #e3e8f2;border-radius:14px;padding:1rem 1.2rem;margin-bottom:1.2rem}
   .ab-card h3{margin:0 0 .7rem;font-size:1rem}
+  .split-card{border:2px solid #cdd8ff;background:#fbfcff}
   .ab-row{display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap}
   .ab-fld label{display:block;font-size:.78rem;color:#667;margin-bottom:.25rem}
   .ab-fld input,.ab-fld select{padding:.5rem .7rem;border:1px solid #d7dce6;border-radius:8px;font-size:.9rem;font-family:inherit}
@@ -20,29 +21,12 @@
   table.ab th,table.ab td{padding:.55rem .6rem;text-align:right;border-bottom:1px solid #edf0f6}
   table.ab th{color:#8a93a6;font-weight:600;font-size:.78rem}
   .badge{display:inline-block;padding:1px 9px;border-radius:20px;font-size:.72rem;font-weight:700}
-  .badge.wait{background:#fff6e0;color:#9a6b00}
   .badge.done{background:#e7f8f1;color:#17a673}
-  /* modal */
-  .ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
-  .modal{background:#fff;border-radius:14px;padding:1.1rem 1.3rem;width:min(640px,94vw);max-height:92vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.25)}
   .mtbl{width:100%;border-collapse:collapse;font-size:.86rem}
-  .mtbl th,.mtbl td{padding:.5rem .55rem;text-align:right;border-bottom:1px solid #edf0f6;white-space:nowrap}
+  .mtbl th,.mtbl td{padding:.5rem .5rem;text-align:right;border-bottom:1px solid #edf0f6;white-space:nowrap}
   .mtbl th{color:#8a93a6;font-weight:600;font-size:.76rem}
-  .mtbl input[type=number]{width:95px;padding:.35rem .5rem;border:1px solid #d7dce6;border-radius:7px;text-align:right;font-variant-numeric:tabular-nums}
+  .mtbl input[type=number]{width:95px;padding:.4rem .5rem;border:1px solid #c7d0e6;border-radius:7px;text-align:right;font-variant-numeric:tabular-nums;font-size:.9rem}
   .mtbl input:disabled{background:#f1f3f8;color:#b9c0ce}
-  @media(max-width:480px){
-    .modal{padding:.8rem .5rem;width:97vw}
-    .modal h3{font-size:.92rem}
-    .mtbl th,.mtbl td{padding:.35rem .2rem;font-size:.72rem;white-space:nowrap}
-    .mtbl th{font-size:.6rem}
-    .mtbl td:first-child,.mtbl th:first-child{white-space:normal}
-    .mtbl input[type=number]{width:50px;padding:.3rem .2rem;font-size:.74rem}
-    .tog{width:34px;height:20px}
-    .sl:before{height:14px;width:14px}
-    .tog input:checked+.sl:before{transform:translateX(-14px)}
-    .sumbar{gap:8px;padding:.5rem .55rem;font-size:.82rem}
-    .ab-grid{grid-template-columns:1fr}
-  }
   .tog{position:relative;display:inline-block;width:40px;height:22px}
   .tog input{opacity:0;width:0;height:0}
   .sl{position:absolute;inset:0;background:#ccd3e0;border-radius:22px;cursor:pointer;transition:.2s}
@@ -55,10 +39,21 @@
   .ab-btn{background:#4361ee;color:#fff !important;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;padding:.5rem 1rem}
   .ab-btn:disabled{opacity:.45;cursor:not-allowed}
   .ab-btn.ghost{background:#fff;color:#e23b3b !important;border:1px solid #f0c2c2}
+  @media(max-width:480px){
+    .mtbl th,.mtbl td{padding:.35rem .2rem;font-size:.72rem}
+    .mtbl th{font-size:.6rem}
+    .mtbl td:first-child,.mtbl th:first-child{white-space:normal}
+    .mtbl input[type=number]{width:54px;padding:.3rem .2rem;font-size:.78rem}
+    .tog{width:34px;height:20px}
+    .sl:before{height:14px;width:14px}
+    .tog input:checked+.sl:before{transform:translateX(-14px)}
+    .sumbar{gap:8px;padding:.5rem .55rem;font-size:.82rem}
+    .ab-card{padding:.8rem .6rem}
+  }
 </style>
 
 <div class="ab-grid">
-  {# Air-box pool + gift #}
+  {# Gift box + gift #}
   <div class="ab-pool">
     <div class="lbl">🎁 יתרת קופסת מתנות</div>
     <div class="bal">{{ pool|comma }}</div>
@@ -73,7 +68,7 @@
         <input type="hidden" name="player_id" id="giftId">
         <div id="acList" style="display:none;position:absolute;z-index:60;top:100%;right:0;left:0;background:#fff;border:1px solid #d7dce6;border-radius:8px;max-height:230px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.14)"></div>
       </div>
-      <div class="ab-fld"><label>סכום מתנה</label><input type="number" name="amount" step="0.01" min="0.01" style="width:110px" required></div>
+      <div class="ab-fld"><label>סכום מתנה</label><input type="number" name="amount" step="0.01" min="0.01" style="width:110px" inputmode="decimal" required></div>
       <div class="ab-fld"><label>הערה (רשות)</label><input type="text" name="note" style="width:140px"></div>
       <button class="ab-btn" type="submit" style="background:#7c4dff">🎁 שלח מתנה</button>
     </form>
@@ -81,54 +76,90 @@
   </div>
 
   {# Add expense #}
-  <div class="ab-card">
+  <div class="ab-card" style="margin-bottom:0">
     <h3>הוסף הוצאה שוטפת</h3>
     <form method="POST" class="ab-row">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="action" value="add">
       <div class="ab-fld" style="flex:1"><label>תיאור</label><input type="text" name="description" required placeholder="טורניר חינם — ערב שישי" style="width:100%"></div>
-      <div class="ab-fld"><label>סכום</label><input type="number" name="amount" step="0.01" min="0.01" style="width:110px" required></div>
+      <div class="ab-fld"><label>סכום</label><input type="number" name="amount" step="0.01" min="0.01" style="width:110px" inputmode="decimal" required></div>
       <button class="ab-btn" type="submit">הוסף</button>
     </form>
-    <div class="muted" style="font-size:.76rem;margin-top:.5rem">אחרי ההוספה לחץ "חלק" כדי לקבוע סכום מותאם לכל מנהל. החלוקה מקרבת כל קופסא לכיוון אפס ונכנסת לקופסת המתנות.</div>
+    <div class="muted" style="font-size:.76rem;margin-top:.5rem">אחרי ההוספה, טבלת החלוקה תופיע כאן למטה — מלא סכום לכל מנהל ואשר.</div>
   </div>
 </div>
 
-{# Expenses #}
-<div class="ab-card" style="margin-bottom:1.2rem">
-  <h3>הוצאות ({{ expenses|length }})</h3>
-  {% if expenses %}
+{# ── Pending expenses: inline split table (no modal, no button) ── #}
+{% set pending = expenses|selectattr('charged','equalto',false)|list %}
+{% for e in pending %}
+<div class="ab-card split-card">
+  <h3>🧮 חלוקת ההוצאה: {{ e.description }} <span class="muted" style="font-weight:400">({{ e.amount|comma }})</span></h3>
+  <form method="POST" class="split-form" data-amount="{{ e.amount }}" onsubmit="return splitSubmit(this)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="action" value="charge">
+    <input type="hidden" name="expense_id" value="{{ e.id }}">
+    <table class="mtbl">
+      <thead><tr><th>משתתף</th><th>קופסא נוכחית</th><th style="text-align:center">משתתף?</th><th>הסכום שלו</th><th>קופסא אחרי</th></tr></thead>
+      <tbody>
+      {% for p in participants %}
+        <tr data-box="{{ p.box }}">
+          <td><b>{{ p.name }}</b></td>
+          <td class="num {{ 'neg' if p.box < 0 else 'pos' }}">{{ p.box|comma }}</td>
+          <td style="text-align:center"><label class="tog"><input type="checkbox" checked onchange="togRow(this)"><span class="sl"></span></label></td>
+          <td><input type="number" step="0.01" min="0" name="amt_{{ p.id }}" value="0" inputmode="decimal" oninput="recalc(this.form)"></td>
+          <td class="num bafter muted">—</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="sumbar">
+      <span>סה"כ חולק: <b class="num allocd">0</b> / <b class="num">{{ e.amount|comma }}</b></span>
+      <span>נותר: <b class="num remain">0</b></span>
+      <span class="pill no sumpill">—</span>
+      <button type="submit" class="ab-btn sbtn" disabled style="margin-inline-start:auto">אשר חלוקה → לקופסת מתנות</button>
+    </div>
+  </form>
+  <form method="POST" style="margin-top:.6rem" onsubmit="return confirm('למחוק את ההוצאה?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="action" value="delete_expense">
+    <input type="hidden" name="expense_id" value="{{ e.id }}">
+    <button type="submit" class="ab-btn ghost" style="padding:.3rem .7rem;font-size:.75rem">🗑 מחק הוצאה</button>
+  </form>
+</div>
+{% endfor %}
+
+{# ── Charged expenses (history) ── #}
+{% set done = expenses|selectattr('charged')|list %}
+<div class="ab-card">
+  <h3>הוצאות שחולקו ({{ done|length }})</h3>
+  {% if done %}
   <table class="ab">
-    <thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>סטטוס</th><th>חלוקה</th><th></th></tr></thead>
+    <thead><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>חלוקה</th><th></th></tr></thead>
     <tbody>
-    {% for e in expenses %}
+    {% for e in done %}
       <tr>
         <td class="muted">{{ e.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
-        <td><strong>{{ e.description }}</strong></td>
+        <td><strong>{{ e.description }}</strong> <span class="badge done">חולק</span></td>
         <td class="num">{{ e.amount|comma }}</td>
-        <td>{% if e.charged %}<span class="badge done">חולק</span>{% else %}<span class="badge wait">ממתין</span>{% endif %}</td>
         <td class="muted" style="font-size:.78rem">
           {% for c in e.charges %}{{ c.manager_name }}: {{ c.amount|comma }}{% if not loop.last %} · {% endif %}{% endfor %}
         </td>
         <td>
-          {% if not e.charged %}
-          <button type="button" class="ab-btn" style="padding:.25rem .7rem;font-size:.78rem" onclick="openCharge({{ e.id }}, {{ e.amount }})">חלק</button>
-          {% endif %}
-          <form method="POST" style="display:inline" onsubmit="return confirm('למחוק את ההוצאה וחיוביה? הקופסא באוויר תעודכן.')">
+          <form method="POST" style="display:inline" onsubmit="return confirm('למחוק הוצאה שחולקה? החיובים יימחקו וקופסת המתנות תעודכן.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="delete_expense">
             <input type="hidden" name="expense_id" value="{{ e.id }}">
-            <button type="submit" class="ab-btn ghost" style="padding:.25rem .55rem;font-size:.72rem;color:#e23b3b">🗑</button>
+            <button type="submit" class="ab-btn ghost" style="padding:.25rem .55rem;font-size:.72rem">🗑</button>
           </form>
         </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<div class="muted">אין הוצאות עדיין.</div>{% endif %}
+  {% else %}<div class="muted">עדיין לא חולקו הוצאות.</div>{% endif %}
 </div>
 
-{# Gifts log #}
+{# ── Gifts log ── #}
 <div class="ab-card">
   <h3>מתנות ({{ gifts|length }})</h3>
   {% if gifts %}
@@ -142,11 +173,11 @@
         <td class="num" style="color:#7c4dff">{{ g.amount|comma }}</td>
         <td class="muted" style="font-size:.8rem">{{ g.note }}</td>
         <td>
-          <form method="POST" style="display:inline" onsubmit="return confirm('לבטל את המתנה? הסכום יחזור לקופסא באוויר.')">
+          <form method="POST" style="display:inline" onsubmit="return confirm('לבטל את המתנה? הסכום יחזור לקופסת המתנות.')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="delete_gift">
             <input type="hidden" name="gift_id" value="{{ g.id }}">
-            <button type="submit" class="ab-btn ghost" style="padding:.25rem .55rem;font-size:.72rem;color:#e23b3b">ביטול</button>
+            <button type="submit" class="ab-btn ghost" style="padding:.25rem .55rem;font-size:.72rem">ביטול</button>
           </form>
         </td>
       </tr>
@@ -156,108 +187,63 @@
   {% else %}<div class="muted">אין מתנות עדיין.</div>{% endif %}
 </div>
 
-{# ── Charge modal ── #}
-<div class="ov" id="chargeOv" onclick="closeCharge(event)">
-  <form class="modal" method="POST" onclick="event.stopPropagation()" onsubmit="return chargeOk()">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-    <input type="hidden" name="action" value="charge">
-    <input type="hidden" name="expense_id" id="chExpId">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
-      <h3 style="margin:0">חלוקה מותאמת — סכום לכל משתתף</h3>
-      <span onclick="closeCharge()" style="cursor:pointer;color:#999;font-size:1.3rem">&times;</span>
-    </div>
-    <table class="mtbl">
-      <thead><tr><th>משתתף</th><th>קופסא נוכחית</th><th style="text-align:center">משתתף?</th><th>הסכום שלו</th><th>קופסא אחרי</th></tr></thead>
-      <tbody id="chBody"></tbody>
-    </table>
-    <div class="sumbar">
-      <span>סה"כ חולק: <b class="num" id="chAllocd">0</b> / <b class="num" id="chTotal">0</b></span>
-      <span>נותר: <b class="num" id="chRemain">0</b></span>
-      <span class="pill ok" id="chPill">מאוזן ✓</span>
-      <button type="submit" class="ab-btn" id="chSubmit" style="margin-inline-start:auto">אשר חלוקה → לקופסת מתנות</button>
-    </div>
-  </form>
-</div>
-
 <script>
-const PARTS = {{ participants|tojson }};
-let chAmount = 0;
 const money = n => (+n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const sign = v => (v<0?'−':'+')+money(Math.abs(v));
 const boxAfter = (box,on,amt) => !on ? box : (box<0 ? box+amt : box-amt);
 
-function openCharge(expId, amount){
-  chAmount = +amount;
-  document.getElementById('chExpId').value = expId;
-  document.getElementById('chTotal').textContent = money(chAmount);
-  const tb = document.getElementById('chBody'); tb.innerHTML='';
-  PARTS.forEach((p,i)=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML = `
-      <td><b>${p.name}</b></td>
-      <td class="num ${p.box<0?'neg':'pos'}">${sign(p.box)}</td>
-      <td style="text-align:center"><label class="tog"><input type="checkbox" checked onchange="chToggle(${i})"><span class="sl"></span></label></td>
-      <td><input type="number" step="0.01" min="0" name="amt_${p.id}" value="0" oninput="chCalc()"></td>
-      <td class="num bafter">—</td>`;
-    tb.appendChild(tr);
-  });
-  chCalc();
-  document.getElementById('chargeOv').style.display='flex';
-}
-function closeCharge(ev){ if(ev && ev.target.id!=='chargeOv') return; document.getElementById('chargeOv').style.display='none'; }
-function chToggle(i){
-  const tr=document.getElementById('chBody').children[i];
+function togRow(cb){
+  const tr=cb.closest('tr');
   const inp=tr.querySelector('input[type=number]');
-  const on=tr.querySelector('input[type=checkbox]').checked;
-  inp.disabled=!on; if(!on) inp.value=0;
-  chCalc();
+  inp.disabled=!cb.checked; if(!cb.checked) inp.value=0;
+  recalc(cb.closest('form'));
 }
-function chCalc(){
+function recalc(form){
+  const total=+form.dataset.amount||0;
   let allocd=0;
-  [...document.getElementById('chBody').children].forEach((tr,i)=>{
+  form.querySelectorAll('tbody tr').forEach(tr=>{
     const on=tr.querySelector('input[type=checkbox]').checked;
     const amt=+tr.querySelector('input[type=number]').value||0;
+    const box=+tr.dataset.box||0;
     if(on) allocd+=amt;
-    const ba=boxAfter(PARTS[i].box,on,amt);
+    const ba=boxAfter(box,on,amt);
     const cell=tr.querySelector('.bafter');
-    cell.textContent = on? sign(ba):'—';
-    cell.className = 'num bafter '+(on?(ba<0?'neg':'pos'):'muted');
+    cell.textContent = on? sign(ba) : '—';
+    cell.className='num bafter '+(on?(ba<0?'neg':'pos'):'muted');
   });
   allocd=Math.round(allocd*100)/100;
-  const remain=Math.round((chAmount-allocd)*100)/100;
-  document.getElementById('chAllocd').textContent=money(allocd);
-  document.getElementById('chRemain').textContent=money(remain);
-  const pill=document.getElementById('chPill'), sub=document.getElementById('chSubmit');
-  if(Math.abs(remain)<0.01){ pill.className='pill ok'; pill.textContent='מאוזן ✓'; sub.disabled=false; }
-  else { pill.className='pill no'; pill.textContent=remain>0?`חסר ${money(remain)}`:`חריגה ${money(-remain)}`; sub.disabled=true; }
+  const remain=Math.round((total-allocd)*100)/100;
+  form.querySelector('.allocd').textContent=money(allocd);
+  form.querySelector('.remain').textContent=money(remain);
+  const pill=form.querySelector('.sumpill'), btn=form.querySelector('.sbtn');
+  if(Math.abs(remain)<0.01){ pill.className='pill ok sumpill'; pill.textContent='מאוזן ✓'; btn.disabled=false; }
+  else { pill.className='pill no sumpill'; pill.textContent=remain>0?('חסר '+money(remain)):('חריגה '+money(-remain)); btn.disabled=true; }
 }
-function chargeOk(){
-  const amts=[...document.querySelectorAll('#chBody input[type=number]')];
-  const alloc=amts.reduce((s,i)=>s+(i.disabled?0:(+i.value||0)),0);
-  if(Math.abs(chAmount-alloc)>0.01){ alert('החלוקה חייבת להסתכם בדיוק לסכום ההוצאה.'); return false; }
-  const lines=[];
-  [...document.getElementById('chBody').children].forEach((tr,i)=>{
+function splitSubmit(form){
+  const total=+form.dataset.amount||0;
+  let allocd=0; const lines=[];
+  form.querySelectorAll('tbody tr').forEach(tr=>{
     const on=tr.querySelector('input[type=checkbox]').checked;
     const amt=+tr.querySelector('input[type=number]').value||0;
-    if(on && amt>0) lines.push('• '+PARTS[i].name+': '+money(amt));
+    if(on){ allocd+=amt; if(amt>0) lines.push('• '+tr.querySelector('td b').textContent+': '+money(amt)); }
   });
-  const NL = String.fromCharCode(10);
-  const msg = 'לאשר חלוקה?' + NL + NL + lines.join(NL) + NL + NL +
-              'סה"כ ' + money(chAmount) + ' ייכנסו לקופסת המתנות.';
-  return confirm(msg);
+  if(Math.abs(total-allocd)>0.01){ alert('החלוקה חייבת להסתכם בדיוק לסכום ההוצאה ('+money(total)+').'); return false; }
+  const NL=String.fromCharCode(10);
+  return confirm('לאשר חלוקה?'+NL+NL+lines.join(NL)+NL+NL+'סה"כ '+money(total)+' ייכנסו לקופסת המתנות.');
 }
+document.querySelectorAll('.split-form').forEach(f=>recalc(f));
+
 // ── Player autocomplete (type 2+ letters) ──
 const PLAYERS = {{ players|tojson }};
 const esc = s => (''+s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function acFilter(){
-  const inp=document.getElementById('giftSearch');
-  const q=inp.value.trim().toLowerCase();
+  const q=document.getElementById('giftSearch').value.trim().toLowerCase();
   const list=document.getElementById('acList');
-  document.getElementById('giftId').value='';  // typing clears any prior pick
+  document.getElementById('giftId').value='';
   if(q.length<2){ list.style.display='none'; return; }
   const m=PLAYERS.filter(p=>(p.nick+' '+p.id).toLowerCase().includes(q)).slice(0,20);
   list.innerHTML = m.length
-    ? m.map(p=>`<div class="ac-item" data-id="${esc(p.id)}" data-nick="${encodeURIComponent(p.nick)}" style="padding:.45rem .7rem;cursor:pointer;border-bottom:1px solid #f0f2f7"><b>${esc(p.nick)}</b> <span style="color:#8a93a6;font-size:.78rem">${esc(p.id)}</span></div>`).join('')
+    ? m.map(p=>`<div class="ac-item" data-id="${esc(p.id)}" data-nick="${encodeURIComponent(p.nick)}" style="padding:.5rem .7rem;cursor:pointer;border-bottom:1px solid #f0f2f7"><b>${esc(p.nick)}</b> <span style="color:#8a93a6;font-size:.78rem">${esc(p.id)}</span></div>`).join('')
     : '<div style="padding:.5rem .7rem;color:#8a93a6">אין תוצאות</div>';
   list.style.display='block';
 }
@@ -267,15 +253,14 @@ function pickPlayer(id, nick){
   document.getElementById('giftName').value = nick;
   document.getElementById('acList').style.display='none';
 }
-document.getElementById('acList').addEventListener('mousedown', e=>{
+const _acList=document.getElementById('acList');
+['mousedown','touchstart'].forEach(ev=>_acList.addEventListener(ev, e=>{
   const it=e.target.closest('.ac-item'); if(!it) return;
   e.preventDefault();
   pickPlayer(it.dataset.id, decodeURIComponent(it.dataset.nick));
-});
+}));
 document.addEventListener('click', e=>{
-  if(!e.target.closest('#giftSearch') && !e.target.closest('#acList')){
-    const l=document.getElementById('acList'); if(l) l.style.display='none';
-  }
+  if(!e.target.closest('#giftSearch') && !e.target.closest('#acList')){ _acList.style.display='none'; }
 });
 function giftOk(){
   if(!document.getElementById('giftId').value){ alert('בחר שחקן מהרשימה (הקלד 2 אותיות).'); return false; }
