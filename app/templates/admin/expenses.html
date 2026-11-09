@@ -47,7 +47,7 @@
 <div class="ab-grid">
   {# Air-box pool + gift #}
   <div class="ab-pool">
-    <div class="lbl">📦 יתרת הקופסא באוויר</div>
+    <div class="lbl">🎁 יתרת קופסת מתנות</div>
     <div class="bal">{{ pool|comma }}</div>
     <form method="POST" class="ab-row" style="margin-top:.8rem" onsubmit="return giftOk()">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -64,7 +64,7 @@
       <div class="ab-fld"><label>הערה (רשות)</label><input type="text" name="note" style="width:140px"></div>
       <button class="ab-btn" type="submit" style="background:#7c4dff">🎁 שלח מתנה</button>
     </form>
-    <div class="muted" style="font-size:.76rem;margin-top:.5rem">המתנה מקטינה את הקופסא באוויר <b>וגם</b> מזכה את השחקן בחישובים.</div>
+    <div class="muted" style="font-size:.76rem;margin-top:.5rem">המתנה מקטינה את קופסת המתנות <b>וגם</b> מזכה את השחקן בחישובים.</div>
   </div>
 
   {# Add expense #}
@@ -77,7 +77,7 @@
       <div class="ab-fld"><label>סכום</label><input type="number" name="amount" step="0.01" min="0.01" style="width:110px" required></div>
       <button class="ab-btn" type="submit">הוסף</button>
     </form>
-    <div class="muted" style="font-size:.76rem;margin-top:.5rem">אחרי ההוספה לחץ "חלק" כדי לקבוע סכום מותאם לכל מנהל. החלוקה מקרבת כל קופסא לכיוון אפס ונכנסת לקופסא באוויר.</div>
+    <div class="muted" style="font-size:.76rem;margin-top:.5rem">אחרי ההוספה לחץ "חלק" כדי לקבוע סכום מותאם לכל מנהל. החלוקה מקרבת כל קופסא לכיוון אפס ונכנסת לקופסת המתנות.</div>
   </div>
 </div>
 
@@ -161,7 +161,7 @@
       <span>סה"כ חולק: <b class="num" id="chAllocd">0</b> / <b class="num" id="chTotal">0</b></span>
       <span>נותר: <b class="num" id="chRemain">0</b></span>
       <span class="pill ok" id="chPill">מאוזן ✓</span>
-      <button type="submit" class="ab-btn" id="chSubmit" style="margin-inline-start:auto">אשר חלוקה → לקופסא באוויר</button>
+      <button type="submit" class="ab-btn" id="chSubmit" style="margin-inline-start:auto">אשר חלוקה → לקופסת מתנות</button>
     </div>
   </form>
 </div>
@@ -219,9 +219,19 @@ function chCalc(){
   else { pill.className='pill no'; pill.textContent=remain>0?`חסר ${money(remain)}`:`חריגה ${money(-remain)}`; sub.disabled=true; }
 }
 function chargeOk(){
-  const remain=Math.abs((chAmount)-[...document.querySelectorAll('#chBody input[type=number]')].reduce((s,i)=>s+(i.disabled?0:(+i.value||0)),0));
-  if(remain>0.01){ alert('החלוקה חייבת להסתכם בדיוק לסכום ההוצאה.'); return false; }
-  return true;
+  const amts=[...document.querySelectorAll('#chBody input[type=number]')];
+  const alloc=amts.reduce((s,i)=>s+(i.disabled?0:(+i.value||0)),0);
+  if(Math.abs(chAmount-alloc)>0.01){ alert('החלוקה חייבת להסתכם בדיוק לסכום ההוצאה.'); return false; }
+  const lines=[];
+  [...document.getElementById('chBody').children].forEach((tr,i)=>{
+    const on=tr.querySelector('input[type=checkbox]').checked;
+    const amt=+tr.querySelector('input[type=number]').value||0;
+    if(on && amt>0) lines.push('• '+PARTS[i].name+': '+money(amt));
+  });
+  const NL = String.fromCharCode(10);
+  const msg = 'לאשר חלוקה?' + NL + NL + lines.join(NL) + NL + NL +
+              'סה"כ ' + money(chAmount) + ' ייכנסו לקופסת המתנות.';
+  return confirm(msg);
 }
 // ── Player autocomplete (type 2+ letters) ──
 const PLAYERS = {{ players|tojson }};

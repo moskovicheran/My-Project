@@ -2923,8 +2923,10 @@ def expenses():
                                 manager_name=name_by_id.get(pid, pid), amount=a))
                         exp.charged = True
                         db.session.commit()
-                        flash(f'חולק בין {len(picked)} משתתפים → נכנס לקופסא '
-                              f'באוויר.', 'success')
+                        _pool = get_airbox_pool_balance()
+                        flash(f'✓ חולק בין {len(picked)} משתתפים. {total:,.2f} '
+                              f'נכנסו לקופסת המתנות — יתרה: {_pool:,.2f}.',
+                              'success')
 
             elif action == 'gift':
                 player_id = (request.form.get('player_id', '') or '').strip()
@@ -2938,7 +2940,7 @@ def expenses():
                 if not player_id or amount <= 0:
                     flash('יש לבחור שחקן וסכום חיובי.', 'danger')
                 elif amount > pool + 0.01:
-                    flash(f'אין מספיק בקופסא באוויר. יתרה: {pool:,.2f}.', 'danger')
+                    flash(f'אין מספיק בקופסת המתנות. יתרה: {pool:,.2f}.', 'danger')
                 else:
                     db.session.add(AirBoxGift(
                         player_id=player_id, player_name=player_name or player_id,
@@ -2953,7 +2955,7 @@ def expenses():
                 if exp:
                     db.session.delete(exp)  # cascades to its charges
                     db.session.commit()
-                    flash('ההוצאה וחיוביה נמחקו (הקופסא באוויר עודכנה).',
+                    flash('ההוצאה וחיוביה נמחקו (קופסת המתנות עודכנה).',
                           'success')
 
             elif action == 'delete_gift':
@@ -2961,7 +2963,7 @@ def expenses():
                 if g:
                     db.session.delete(g)
                     db.session.commit()
-                    flash('המתנה בוטלה (הסכום חזר לקופסא באוויר).', 'success')
+                    flash('המתנה בוטלה (הסכום חזר לקופסת המתנות).', 'success')
         except Exception as e:
             db.session.rollback()
             import logging
