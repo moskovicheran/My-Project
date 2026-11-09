@@ -502,39 +502,8 @@ function toggleMyRake() {
 </script>
 {% endif %}
 
-{% if total_expenses > 0 %}
-<div id="expenseBalloon" style="position:fixed; left:1rem; bottom:1.5rem; z-index:100; cursor:pointer;" onclick="toggleExpenseDetails()">
-    <div style="background:linear-gradient(135deg, #ef233c, #d90429); color:#fff; border-radius:12px; padding:0.4rem 0.75rem; box-shadow:0 3px 10px rgba(239,35,60,0.35); text-align:center; min-width:90px;">
-        <div style="font-size:0.6rem; opacity:0.9;">הוצאות שוטפות</div>
-        <div style="font-size:1rem; font-weight:700;">{{ total_expenses|comma }}</div>
-        <div style="font-size:0.55rem; opacity:0.8;">{{ expense_charges|length }} חיובים</div>
-    </div>
-</div>
-
-<div id="expenseDetails" style="display:none; position:fixed; left:1rem; bottom:5rem; z-index:100; background:#fff; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); padding:1rem; max-width:320px; max-height:300px; overflow-y:auto;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-        <strong style="color:#ef233c;">פירוט הוצאות</strong>
-        <span onclick="toggleExpenseDetails()" style="cursor:pointer; color:#888; font-size:1.2rem;">&times;</span>
-    </div>
-    {% for c in expense_charges %}
-    <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid #f0f0f0; font-size:0.85rem;">
-        <span>{{ c.expense.description }}</span>
-        <span style="color:#ef233c; font-weight:600;">{{ c.charge_amount|comma }}</span>
-    </div>
-    {% endfor %}
-    <div style="display:flex; justify-content:space-between; padding:0.5rem 0 0; font-size:0.9rem; font-weight:700;">
-        <span>סה"כ</span>
-        <span style="color:#ef233c;">{{ total_expenses|comma }}</span>
-    </div>
-</div>
-
-<script>
-function toggleExpenseDetails() {
-    var el = document.getElementById('expenseDetails');
-    el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-</script>
-{% endif %}
+{# Old equal-split "הוצאות שוטפות" balloon removed — superseded by the air-box
+   flow (its deduction is already baked into באלנס + רייק). #}
 
 {# ── Managed Club ── #}
 {# ── My Clubs ── #}
