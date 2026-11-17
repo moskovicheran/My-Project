@@ -59,20 +59,26 @@
    The refund total is the net figure the dashboard shows (a nested player's
    refund is deducted from his agent's cut), so it sums every row. #}
 {% set top = rows|rejectattr('nested')|list %}
-{% set t_ring = top|sum(attribute='ring_rake') %}
-{% set t_mtt  = top|sum(attribute='mtt_rake') %}
-{% set t_rake = top|sum(attribute='total_rake') %}
-{% set t_ref  = rows|sum(attribute='refund') %}
-{# totals of the two computed refund columns #}
-{% set ns = namespace(ring_ref=0, mtt_ref=0) %}
+{# Accumulate by hand rather than with |sum(attribute=...): a row that is
+   missing one of these keys would make the filter raise and 500 the page. #}
+{% set ns = namespace(ring=0, mtt=0, rake=0, ref=0, ring_ref=0, mtt_ref=0) %}
 {% for r in top %}
-  {% set _ring = r.get('ring_rake', r.total_rake) %}
-  {% set _mtt = r.get('mtt_rake', 0) %}
+  {% set _rake = r.get('total_rake', 0) or 0 %}
+  {% set _mtt = r.get('mtt_rake', 0) or 0 %}
+  {% set _ring = r.get('ring_rake', _rake - _mtt) or 0 %}
   {% set _mp = r.get('mtt_rake_pct') %}
-  {% set _ep = _mp if _mp is not none else r.rake_pct %}
-  {% set ns.ring_ref = ns.ring_ref + _ring * r.rake_pct / 100 %}
+  {% set _ep = _mp if _mp is not none else (r.get('rake_pct', 0) or 0) %}
+  {% set ns.ring = ns.ring + _ring %}
+  {% set ns.mtt = ns.mtt + _mtt %}
+  {% set ns.rake = ns.rake + _rake %}
+  {% set ns.ring_ref = ns.ring_ref + _ring * (r.get('rake_pct', 0) or 0) / 100 %}
   {% set ns.mtt_ref = ns.mtt_ref + _mtt * _ep / 100 %}
 {% endfor %}
+{% for r in rows %}{% set ns.ref = ns.ref + (r.get('refund', 0) or 0) %}{% endfor %}
+{% set t_ring = ns.ring %}
+{% set t_mtt  = ns.mtt %}
+{% set t_rake = ns.rake %}
+{% set t_ref  = ns.ref %}
 
 <div class="rb-head">
     <div>
@@ -116,10 +122,10 @@
     </thead>
     <tbody>
     {% for r in rows %}
-        {% set ring = r.get('ring_rake', r.total_rake) %}
-        {% set mtt = r.get('mtt_rake', 0) %}
+        {% set mtt = r.get('mtt_rake', 0) or 0 %}
+        {% set ring = r.get('ring_rake', (r.get('total_rake', 0) or 0) - mtt) or 0 %}
         {% set mpct = r.get('mtt_rake_pct') %}
-        {% set epct = mpct if mpct is not none else r.rake_pct %}
+        {% set epct = mpct if mpct is not none else (r.get('rake_pct', 0) or 0) %}
         {% set ring_ref = (ring * r.rake_pct / 100) %}
         {% set mtt_ref = (mtt * epct / 100) %}
         <tr>
@@ -164,7 +170,9 @@
             <td class="mtt">{{ t_mtt|comma }}</td><td></td>
             <td class="mtt">{{ ns.mtt_ref|round(2)|comma }}</td>
             <td style="color:#667eea;">{{ t_ref|comma }}</td>
-            <td style="color:#0f9b7d;">{{ rows|rejectattr('nested')|sum(attribute='my_keep')|comma }}</td>
+            {% set nsk = namespace(k=0) %}
+            {% for r in top %}{% set nsk.k = nsk.k + (r.get('my_keep', 0) or 0) %}{% endfor %}
+            <td style="color:#0f9b7d;">{{ nsk.k|round(2)|comma }}</td>
         </tr>
     </tfoot>
 </table>

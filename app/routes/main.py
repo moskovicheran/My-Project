@@ -1847,29 +1847,47 @@ def _dashboard_impl(template_override=None):
         # with a player rake config.
         if child_sas:
             _cs_ids = [cs['sa_id'] for cs in child_sas if cs.get('sa_id')]
-            _cs_rake_cfgs = {rc.entity_id: rc.rake_percent for rc in RakeConfig.query.filter(
+            _cs_rcs = RakeConfig.query.filter(
                 RakeConfig.entity_type.in_(['sub_agent', 'agent']),
-                RakeConfig.entity_id.in_(_cs_ids)).all()} if _cs_ids else {}
+                RakeConfig.entity_id.in_(_cs_ids)).all() if _cs_ids else []
+            _cs_rake_cfgs = {rc.entity_id: rc.rake_percent for rc in _cs_rcs}
+            _cs_mtt_cfgs = {rc.entity_id: rc.mtt_rake_percent for rc in _cs_rcs
+                            if rc.mtt_rake_percent is not None}
             for cs in child_sas:
                 pct = _cs_rake_cfgs.get(cs.get('sa_id'), 0)
                 if not pct:
                     continue
                 cs_rake = float(cs.get('total_rake') or 0)
-                gross = round(cs_rake * pct / 100, 2)
                 cs_members = list(cs.get('direct', []) or [])
                 for ag in (cs.get('agents') or {}).values():
                     cs_members.extend(ag.get('members', []) or [])
+                cs_mtt_pct = _cs_mtt_cfgs.get(cs.get('sa_id'))
+                cs_mtt = min(_mtt_of_members(cs_members), max(cs_rake, 0.0))
+                gross = _split_refund(cs_rake, cs_mtt, pct, cs_mtt_pct)
                 paid_to_players = _player_refunds_in(cs_members)
                 net = round(gross - paid_to_players, 2)
                 rake_refund_list.append({
                     'nick': cs.get('sa_nick') or cs.get('sa_id'),
                     'rake_pct': pct,
                     'player_id': cs.get('sa_id'),
+                    'mtt_rake_pct': cs_mtt_pct,
+                    'mtt_rake': round(cs_mtt, 2),
+                    'ring_rake': round(max(0.0, cs_rake - cs_mtt), 2),
                     'total_rake': cs_rake,
                     'refund': net,
                     'gross': gross, 'paid_to_players': paid_to_players,
                     'type': 'agent',
                 })
+        # Any row that reaches a template MUST carry the split keys, so a
+        # future append site can't break a page by omitting them.
+        for _r in rake_refund_list:
+            _rt = float(_r.get('total_rake') or 0)
+            _rm = float(_r.get('mtt_rake') or 0)
+            _rm = max(0.0, min(_rm, max(_rt, 0.0)))
+            _r['mtt_rake'] = round(_rm, 2)
+            _r['ring_rake'] = round(_rt - _rm, 2)
+            _r.setdefault('mtt_rake_pct', None)
+
         total_rake_refund = round(sum(r['refund'] for r in rake_refund_list), 2)
 
         # Per-row "שלי" — what the SA actually keeps from this row.
