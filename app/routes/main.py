@@ -469,6 +469,28 @@ def index():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
+    return _dashboard_impl()
+
+
+@main_bp.route('/agent/rake-breakdown')
+@login_required
+def agent_rake_breakdown():
+    """Per-entity rakeback breakdown for the logged-in agent.
+
+    Deliberately renders from the SAME computation as the dashboard
+    (_dashboard_impl) with a different template, so the two screens can
+    never show different numbers for the same refund.
+    """
+    is_agent = (getattr(current_user, 'role', None) == 'agent'
+                and getattr(current_user, 'player_id', None))
+    is_admin_preview = (getattr(current_user, 'role', None) == 'admin'
+                        and request.args.get('view_as'))
+    if not (is_agent or is_admin_preview):
+        return redirect(url_for('main.dashboard'))
+    return _dashboard_impl(template_override='main/agent_rake_breakdown.html')
+
+
+def _dashboard_impl(template_override=None):
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and not request.args.get('view_as')
             and not request.args.get('view_player')):
@@ -2282,7 +2304,7 @@ def dashboard():
                 kenny_prev_pct = None
                 kenny_prev_cmp = None
 
-        return render_template('main/agent_dashboard.html',
+        return render_template(template_override or 'main/agent_dashboard.html',
                                kenny_prev_pct=kenny_prev_pct,
                                kenny_prev_cmp=kenny_prev_cmp,
                                coll_total_owed=coll_total_owed,

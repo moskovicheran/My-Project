@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+{% block title %}פירוט רייק לפי סוג משחק{% endblock %}
+
+{% block content %}
+{% if view_as_username %}
+<div style="margin-bottom:0.7rem;">
+    <a href="{{ url_for('main.dashboard', view_as=request.args.get('view_as')) }}" class="btn btn-outline btn-sm">← חזור לדשבורד</a>
+</div>
+{% endif %}
+
+<style>
+  .rb-head { display:flex; justify-content:space-between; align-items:flex-end;
+             flex-wrap:wrap; gap:0.6rem; margin-bottom:0.9rem; }
+  .rb-title { font-size:1.25rem; font-weight:700; margin:0; }
+  .rb-sub { color:#888; font-size:0.82rem; margin:0.15rem 0 0; }
+  .rb-wrap { background:#fff; border-radius:14px; box-shadow:0 1px 6px rgba(0,0,0,0.07);
+             overflow:hidden; margin-bottom:1.2rem; }
+  .rb-scroll { overflow-x:auto; }
+  table.rb { width:100%; border-collapse:collapse; font-size:0.86rem; min-width:860px; }
+  table.rb th, table.rb td { padding:0.5rem 0.6rem; text-align:right;
+                             border-bottom:1px solid #f0f0f4; white-space:nowrap;
+                             font-variant-numeric:tabular-nums; }
+  table.rb thead th { background:#fafbfc; font-size:0.72rem; color:#666;
+                      font-weight:700; position:sticky; top:0; }
+  table.rb thead th.grp { text-align:center; font-size:0.72rem; padding:0.35rem 0.6rem;
+                          border-bottom:1px solid #e6e6ee; }
+  .g-ring { background:#f2fafd; color:#1b7f9e; }
+  .g-mtt  { background:#fff8f2; color:#b2560d; }
+  .g-sum  { background:#f4f3fd; color:#5b4bbd; }
+  td.ring { color:#1b7f9e; } td.mtt { color:#b2560d; }
+  td.sum  { font-weight:700; }
+  .pct { display:inline-block; padding:0.05rem 0.35rem; border-radius:6px;
+         font-size:0.72rem; font-weight:700; }
+  .pct-ring { background:#e3f3f8; color:#1b7f9e; }
+  .pct-mtt  { background:#fdefe3; color:#b2560d; }
+  .pct-none { background:#f1f1f5; color:#999; font-weight:600; }
+  .ent { font-weight:700; }
+  .ent-sub { color:#aaa; font-size:0.72rem; font-weight:400; }
+  .badge-type { display:inline-block; padding:0.05rem 0.4rem; border-radius:6px;
+                font-size:0.66rem; font-weight:700; margin-inline-start:0.3rem; }
+  .bt-agent { background:#fff3cd; color:#856404; }
+  .bt-player { background:#eceafd; color:#5b4bbd; }
+  table.rb tfoot td { background:#fafbfc; font-weight:700;
+                      border-top:2px solid #e6e6ee; border-bottom:none; }
+  .rb-note { font-size:0.78rem; color:#888; padding:0.7rem 1rem; background:#fbfbfd;
+             border-top:1px solid #f0f0f4; }
+  .rb-empty { padding:2rem 1rem; text-align:center; color:#999; }
+  .rb-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+              gap:0.7rem; margin-bottom:1.2rem; }
+  .rb-card { background:#fff; border-radius:12px; padding:0.8rem; text-align:center;
+             box-shadow:0 1px 5px rgba(0,0,0,0.06); }
+  .rb-card-v { font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .rb-card-l { font-size:0.7rem; color:#888; margin-top:0.15rem; }
+</style>
+
+{% set rows = rake_refund_list|default([]) %}
+{# Rake totals count each row ONCE: a player nested under an agent is already
+   inside that agent's rake, so including him again would double-count.
+   The refund total is the net figure the dashboard shows (a nested player's
+   refund is deducted from his agent's cut), so it sums every row. #}
+{% set top = rows|rejectattr('nested')|list %}
+{% set t_ring = top|sum(attribute='ring_rake') %}
+{% set t_mtt  = top|sum(attribute='mtt_rake') %}
+{% set t_rake = top|sum(attribute='total_rake') %}
+{% set t_ref  = rows|sum(attribute='refund') %}
+{# totals of the two computed refund columns #}
+{% set ns = namespace(ring_ref=0, mtt_ref=0) %}
+{% for r in top %}
+  {% set _ring = r.get('ring_rake', r.total_rake) %}
+  {% set _mtt = r.get('mtt_rake', 0) %}
+  {% set _mp = r.get('mtt_rake_pct') %}
+  {% set _ep = _mp if _mp is not none else r.rake_pct %}
+  {% set ns.ring_ref = ns.ring_ref + _ring * r.rake_pct / 100 %}
+  {% set ns.mtt_ref = ns.mtt_ref + _mtt * _ep / 100 %}
+{% endfor %}
+
+<div class="rb-head">
+    <div>
+        <h1 class="rb-title">פירוט רייק לפי סוג משחק</h1>
+        <p class="rb-sub">
+            כל מי שמוגדר לו אחוז החזר — כמה רייק הוא ייצר ברינג גיים, כמה בטורנירים,
+            וההחזר שיוצא מכל אחד לפי האחוזים שלו.
+            {% if period %}<br>תקופה: {{ period }}{% endif %}
+        </p>
+    </div>
+    <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline btn-sm">← חזור לדשבורד</a>
+</div>
+
+<div class="rb-cards">
+    <div class="rb-card"><div class="rb-card-v" style="color:#1b7f9e;">{{ t_ring|comma }}</div>
+        <div class="rb-card-l">רייק רינג גיים</div></div>
+    <div class="rb-card"><div class="rb-card-v" style="color:#b2560d;">{{ t_mtt|comma }}</div>
+        <div class="rb-card-l">רייק טורנירים</div></div>
+    <div class="rb-card"><div class="rb-card-v">{{ t_rake|comma }}</div>
+        <div class="rb-card-l">סה״כ רייק מוגדר</div></div>
+    <div class="rb-card"><div class="rb-card-v" style="color:#667eea;">{{ t_ref|comma }}</div>
+        <div class="rb-card-l">סה״כ החזר</div></div>
+</div>
+
+<div class="rb-wrap">
+{% if rows %}
+<div class="rb-scroll">
+<table class="rb">
+    <thead>
+        <tr>
+            <th rowspan="2">ישות</th>
+            <th class="grp g-ring" colspan="3">רינג גיים</th>
+            <th class="grp g-mtt" colspan="3">טורנירים</th>
+            <th class="grp g-sum" colspan="2">תוצאה סופית</th>
+        </tr>
+        <tr>
+            <th class="g-ring">רייק</th><th class="g-ring">%</th><th class="g-ring">החזר</th>
+            <th class="g-mtt">רייק</th><th class="g-mtt">%</th><th class="g-mtt">החזר</th>
+            <th class="g-sum">סה״כ החזר</th><th class="g-sum">נשאר לי</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+        {% set ring = r.get('ring_rake', r.total_rake) %}
+        {% set mtt = r.get('mtt_rake', 0) %}
+        {% set mpct = r.get('mtt_rake_pct') %}
+        {% set epct = mpct if mpct is not none else r.rake_pct %}
+        {% set ring_ref = (ring * r.rake_pct / 100) %}
+        {% set mtt_ref = (mtt * epct / 100) %}
+        <tr>
+            <td class="ent">
+                {{ r.nick }}
+                <span class="badge-type {% if r.type == 'agent' %}bt-agent{% else %}bt-player{% endif %}">
+                    {{ 'סוכן' if r.type == 'agent' else 'שחקן' }}
+                </span>
+                {% if r.get('nested') %}<br><span class="ent-sub">נכלל אצל {{ r.under }}</span>{% endif %}
+                {% if r.get('paid_to_players') and r['paid_to_players'] > 0 %}
+                <br><span class="ent-sub"
+                      title="ההחזר של שחקנים עם אחוז משלהם משולם מתוך חלקו של הסוכן">
+                    ברוטו {{ r.gross|comma }} − {{ r.paid_to_players|comma }} לשחקנים
+                </span>
+                {% endif %}
+            </td>
+            <td class="ring">{{ ring|comma }}</td>
+            <td><span class="pct pct-ring">{{ r.rake_pct|round(1) }}%</span></td>
+            <td class="ring">{{ ring_ref|round(2)|comma }}</td>
+            <td class="mtt">{{ mtt|comma }}</td>
+            <td>
+                {% if mpct is not none %}
+                <span class="pct pct-mtt">{{ mpct|round(1) }}%</span>
+                {% else %}
+                <span class="pct pct-none" title="לא הוגדר אחוז נפרד — חל אותו אחוז כמו רינג">{{ r.rake_pct|round(1) }}%</span>
+                {% endif %}
+            </td>
+            <td class="mtt">{{ mtt_ref|round(2)|comma }}</td>
+            <td class="sum" style="color:#667eea;">{{ r.refund|comma }}</td>
+            <td class="sum" style="color:#0f9b7d;">
+                {% if r.get('nested') %}<span class="ent-sub">—</span>
+                {% else %}{{ r.get('my_keep', 0)|comma }}{% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr>
+            <td>סה״כ {{ rows|length }} ישויות<br><span class="ent-sub">רייק ללא שורות מקוננות</span></td>
+            <td class="ring">{{ t_ring|comma }}</td><td></td>
+            <td class="ring">{{ ns.ring_ref|round(2)|comma }}</td>
+            <td class="mtt">{{ t_mtt|comma }}</td><td></td>
+            <td class="mtt">{{ ns.mtt_ref|round(2)|comma }}</td>
+            <td style="color:#667eea;">{{ t_ref|comma }}</td>
+            <td style="color:#0f9b7d;">{{ rows|rejectattr('nested')|sum(attribute='my_keep')|comma }}</td>
+        </tr>
+    </tfoot>
+</table>
+</div>
+<div class="rb-note">
+    עמודת <strong>%</strong> הכתומה מראה את אחוז הטורנירים. כשהיא אפורה — לא הוגדר אחוז
+    נפרד לישות הזו, ולכן אותו אחוז של הרינג חל גם על הטורנירים (ההתנהגות הרגילה).
+    <strong>נשאר לי</strong> מחושב רק לשורות שאינן מקוננות — שחקן שנמצא תחת סוכן כבר
+    נספר בשורת הסוכן שלו.
+    מאותה סיבה, סכומי הרייק בשורת הסיכום ובכרטיסים למעלה <strong>לא כוללים</strong>
+    שורות מקוננות (אחרת הרייק שלהן היה נספר פעמיים). סה״כ ההחזר כן כולל את כולן —
+    זה הסכום הנקי, כי החזר של שחקן מקונן כבר מנוכה מחלקו של הסוכן שמעליו.
+</div>
+{% else %}
+<div class="rb-empty">אין עדיין ישויות עם אחוז החזר רייק מוגדר.</div>
+{% endif %}
+</div>
+
+{% endblock %}
