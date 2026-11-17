@@ -373,8 +373,14 @@
                 </td>
                 <td class="muted">{{ user.created_at.strftime('%d/%m/%Y') if user.created_at else '-' }}</td>
                 <td style="white-space:nowrap;">
-                    {% if user.id != current_user.id %}
+                    {# The 🔑 button is shown on EVERY row, your own included.
+                       It used to sit inside the same "not me" guard as מחק and
+                       the role picker, so an admin had no way to change his
+                       OWN password here — while the server-side
+                       'change_password' action never restricted it. מחק and
+                       the role picker stay hidden on your own row. #}
                     <button type="button" class="btn btn-outline btn-sm" onclick="togglePasswordForm({{ user.id }})" style="font-size:0.75rem;">🔑 סיסמה</button>
+                    {% if user.id != current_user.id %}
                     <form method="POST" style="display:inline;" onsubmit="return confirm('למחוק את {{ user.username }}?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="delete">
