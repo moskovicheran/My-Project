@@ -73,6 +73,25 @@ def _apply_hide_breakdown(sheets, pct):
     return out
 
 
+# Agents whose "קופסא מלאה" report must show the FULL rake only. Their export
+# drops the 'Agent Rake' column (rake × the row agent's %), so the 'Rake'
+# column — 100% of the rake — is the single rake figure in the file.
+# Requested 2026-11-17 for TheGermanGiant, whose own deal is 85%.
+FULL_BOX_NO_AGENT_RAKE = {'8637-7916'}  # TheGermanGiant
+
+
+def _drop_agent_rake(sheets):
+    """Strip the 'Agent Rake' column from every row of every sheet.
+
+    It must go from EVERY row, the 'סה"כ' footer included: _make_excel takes
+    its headers from rows[0].keys(), so a key left on one row would come back
+    as a column (and a stale header on a shifted column).
+    """
+    return {name: [{k: v for k, v in row.items() if k != 'Agent Rake'}
+                   for row in rows]
+            for name, rows in sheets.items()}
+
+
 def _rake_pcts_for(entity_id):
     """(cash %, tournament % or None) for an entity, or (None, None)."""
     from app.models import RakeConfig
@@ -5465,6 +5484,10 @@ def export_agent_full_box():
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
     sheets = _apply_hide_breakdown({'קופסא מלאה': rows}, _hide_breakdown_pct(sa_id))
+    # Full rake only for the agents on that list — applied before the PDF
+    # branch so both downloads of this report carry the same columns.
+    if sa_id in FULL_BOX_NO_AGENT_RAKE:
+        sheets = _drop_agent_rake(sheets)
 
     # Ready-to-print A4 PDF (large fonts) — identical data to the Excel, but a
     # downloaded file the agent can print without the browser print dialog.
