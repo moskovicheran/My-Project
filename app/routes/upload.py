@@ -71,6 +71,24 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             rake = float(row.iloc[64]) if str(row.iloc[64]) != 'nan' else 0
         except (ValueError, TypeError):
             rake = 0
+        # Game-type split. Col 64 is "Rake&Fee / Total"; cols 56..63 are the
+        # "Rake&Fee / MTT" block (one per variant). ring_rake is taken as the
+        # REMAINDER rather than summed from the Ring columns, so that Ring +
+        # AoF + SNG + anything PPPoker adds later is still accounted for and
+        # ring_rake + mtt_rake == rake by construction.
+        mtt_rake = 0.0
+        for _c in range(56, 64):
+            try:
+                _v = row.iloc[_c]
+                if str(_v) != 'nan':
+                    mtt_rake += float(_v)
+            except (ValueError, TypeError, IndexError):
+                pass
+        if rake <= 0:
+            mtt_rake = 0.0
+        else:
+            mtt_rake = max(0.0, min(mtt_rake, rake))
+        ring_rake = rake - mtt_rake
         try:
             hands = float(row.iloc[hands_col]) if str(row.iloc[hands_col]) != 'nan' else 0
         except (ValueError, TypeError):
@@ -91,6 +109,7 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
             'nickname': nickname, 'club': current_club,
             'sa_id': sa_id_val, 'agent_id': agent_id_val, 'role': role_val,
             'pnl': round(pnl, 2), 'rake': round(rake, 2),
+            'ring_rake': round(ring_rake, 2), 'mtt_rake': round(mtt_rake, 2),
             'hands': round(hands, 0),
         })
 
@@ -102,7 +121,7 @@ def _parse_and_store_stats_from_bytes(file_bytes, filename):
                 'upload_id': upload_id, 'player_id': eid,
                 'nickname': enick, 'club': '',
                 'sa_id': '', 'agent_id': '', 'role': 'Name Entry',
-                'pnl': 0, 'rake': 0, 'hands': 0,
+                'pnl': 0, 'rake': 0, 'ring_rake': 0, 'mtt_rake': 0, 'hands': 0,
             })
 
     # Bulk insert all at once (much faster for cloud DB)
@@ -432,8 +451,8 @@ def _archive_and_clear_active():
             ), {'pid': pid})
 
             db.session.execute(text(
-                "INSERT INTO archived_player_stats (period_id, upload_id, player_id, nickname, club, sa_id, agent_id, role, pnl, rake, hands) "
-                "SELECT :pid, upload_id, player_id, nickname, club, sa_id, agent_id, role, pnl, rake, hands FROM daily_player_stats"
+                "INSERT INTO archived_player_stats (period_id, upload_id, player_id, nickname, club, sa_id, agent_id, role, pnl, rake, ring_rake, mtt_rake, hands) "
+                "SELECT :pid, upload_id, player_id, nickname, club, sa_id, agent_id, role, pnl, rake, ring_rake, mtt_rake, hands FROM daily_player_stats"
             ), {'pid': pid})
 
             db.session.execute(text(

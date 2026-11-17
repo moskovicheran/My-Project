@@ -153,6 +153,10 @@ class RakeConfig(db.Model):
     entity_id = db.Column(db.String(20), nullable=False)     # club_id, agent SA ID, or player_id
     entity_name = db.Column(db.String(100), nullable=False)
     rake_percent = db.Column(db.Float, nullable=False, default=0)
+    # Separate rakeback % for tournament (MTT) rake. NULL = no split:
+    # the entity keeps today's behaviour exactly — one percentage applied
+    # to the combined rake. Only entities with a value here are affected.
+    mtt_rake_percent = db.Column(db.Float, nullable=True)
 
     def __repr__(self):
         return f'<RakeConfig {self.entity_type}:{self.entity_name} {self.rake_percent}%>'
@@ -287,6 +291,14 @@ class DailyPlayerStats(db.Model):
     pnl = db.Column(db.Float, default=0)
     rake = db.Column(db.Float, default=0)
     hands = db.Column(db.Float, default=0)
+    # Rake split by game type. mtt_rake comes from the Excel's
+    # "Rake&Fee / MTT" columns; ring_rake is the remainder of `rake`, so
+    # ring_rake + mtt_rake == rake ALWAYS (anything new PPPoker adds —
+    # SNG, AoF, a future game type — lands in ring_rake, never vanishes).
+    # Rows imported before this feature have both at 0; readers must treat
+    # that as "no split available" and fall back to `rake` as all-ring.
+    ring_rake = db.Column(db.Float, default=0)
+    mtt_rake = db.Column(db.Float, default=0)
 
 
 class TournamentStats(db.Model):
@@ -370,6 +382,10 @@ class ArchivedPlayerStats(db.Model):
     pnl = db.Column(db.Float, default=0)
     rake = db.Column(db.Float, default=0)
     hands = db.Column(db.Float, default=0)
+    # Mirrors DailyPlayerStats — carried over at cycle reset so a closed
+    # cycle keeps its game-type split.
+    ring_rake = db.Column(db.Float, default=0)
+    mtt_rake = db.Column(db.Float, default=0)
 
     period = db.relationship('ArchivePeriod', backref='stats')
 

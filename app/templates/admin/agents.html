@@ -168,9 +168,18 @@
         </div>
 
         <div style="min-width:100px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק %</label>
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק % <span class="muted" style="font-size:0.72rem;">(רינג)</span></label>
             <input type="number" name="rake_percent" id="rake-percent-input" step="0.1" min="0" max="100" required placeholder="50"
                    oninput="updateRakeBasePreview()"
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+        </div>
+
+        <div style="min-width:120px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">
+                אחוז טורנירים %
+                <span class="muted" style="font-size:0.72rem;">(לא חובה)</span>
+            </label>
+            <input type="number" name="mtt_rake_percent" id="rake-mtt-percent-input" step="0.1" min="0" max="100" placeholder="ריק = כמו רינג"
                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
         </div>
 
@@ -213,6 +222,7 @@
                 <th>שם</th>
                 <th>ID</th>
                 <th>אחוז רייק</th>
+                <th>אחוז טורנירים</th>
                 <th></th>
             </tr>
         </thead>
@@ -233,9 +243,17 @@
                         <input type="hidden" name="action" value="update_rake_config">
                         <input type="hidden" name="rc_id" value="{{ rc.id }}">
                         <input type="number" name="new_percent" value="{{ rc.rake_percent }}" step="0.1" min="0" max="100" style="width:70px; padding:0.25rem 0.4rem; border:1px solid #4361ee; border-radius:6px; font-size:0.85rem; font-family:inherit;">
+                        <input type="number" name="new_mtt_percent" value="{{ rc.mtt_rake_percent if rc.mtt_rake_percent is not none else '' }}" step="0.1" min="0" max="100" placeholder="טורנירים" title="אחוז לטורנירים — ריק = ללא פיצול" style="width:90px; padding:0.25rem 0.4rem; border:1px solid #b2560d; border-radius:6px; font-size:0.85rem; font-family:inherit;">
                         <button type="submit" class="btn btn-primary btn-sm" style="font-size:0.75rem;">שמור</button>
                         <button type="button" class="btn btn-outline btn-sm" style="font-size:0.75rem;" onclick="toggleRakeEdit({{ rc.id }})">ביטול</button>
                     </form>
+                </td>
+                <td>
+                    {% if rc.mtt_rake_percent is not none %}
+                    <strong style="color:#b2560d;">{{ rc.mtt_rake_percent }}%</strong>
+                    {% else %}
+                    <span class="muted" style="font-size:0.8rem;">ללא פיצול</span>
+                    {% endif %}
                 </td>
                 <td style="white-space:nowrap;">
                     <button type="button" class="btn btn-outline btn-sm" onclick="toggleRakeEdit({{ rc.id }})" style="font-size:0.75rem;">✏️ ערוך</button>

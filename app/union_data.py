@@ -903,16 +903,23 @@ def get_cumulative_stats(player_ids=None):
         func.sum(DailyPlayerStats.hands),
         func.max(DailyPlayerStats.nickname),
         func.max(DailyPlayerStats.club),
+        func.sum(DailyPlayerStats.mtt_rake),
     ).group_by(DailyPlayerStats.player_id)
 
     if player_ids:
         query = query.filter(DailyPlayerStats.player_id.in_(player_ids))
 
     result = {}
-    for pid, pnl, rake, hands, nick, club in query.all():
+    for pid, pnl, rake, hands, nick, club, mtt in query.all():
+        rake_f = float(rake or 0)
+        mtt_f = max(0.0, min(float(mtt or 0), max(rake_f, 0.0)))
         result[pid] = {
             'pnl': round(float(pnl or 0), 2),
-            'rake': round(float(rake or 0), 2),
+            'rake': round(rake_f, 2),
+            # Game-type split. Pre-feature rows carry mtt_rake = 0, so
+            # ring_rake == rake there and every % formula keeps its old value.
+            'mtt_rake': round(mtt_f, 2),
+            'ring_rake': round(rake_f - mtt_f, 2),
             'hands': int(hands or 0),
             'nickname': nick,
             'club': club,

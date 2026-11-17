@@ -1664,16 +1664,64 @@ def dashboard():
                 if ag_id in agents_map:
                     agents_map[ag_id]['nick'] = ag['nick']
 
+        # -- Rake split by game type (ring vs MTT) ------------------------
+        # mtt_rake_map: tournament rake per player, read from the SAME rows
+        # (model + filters) that produced each member's `rake`, so the two
+        # decompose the same total. Rows imported before this feature have
+        # mtt_rake = 0, which makes every formula below collapse back to
+        # today's behaviour (all rake treated as ring).
+        _mtt_filters = [and_(SM.role != 'Name Entry', SM.role.isnot(None),
+                             SM.role != '')]
+        if use_archive and archive_buckets:
+            _mtt_filters.append(_archive_filter(SM, archive_buckets))
+        elif upload_ids_filter:
+            _mtt_filters.append(SM.upload_id.in_(upload_ids_filter))
+        try:
+            mtt_rake_map = {r[0]: float(r[1] or 0) for r in SM.query.with_entities(
+                SM.player_id, sqlfunc.sum(SM.mtt_rake)
+            ).filter(*_mtt_filters).group_by(SM.player_id).all()}
+        except Exception:
+            # Column not migrated yet -> no split anywhere, old behaviour.
+            mtt_rake_map = {}
+
+        def _mtt_of(player_id):
+            return float(mtt_rake_map.get(player_id, 0) or 0)
+
+        def _mtt_of_members(members):
+            return sum(_mtt_of(m.get('player_id')) for m in (members or []))
+
+        def _split_refund(total_rake, mtt_rake, pct, mtt_pct):
+            """Rakeback with a separate % for tournament rake.
+
+            mtt_pct is None  -> one percentage on the combined rake (today).
+            Otherwise        -> ring at `pct`, MTT at `mtt_pct`. The MTT part
+            is clamped into [0, total_rake] so a stale or partial split can
+            never produce a refund outside the single-% bounds.
+            """
+            total_rake = float(total_rake or 0)
+            if mtt_pct is None:
+                return round(total_rake * pct / 100, 2)
+            mtt = max(0.0, min(float(mtt_rake or 0), max(total_rake, 0.0)))
+            ring = total_rake - mtt
+            return round(ring * pct / 100 + mtt * mtt_pct / 100, 2)
+
         # Query rake configs for sub-agents
         agent_ids = list(agents_map.keys())
-        agent_rake_configs = {rc.entity_id: rc.rake_percent
-                              for rc in RakeConfig.query.filter(
-                                  RakeConfig.entity_type.in_(['sub_agent', 'agent']),
-                                  RakeConfig.entity_id.in_(agent_ids)).all()} if agent_ids else {}
+        _agent_rcs = RakeConfig.query.filter(
+            RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+            RakeConfig.entity_id.in_(agent_ids)).all() if agent_ids else []
+        agent_rake_configs = {rc.entity_id: rc.rake_percent for rc in _agent_rcs}
+        agent_mtt_configs = {rc.entity_id: rc.mtt_rake_percent for rc in _agent_rcs
+                             if rc.mtt_rake_percent is not None}
         for ag_id, ag in agents_map.items():
             pct = agent_rake_configs.get(ag_id, 0)
+            mtt_pct = agent_mtt_configs.get(ag_id)
+            ag_mtt = _mtt_of_members(ag.get('members'))
             ag['rake_pct'] = pct
-            ag['agent_net_rake'] = round(ag['total_rake'] * pct / 100, 2)
+            ag['mtt_rake_pct'] = mtt_pct
+            ag['mtt_rake'] = round(ag_mtt, 2)
+            ag['ring_rake'] = round(max(0.0, float(ag['total_rake'] or 0) - ag_mtt), 2)
+            ag['agent_net_rake'] = _split_refund(ag['total_rake'], ag_mtt, pct, mtt_pct)
             ag['sa_keeps'] = round(ag['total_rake'] - ag['agent_net_rake'], 2)
 
         # Query rake configs for players. Include the SA's own id so his own
@@ -1681,10 +1729,12 @@ def dashboard():
         # RakeConfig too — e.g. set the box owner to 100% refund on his own
         # rake without affecting anyone else in the box.
         all_player_ids_list = list(all_my_player_ids | {sa_id})
-        player_rake_configs = {rc.entity_id: rc.rake_percent
-                               for rc in RakeConfig.query.filter(
-                                   RakeConfig.entity_type == 'player',
-                                   RakeConfig.entity_id.in_(all_player_ids_list)).all()} if all_player_ids_list else {}
+        _player_rcs = RakeConfig.query.filter(
+            RakeConfig.entity_type == 'player',
+            RakeConfig.entity_id.in_(all_player_ids_list)).all() if all_player_ids_list else []
+        player_rake_configs = {rc.entity_id: rc.rake_percent for rc in _player_rcs}
+        player_mtt_configs = {rc.entity_id: rc.mtt_rake_percent for rc in _player_rcs
+                              if rc.mtt_rake_percent is not None}
         players_with_rake = []
         for m in direct_players:
             pct = player_rake_configs.get(m['player_id'], 0)
@@ -1693,16 +1743,23 @@ def dashboard():
                 # not refunded out — so refund = 0, his "שלי" = his full rake,
                 # and it does NOT reduce "נשאר לי".
                 _self_kept = (m['player_id'] == sa_id and sa_id == '7526-3392')
-                refund = 0.0 if _self_kept else round(m['rake'] * pct / 100, 2)
+                _mtt_pct = player_mtt_configs.get(m['player_id'])
+                _pm = _mtt_of(m['player_id'])
+                refund = 0.0 if _self_kept else _split_refund(
+                    m['rake'], _pm, pct, _mtt_pct)
                 players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
                                           'player_id': m['player_id'],
+                                          'mtt_rake_pct': _mtt_pct,
+                                          'mtt_rake': round(_pm, 2),
                                           'total_rake': m['rake'], 'refund': refund,
                                           'self_kept': _self_kept})
         for ag in agents_map.values():
             for m in ag['members']:
                 pct = player_rake_configs.get(m['player_id'], 0)
                 if pct:
-                    refund = round(m['rake'] * pct / 100, 2)
+                    _mtt_pct = player_mtt_configs.get(m['player_id'])
+                    _pm = _mtt_of(m['player_id'])
+                    refund = _split_refund(m['rake'], _pm, pct, _mtt_pct)
                     # Nested under an agent: this player's rake is already inside
                     # the agent's total_rake, and his refund is already deducted
                     # from the agent's cut (see _player_refunds_in). The SA keeps
@@ -1711,6 +1768,8 @@ def dashboard():
                     # SA's "שלי"/"נשאר לי" (its rake would otherwise double-count).
                     players_with_rake.append({'nick': m['nickname'], 'rake_pct': pct,
                                               'player_id': m['player_id'],
+                                              'mtt_rake_pct': _mtt_pct,
+                                              'mtt_rake': round(_pm, 2),
                                               'total_rake': m['rake'], 'refund': refund,
                                               'nested': True, 'under': ag.get('nick')})
 
@@ -1729,7 +1788,8 @@ def dashboard():
                 r = m.get('rake')
                 if r is None:
                     r = m.get('rake_total', 0)
-                s += float(r or 0) * p / 100
+                s += _split_refund(r, _mtt_of(m.get('player_id')), p,
+                                   player_mtt_configs.get(m.get('player_id')))
             return round(s, 2)
 
         rake_refund_list = []
@@ -1741,6 +1801,9 @@ def dashboard():
                 rake_refund_list.append({
                     'nick': ag['nick'], 'rake_pct': ag['rake_pct'],
                     'player_id': ag_id,
+                    'mtt_rake_pct': ag.get('mtt_rake_pct'),
+                    'mtt_rake': ag.get('mtt_rake', 0),
+                    'ring_rake': ag.get('ring_rake', ag['total_rake']),
                     'total_rake': ag['total_rake'], 'refund': net,
                     'gross': gross, 'paid_to_players': paid_to_players,
                     'type': 'agent',
@@ -1748,6 +1811,10 @@ def dashboard():
         for p in players_with_rake:
             rake_refund_list.append({'nick': p['nick'], 'rake_pct': p['rake_pct'],
                                      'player_id': p.get('player_id'),
+                                     'mtt_rake_pct': p.get('mtt_rake_pct'),
+                                     'mtt_rake': p.get('mtt_rake', 0),
+                                     'ring_rake': round(float(p['total_rake'] or 0)
+                                                        - float(p.get('mtt_rake') or 0), 2),
                                      'total_rake': p['total_rake'], 'refund': p['refund'],
                                      'self_kept': p.get('self_kept', False),
                                      'nested': p.get('nested', False),
@@ -2361,8 +2428,19 @@ def dashboard():
         from app.models import RakeConfig
         player_rc = RakeConfig.query.filter_by(entity_type='player', entity_id=player_id).first()
         rake_refund = None
+        rake_refund_mtt_pct = None
         if player_rc and cs:
-            rake_refund = round(cs['rake'] * player_rc.rake_percent / 100, 2)
+            # Same split rule as the agent dashboard, so a player and his
+            # agent never see two different numbers for the same refund.
+            _tot = float(cs.get('rake') or 0)
+            _mtt_pct = getattr(player_rc, 'mtt_rake_percent', None)
+            rake_refund_mtt_pct = _mtt_pct
+            if _mtt_pct is None:
+                rake_refund = round(_tot * player_rc.rake_percent / 100, 2)
+            else:
+                _m = max(0.0, min(float(cs.get('mtt_rake') or 0), max(_tot, 0.0)))
+                rake_refund = round((_tot - _m) * player_rc.rake_percent / 100
+                                    + _m * _mtt_pct / 100, 2)
 
         # Build game type stats (default view = active only; calendar filter rebuilds in JS)
         game_stats = {}
@@ -2399,6 +2477,7 @@ def dashboard():
                                viewing_player_id=player_id,
                                sessions=session_list, transfer_rows=transfer_rows,
                                rake_refund=rake_refund,
+                               rake_refund_mtt_pct=rake_refund_mtt_pct,
                                collection_rake=collection_rake,
                                rake_refund_pct=(player_rc.rake_percent if player_rc else 0),
                                daily_stats_map=daily_stats_map,

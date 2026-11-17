@@ -103,6 +103,25 @@ LOST_MIN_HANDS = 50
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
+def _parse_opt_pct(raw):
+    """Parse an optional percentage field.
+
+    Returns None for an empty/blank/invalid value (meaning "not set" — no
+    split), otherwise a float clamped to 0..100.
+    """
+    if raw is None:
+        return None
+    raw = str(raw).strip()
+    if raw == '':
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(100.0, v))
+
+
+
 # Sentinel sa_id stored in the protected_agents table to represent the
 # whole-admin-panel gate. Anything that queries a real sa_id will never
 # collide with it. Reusing the same table keeps the schema minimal —
@@ -2661,16 +2680,23 @@ def agents():
                 else:
                     flash(f'לא נמצא אחוז רייק לסוכן שנבחר — נשמר כ-{pct}% של הטוטאל.',
                           'warning')
+            # Optional separate % for tournament (MTT) rake. Empty field =>
+            # NULL => no split: the entity keeps one % on the combined rake,
+            # exactly as before this feature existed.
+            mtt_pct = _parse_opt_pct(request.form.get('mtt_rake_percent'))
+            mtt_note = '' if mtt_pct is None else f' · טורנירים {mtt_pct}%'
             if entity_type and entity_key and '|' in entity_key:
                 eid, ename = entity_key.split('|', 1)
                 existing = RakeConfig.query.filter_by(entity_type=entity_type, entity_id=eid).first()
                 if existing:
                     existing.rake_percent = pct
-                    flash(f'אחוז רייק ל-{ename} עודכן ל-{pct}%{effective_note}.', 'success')
+                    existing.mtt_rake_percent = mtt_pct
+                    flash(f'אחוז רייק ל-{ename} עודכן ל-{pct}%{mtt_note}{effective_note}.', 'success')
                 else:
                     db.session.add(RakeConfig(entity_type=entity_type, entity_id=eid,
-                                             entity_name=ename, rake_percent=pct))
-                    flash(f'רייק {pct}% הוגדר ל-{ename}{effective_note}.', 'success')
+                                             entity_name=ename, rake_percent=pct,
+                                             mtt_rake_percent=mtt_pct))
+                    flash(f'רייק {pct}%{mtt_note} הוגדר ל-{ename}{effective_note}.', 'success')
                 db.session.commit()
             else:
                 flash('יש לבחור ישות ולהזין אחוז.', 'warning')
@@ -2685,8 +2711,19 @@ def agents():
             if rc and new_pct >= 0:
                 old_pct = rc.rake_percent
                 rc.rake_percent = new_pct
+                # Only touch the MTT % when the form actually carried the
+                # field, so other forms posting here can't silently clear it.
+                mtt_note = ''
+                if 'new_mtt_percent' in request.form:
+                    old_mtt = rc.mtt_rake_percent
+                    rc.mtt_rake_percent = _parse_opt_pct(
+                        request.form.get('new_mtt_percent'))
+                    if rc.mtt_rake_percent != old_mtt:
+                        mtt_note = (' · טורנירים: ' +
+                                    ('בוטל' if rc.mtt_rake_percent is None
+                                     else f'{rc.mtt_rake_percent}%'))
                 db.session.commit()
-                flash(f'אחוז רייק ל-{rc.entity_name} עודכן מ-{old_pct}% ל-{new_pct}%.', 'success')
+                flash(f'אחוז רייק ל-{rc.entity_name} עודכן מ-{old_pct}% ל-{new_pct}%{mtt_note}.', 'success')
 
         elif action == 'delete_rake_config':
             rc = RakeConfig.query.get(request.form.get('rc_id'))
@@ -2765,6 +2802,7 @@ def agents():
             'sa_nick': sa.get('nick', cfg.sa_id),
             'sa_club': sa.get('club', ''),
             'rake_percent': cfg.rake_percent,
+            'mtt_rake_percent': getattr(cfg, 'mtt_rake_percent', None),
             'managed_club_id': cfg.managed_club_id or '',
             'managed_club_name': club_map.get(cfg.managed_club_id, ''),
         })
