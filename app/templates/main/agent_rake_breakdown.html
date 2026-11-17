@@ -51,6 +51,25 @@
              box-shadow:0 1px 5px rgba(0,0,0,0.06); }
   .rb-card-v { font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; }
   .rb-card-l { font-size:0.7rem; color:#888; margin-top:0.15rem; }
+  .rb-edit-btn { border:none; background:none; cursor:pointer; font-size:0.78rem;
+                 opacity:0.45; padding:0 0.15rem; }
+  .rb-edit-btn:hover { opacity:1; }
+  .rb-edit-form { display:none; align-items:center; gap:0.25rem; margin-top:0.25rem; }
+  .rb-edit-form.on { display:flex; }
+  .rb-chk { display:flex; align-items:center; gap:0.15rem; font-size:0.7rem;
+            color:#b2560d; white-space:nowrap; }
+  .rb-num { width:70px; padding:0.15rem 0.3rem; border:1px solid #b2560d;
+            border-radius:5px; font-size:0.8rem; font-family:inherit;
+            font-variant-numeric:tabular-nums; }
+  .rb-save { border:none; background:#1a1a2e; color:#fff; border-radius:5px;
+             padding:0.18rem 0.5rem; font-size:0.72rem; font-weight:700;
+             cursor:pointer; font-family:inherit; }
+  .rb-cancel { border:1px solid #d8d8e2; background:#fff; color:#666;
+               border-radius:5px; padding:0.18rem 0.45rem; font-size:0.72rem;
+               cursor:pointer; font-family:inherit; }
+  .rb-hint { font-size:0.78rem; color:#8a6400; background:#fff8e6;
+             border:1px solid #e8c56a; border-radius:8px;
+             padding:0.5rem 0.8rem; margin-bottom:0.9rem; }
 </style>
 
 {% set rows = rake_refund_list|default([]) %}
@@ -103,6 +122,13 @@
         <div class="rb-card-l">סה״כ החזר</div></div>
 </div>
 
+{% if can_edit_mtt %}
+<div class="rb-hint">
+    אפשר לשנות כאן את <strong>אחוז הטורנירים</strong> של כל ישות — לוחצים ✏️ ליד האחוז.
+    בלי הסימון "מפוצל" חל עליה אותו אחוז כמו הקש. אחוז הקש עצמו נקבע רק במסך הניהול.
+</div>
+{% endif %}
+
 <div class="rb-wrap">
 {% if rows %}
 <div class="rb-scroll">
@@ -152,6 +178,28 @@
                 {% else %}
                 <span class="pct pct-none" title="לא הוגדר אחוז נפרד — חל אותו אחוז כמו הקש">{{ r.rake_pct|round(1) }}%</span>
                 {% endif %}
+                {% if can_edit_mtt and r.get('rc_id') %}
+                <button type="button" class="rb-edit-btn" onclick="rbEdit({{ r.rc_id }})" title="שינוי אחוז הטורנירים">✏️</button>
+                <form method="POST" action="{{ url_for('main.agent_set_mtt_pct') }}"
+                      id="rb-form-{{ r.rc_id }}" class="rb-edit-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="rc_id" value="{{ r.rc_id }}">
+                    {% if request.args.get('view_as') %}
+                    <input type="hidden" name="view_as" value="{{ request.args.get('view_as') }}">
+                    {% endif %}
+                    <label class="rb-chk" title="בלי סימון — אותו אחוז של הקש חל גם על הטורנירים">
+                        <input type="checkbox" name="split" value="1" id="rb-split-{{ r.rc_id }}"
+                               {% if mpct is not none %}checked{% endif %}
+                               onchange="rbToggle({{ r.rc_id }})">
+                        מפוצל
+                    </label>
+                    <input type="number" name="mtt_percent" id="rb-pct-{{ r.rc_id }}"
+                           value="{{ mpct if mpct is not none else r.rake_pct }}"
+                           step="0.1" min="0" max="100" class="rb-num">
+                    <button type="submit" class="rb-save">שמור</button>
+                    <button type="button" class="rb-cancel" onclick="rbEdit({{ r.rc_id }})">ביטול</button>
+                </form>
+                {% endif %}
             </td>
             <td class="mtt">{{ mtt_ref|round(2)|comma }}</td>
             <td class="sum" style="color:#667eea;">{{ r.refund|comma }}</td>
@@ -191,4 +239,22 @@
 {% endif %}
 </div>
 
+<script>
+function rbEdit(id) {
+    var f = document.getElementById('rb-form-' + id);
+    if (f) { f.classList.toggle('on'); rbToggle(id); }
+}
+function rbToggle(id) {
+    var cb = document.getElementById('rb-split-' + id);
+    var n = document.getElementById('rb-pct-' + id);
+    if (!cb || !n) return;
+    n.disabled = !cb.checked;
+    n.style.opacity = cb.checked ? '1' : '0.45';
+}
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[id^="rb-split-"]').forEach(function (cb) {
+        rbToggle(cb.id.replace('rb-split-', ''));
+    });
+});
+</script>
 {% endblock %}

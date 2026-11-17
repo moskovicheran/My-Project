@@ -242,6 +242,33 @@ class ExpenseCharge(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class RakeConfigChange(db.Model):
+    """Audit trail for tournament-% edits made OUTSIDE the admin screen.
+
+    Agents who are allowed to set the tournament percentage from their own
+    breakdown page are changing a real payout, so every change is recorded
+    with who made it and what it was before. Admin edits on /admin/agents
+    are not logged here — that screen was always admin-only.
+    """
+    __tablename__ = 'rake_config_changes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    rake_config_id = db.Column(db.Integer, nullable=False, index=True)
+    entity_type = db.Column(db.String(20), nullable=False)
+    entity_id = db.Column(db.String(20), nullable=False, index=True)
+    entity_name = db.Column(db.String(100), nullable=False)
+    field = db.Column(db.String(40), nullable=False, default='mtt_rake_percent')
+    old_value = db.Column(db.Float, nullable=True)
+    new_value = db.Column(db.Float, nullable=True)
+    changed_by_username = db.Column(db.String(64), nullable=False)
+    changed_by_player_id = db.Column(db.String(20), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (f'<RakeConfigChange {self.entity_name} '
+                f'{self.old_value}->{self.new_value} by {self.changed_by_username}>')
+
+
 class LoginLog(db.Model):
     __tablename__ = 'login_logs'
 

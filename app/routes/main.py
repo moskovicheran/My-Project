@@ -490,6 +490,106 @@ def agent_rake_breakdown():
     return _dashboard_impl(template_override='main/agent_rake_breakdown.html')
 
 
+# Agents allowed to set the tournament % for their OWN downstream entities
+# from the breakdown page. Everyone else still goes through the admin screen.
+# Same shape as the Kenny777 dashboard gate: a player_id, nothing date-based.
+MTT_PCT_SELF_SERVE_IDS = {'4406-1298'}        # Mangisto San
+
+
+def _can_self_serve_mtt():
+    """(allowed, sa_id) for the CURRENT user on the breakdown page."""
+    role = getattr(current_user, 'role', None)
+    pid = getattr(current_user, 'player_id', None)
+    if role == 'admin':
+        return True, (request.args.get('view_as') or request.form.get('view_as') or '')
+    if role == 'agent' and pid and pid in MTT_PCT_SELF_SERVE_IDS:
+        return True, pid
+    return False, None
+
+
+def _entities_under(sa_id):
+    """Every entity id the given SA may configure: the players in his scope
+    and the agents those players sit under. His OWN id is excluded — nobody
+    edits the percentage that governs his own payout from here."""
+    from app.models import DailyPlayerStats as _DPS
+    from app.union_data import build_agent_scope_preds
+    from sqlalchemy import or_
+    preds, _ = build_agent_scope_preds(sa_id, _DPS)
+    if not preds:
+        return set()
+    rows = _DPS.query.with_entities(_DPS.player_id, _DPS.agent_id).filter(
+        or_(*preds)).distinct().all()
+    allowed = {r[0] for r in rows if r[0]} | {r[1] for r in rows if r[1]}
+    allowed.discard(sa_id)
+    allowed.discard('')
+    allowed.discard('-')
+    return allowed
+
+
+@main_bp.route('/agent/rake-breakdown/set-mtt', methods=['POST'])
+@login_required
+def agent_set_mtt_pct():
+    """Set (or clear) the tournament % of one entity from the breakdown page.
+
+    Everything here is re-checked server side: being on the page is not
+    permission to edit, and the posted rc_id is never trusted. The caller may
+    only touch an entity that sits under him, may never touch his own row,
+    and may only move `mtt_rake_percent` — the cash % stays admin-only.
+    """
+    from app.models import RakeConfig, RakeConfigChange
+
+    allowed, sa_id = _can_self_serve_mtt()
+    if not allowed:
+        flash('אין לך הרשאה לשנות אחוזי רייק.', 'danger')
+        return redirect(url_for('main.agent_rake_breakdown'))
+
+    rc = RakeConfig.query.get(request.form.get('rc_id') or 0)
+    if rc is None:
+        flash('ההגדרה לא נמצאה.', 'warning')
+        return redirect(url_for('main.agent_rake_breakdown'))
+
+    # An admin previewing with ?view_as edits inside THAT agent's scope;
+    # an agent edits inside his own.
+    if getattr(current_user, 'role', None) != 'admin':
+        if rc.entity_type not in ('player', 'sub_agent', 'agent'):
+            flash('לא ניתן לשנות הגדרה מסוג זה מכאן.', 'warning')
+            return redirect(url_for('main.agent_rake_breakdown'))
+        if rc.entity_id == sa_id or rc.entity_id not in _entities_under(sa_id):
+            flash('ההגדרה הזו אינה תחת הסוכנות שלך.', 'danger')
+            return redirect(url_for('main.agent_rake_breakdown'))
+
+    old_val = rc.mtt_rake_percent
+    if request.form.get('split'):
+        raw = (request.form.get('mtt_percent') or '').strip()
+        try:
+            new_val = max(0.0, min(100.0, float(raw)))
+        except (TypeError, ValueError):
+            flash('אחוז לא תקין.', 'warning')
+            return redirect(url_for('main.agent_rake_breakdown'))
+    else:
+        new_val = None
+
+    if new_val != old_val:
+        rc.mtt_rake_percent = new_val
+        db.session.add(RakeConfigChange(
+            rake_config_id=rc.id, entity_type=rc.entity_type,
+            entity_id=rc.entity_id, entity_name=rc.entity_name,
+            field='mtt_rake_percent', old_value=old_val, new_value=new_val,
+            changed_by_username=getattr(current_user, 'username', '?'),
+            changed_by_player_id=getattr(current_user, 'player_id', '') or ''))
+        db.session.commit()
+        flash(f'{rc.entity_name}: אחוז טורנירים ' +
+              ('הוחזר לאחיד.' if new_val is None else f'עודכן ל-{new_val}%.'),
+              'success')
+    else:
+        flash('לא בוצע שינוי.', 'info')
+
+    kw = {}
+    if getattr(current_user, 'role', None) == 'admin' and request.form.get('view_as'):
+        kw['view_as'] = request.form.get('view_as')
+    return redirect(url_for('main.agent_rake_breakdown', **kw))
+
+
 def _dashboard_impl(template_override=None):
     if (hasattr(current_user, 'role') and current_user.role == 'admin'
             and not request.args.get('view_as')
@@ -1880,7 +1980,23 @@ def _dashboard_impl(template_override=None):
                 })
         # Any row that reaches a template MUST carry the split keys, so a
         # future append site can't break a page by omitting them.
+        # rc_id lets the breakdown page offer an inline edit for rows that
+        # actually have a RakeConfig row behind them. The POST re-checks
+        # permission and scope — this is only what to draw.
+        _rc_ids = {}
+        try:
+            for _rc in RakeConfig.query.filter(
+                    RakeConfig.entity_type.in_(['player', 'sub_agent', 'agent'])).all():
+                _rc_ids[(_rc.entity_type, _rc.entity_id)] = _rc.id
+        except Exception:
+            _rc_ids = {}
         for _r in rake_refund_list:
+            _pid = _r.get('player_id')
+            if _r.get('type') == 'player':
+                _r['rc_id'] = _rc_ids.get(('player', _pid))
+            else:
+                _r['rc_id'] = (_rc_ids.get(('sub_agent', _pid))
+                               or _rc_ids.get(('agent', _pid)))
             _rt = float(_r.get('total_rake') or 0)
             _rm = float(_r.get('mtt_rake') or 0)
             _rm = max(0.0, min(_rm, max(_rt, 0.0)))
@@ -2323,6 +2439,7 @@ def _dashboard_impl(template_override=None):
                 kenny_prev_cmp = None
 
         return render_template(template_override or 'main/agent_dashboard.html',
+                               can_edit_mtt=_can_self_serve_mtt()[0],
                                kenny_prev_pct=kenny_prev_pct,
                                kenny_prev_cmp=kenny_prev_cmp,
                                coll_total_owed=coll_total_owed,
