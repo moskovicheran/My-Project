@@ -2683,7 +2683,14 @@ def agents():
             # Optional separate % for tournament (MTT) rake. Empty field =>
             # NULL => no split: the entity keeps one % on the combined rake,
             # exactly as before this feature existed.
-            mtt_pct = _parse_opt_pct(request.form.get('mtt_rake_percent'))
+            # "אחיד" = one percentage for everything. Stored as NULL (inherit)
+            # rather than a copy of the ring %, so that changing the ring %
+            # later moves the tournament % with it instead of silently
+            # leaving a stale pinned number behind.
+            if request.form.get('rake_mode', 'uniform') != 'split':
+                mtt_pct = None
+            else:
+                mtt_pct = _parse_opt_pct(request.form.get('mtt_rake_percent'))
             mtt_note = '' if mtt_pct is None else f' · טורנירים {mtt_pct}%'
             if entity_type and entity_key and '|' in entity_key:
                 eid, ename = entity_key.split('|', 1)
@@ -2714,13 +2721,27 @@ def agents():
                 # Only touch the MTT % when the form actually carried the
                 # field, so other forms posting here can't silently clear it.
                 mtt_note = ''
-                if 'new_mtt_percent' in request.form:
+                if request.form.get('row_split_present'):
+                    # The row editor always posts this marker, so an unticked
+                    # "מפוצל" box is a real instruction to go back to uniform
+                    # (a plain missing field would be ambiguous).
+                    old_mtt = rc.mtt_rake_percent
+                    if request.form.get('row_split'):
+                        rc.mtt_rake_percent = _parse_opt_pct(
+                            request.form.get('new_mtt_percent'))
+                    else:
+                        rc.mtt_rake_percent = None
+                    if rc.mtt_rake_percent != old_mtt:
+                        mtt_note = (' · טורנירים: ' +
+                                    ('אחיד' if rc.mtt_rake_percent is None
+                                     else f'{rc.mtt_rake_percent}%'))
+                elif 'new_mtt_percent' in request.form:
                     old_mtt = rc.mtt_rake_percent
                     rc.mtt_rake_percent = _parse_opt_pct(
                         request.form.get('new_mtt_percent'))
                     if rc.mtt_rake_percent != old_mtt:
                         mtt_note = (' · טורנירים: ' +
-                                    ('בוטל' if rc.mtt_rake_percent is None
+                                    ('אחיד' if rc.mtt_rake_percent is None
                                      else f'{rc.mtt_rake_percent}%'))
                 db.session.commit()
                 flash(f'אחוז רייק ל-{rc.entity_name} עודכן מ-{old_pct}% ל-{new_pct}%{mtt_note}.', 'success')

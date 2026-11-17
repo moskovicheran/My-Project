@@ -328,7 +328,7 @@ function toggleKhCmp(){ var e=document.getElementById('khCmp'); if(e) e.hidden=!
                 {% else %}<span class="rake-split-badge">{{ r.rake_pct|int }}%</span>{% endif %}
                 {% if r.get('mtt_rake_pct') is not none %}
                 <span style="background:#fdefe3; color:#b2560d; font-size:0.68rem; font-weight:700; padding:0.05rem 0.4rem; border-radius:8px;"
-                      title="רייק רינג {{ r.ring_rake|comma }} ב-{{ r.rake_pct|int }}% · רייק טורנירים {{ r.mtt_rake|comma }} ב-{{ r.mtt_rake_pct|int }}%">
+                      title="רייק קש {{ r.ring_rake|comma }} ב-{{ r.rake_pct|int }}% · רייק טורנירים {{ r.mtt_rake|comma }} ב-{{ r.mtt_rake_pct|int }}%">
                     טורנירים {{ r.mtt_rake_pct|int }}%
                 </span>
                 {% endif %}

@@ -78,7 +78,7 @@
     <div>
         <h1 class="rb-title">פירוט רייק לפי סוג משחק</h1>
         <p class="rb-sub">
-            כל מי שמוגדר לו אחוז החזר — כמה רייק הוא ייצר ברינג גיים, כמה בטורנירים,
+            כל מי שמוגדר לו אחוז החזר — כמה רייק הוא ייצר בקש (רינג גיים), כמה בטורנירים,
             וההחזר שיוצא מכל אחד לפי האחוזים שלו.
             {% if period %}<br>תקופה: {{ period }}{% endif %}
         </p>
@@ -88,7 +88,7 @@
 
 <div class="rb-cards">
     <div class="rb-card"><div class="rb-card-v" style="color:#1b7f9e;">{{ t_ring|comma }}</div>
-        <div class="rb-card-l">רייק רינג גיים</div></div>
+        <div class="rb-card-l">רייק קש</div></div>
     <div class="rb-card"><div class="rb-card-v" style="color:#b2560d;">{{ t_mtt|comma }}</div>
         <div class="rb-card-l">רייק טורנירים</div></div>
     <div class="rb-card"><div class="rb-card-v">{{ t_rake|comma }}</div>
@@ -104,7 +104,7 @@
     <thead>
         <tr>
             <th rowspan="2">ישות</th>
-            <th class="grp g-ring" colspan="3">רינג גיים</th>
+            <th class="grp g-ring" colspan="3">קש (רינג גיים)</th>
             <th class="grp g-mtt" colspan="3">טורנירים</th>
             <th class="grp g-sum" colspan="2">תוצאה סופית</th>
         </tr>
@@ -144,7 +144,7 @@
                 {% if mpct is not none %}
                 <span class="pct pct-mtt">{{ mpct|round(1) }}%</span>
                 {% else %}
-                <span class="pct pct-none" title="לא הוגדר אחוז נפרד — חל אותו אחוז כמו רינג">{{ r.rake_pct|round(1) }}%</span>
+                <span class="pct pct-none" title="לא הוגדר אחוז נפרד — חל אותו אחוז כמו הקש">{{ r.rake_pct|round(1) }}%</span>
                 {% endif %}
             </td>
             <td class="mtt">{{ mtt_ref|round(2)|comma }}</td>
@@ -171,7 +171,7 @@
 </div>
 <div class="rb-note">
     עמודת <strong>%</strong> הכתומה מראה את אחוז הטורנירים. כשהיא אפורה — לא הוגדר אחוז
-    נפרד לישות הזו, ולכן אותו אחוז של הרינג חל גם על הטורנירים (ההתנהגות הרגילה).
+    נפרד לישות הזו, ולכן אותו אחוז של הקש חל גם על הטורנירים (ההתנהגות הרגילה).
     <strong>נשאר לי</strong> מחושב רק לשורות שאינן מקוננות — שחקן שנמצא תחת סוכן כבר
     נספר בשורת הסוכן שלו.
     מאותה סיבה, סכומי הרייק בשורת הסיכום ובכרטיסים למעלה <strong>לא כוללים</strong>

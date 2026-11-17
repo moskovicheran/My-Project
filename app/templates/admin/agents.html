@@ -168,19 +168,34 @@
         </div>
 
         <div style="min-width:100px;">
-            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק % <span class="muted" style="font-size:0.72rem;">(רינג)</span></label>
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אחוז רייק קש % <span class="muted" style="font-size:0.72rem;">(רינג גיים)</span></label>
             <input type="number" name="rake_percent" id="rake-percent-input" step="0.1" min="0" max="100" required placeholder="50"
                    oninput="updateRakeBasePreview()"
                    style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
         </div>
 
-        <div style="min-width:120px;">
+        <div style="min-width:230px;">
+            <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">אופן החישוב</label>
+            <div style="display:flex; gap:0.35rem;">
+                <label id="rake-mode-uniform-lbl" style="display:flex; align-items:center; gap:0.25rem; padding:0.45rem 0.6rem; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; font-size:0.82rem;">
+                    <input type="radio" name="rake_mode" value="uniform" checked onchange="switchRakeMode()">
+                    אחיד
+                </label>
+                <label id="rake-mode-split-lbl" style="display:flex; align-items:center; gap:0.25rem; padding:0.45rem 0.6rem; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; font-size:0.82rem;">
+                    <input type="radio" name="rake_mode" value="split" onchange="switchRakeMode()">
+                    מפוצל
+                </label>
+            </div>
+        </div>
+
+        <div style="min-width:130px;">
             <label style="font-size:0.85rem; color:#666; display:block; margin-bottom:0.3rem;">
                 אחוז טורנירים %
-                <span class="muted" style="font-size:0.72rem;">(לא חובה)</span>
+                <span class="muted" style="font-size:0.72rem;" id="rake-mtt-hint">(זהה לקש)</span>
             </label>
-            <input type="number" name="mtt_rake_percent" id="rake-mtt-percent-input" step="0.1" min="0" max="100" placeholder="ריק = כמו רינג"
-                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit;">
+            <input type="number" name="mtt_rake_percent" id="rake-mtt-percent-input" step="0.1" min="0" max="100"
+                   disabled
+                   style="width:100%; padding:0.5rem 0.8rem; border:1px solid #ddd; border-radius:8px; font-size:0.9rem; font-family:inherit; background:#f4f5f8; color:#777;">
         </div>
 
         <button type="submit" class="btn btn-primary">הגדר רייק</button>
@@ -221,7 +236,7 @@
                 <th>סוג</th>
                 <th>שם</th>
                 <th>ID</th>
-                <th>אחוז רייק</th>
+                <th>אחוז רייק קש</th>
                 <th>אחוז טורנירים</th>
                 <th></th>
             </tr>
@@ -242,8 +257,19 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <input type="hidden" name="action" value="update_rake_config">
                         <input type="hidden" name="rc_id" value="{{ rc.id }}">
-                        <input type="number" name="new_percent" value="{{ rc.rake_percent }}" step="0.1" min="0" max="100" style="width:70px; padding:0.25rem 0.4rem; border:1px solid #4361ee; border-radius:6px; font-size:0.85rem; font-family:inherit;">
-                        <input type="number" name="new_mtt_percent" value="{{ rc.mtt_rake_percent if rc.mtt_rake_percent is not none else '' }}" step="0.1" min="0" max="100" placeholder="טורנירים" title="אחוז לטורנירים — ריק = ללא פיצול" style="width:90px; padding:0.25rem 0.4rem; border:1px solid #b2560d; border-radius:6px; font-size:0.85rem; font-family:inherit;">
+                        <input type="hidden" name="row_split_present" value="1">
+                        <input type="number" id="row-ring-{{ rc.id }}" name="new_percent" value="{{ rc.rake_percent }}" step="0.1" min="0" max="100" style="width:70px; padding:0.25rem 0.4rem; border:1px solid #4361ee; border-radius:6px; font-size:0.85rem; font-family:inherit;">
+                        <label style="display:flex; align-items:center; gap:0.2rem; font-size:0.74rem; color:#b2560d; white-space:nowrap;"
+                               title="סמן כדי לתת לטורנירים אחוז נפרד; ללא סימון — אותו אחוז חל על הכל">
+                            <input type="checkbox" id="row-split-{{ rc.id }}" name="row_split" value="1"
+                                   {% if rc.mtt_rake_percent is not none %}checked{% endif %}
+                                   onchange="toggleRowMode({{ rc.id }})">
+                            מפוצל
+                        </label>
+                        <input type="number" id="row-mtt-{{ rc.id }}" name="new_mtt_percent"
+                               value="{{ rc.mtt_rake_percent if rc.mtt_rake_percent is not none else rc.rake_percent }}"
+                               step="0.1" min="0" max="100" title="אחוז לטורנירים"
+                               style="width:80px; padding:0.25rem 0.4rem; border:1px solid #b2560d; border-radius:6px; font-size:0.85rem; font-family:inherit;">
                         <button type="submit" class="btn btn-primary btn-sm" style="font-size:0.75rem;">שמור</button>
                         <button type="button" class="btn btn-outline btn-sm" style="font-size:0.75rem;" onclick="toggleRakeEdit({{ rc.id }})">ביטול</button>
                     </form>
@@ -251,8 +277,10 @@
                 <td>
                     {% if rc.mtt_rake_percent is not none %}
                     <strong style="color:#b2560d;">{{ rc.mtt_rake_percent }}%</strong>
+                    <span class="muted" style="font-size:0.7rem;">מפוצל</span>
                     {% else %}
-                    <span class="muted" style="font-size:0.8rem;">ללא פיצול</span>
+                    <span style="color:#999;">{{ rc.rake_percent }}%</span>
+                    <span class="muted" style="font-size:0.7rem;" title="לא הוגדר אחוז נפרד — אותו אחוז של הקש חל גם על הטורנירים, ואם תשנה אותו גם זה ישתנה">אחיד</span>
                     {% endif %}
                 </td>
                 <td style="white-space:nowrap;">
@@ -704,5 +732,57 @@ function toggleRakeEdit(rcId) {
         form.style.display = 'none';
     }
 }
+</script>
+<script>
+// "אחיד" = one percentage for every game type. The tournament box is then
+// mirrored from the ring box and SENT DISABLED, so the server stores NULL
+// (inherit) rather than a pinned copy — change the ring % later and the
+// tournament % follows it automatically.
+function switchRakeMode() {
+    var split = document.querySelector('input[name="rake_mode"][value="split"]');
+    var mtt = document.getElementById('rake-mtt-percent-input');
+    var hint = document.getElementById('rake-mtt-hint');
+    var ring = document.getElementById('rake-percent-input');
+    if (!mtt || !ring) return;
+    var isSplit = split && split.checked;
+    mtt.disabled = !isSplit;
+    mtt.style.background = isSplit ? '#fff' : '#f4f5f8';
+    mtt.style.color = isSplit ? '#2b2b3c' : '#777';
+    mtt.style.borderColor = isSplit ? '#b2560d' : '#ddd';
+    if (hint) hint.textContent = isSplit ? '(אחוז נפרד)' : '(זהה לקש)';
+    if (!isSplit) { mtt.value = ring.value; }
+    var ul = document.getElementById('rake-mode-uniform-lbl');
+    var sl = document.getElementById('rake-mode-split-lbl');
+    if (ul) ul.style.borderColor = isSplit ? '#ddd' : '#1a1a2e';
+    if (sl) sl.style.borderColor = isSplit ? '#b2560d' : '#ddd';
+}
+function mirrorRingToMtt() {
+    var split = document.querySelector('input[name="rake_mode"][value="split"]');
+    if (split && split.checked) return;
+    var mtt = document.getElementById('rake-mtt-percent-input');
+    var ring = document.getElementById('rake-percent-input');
+    if (mtt && ring) mtt.value = ring.value;
+}
+// inline row editor: same two modes
+function toggleRowMode(id) {
+    var cb = document.getElementById('row-split-' + id);
+    var box = document.getElementById('row-mtt-' + id);
+    if (!cb || !box) return;
+    box.disabled = !cb.checked;
+    box.style.background = cb.checked ? '#fff' : '#f4f5f8';
+    box.style.color = cb.checked ? '#2b2b3c' : '#777';
+    if (!cb.checked) {
+        var ring = document.getElementById('row-ring-' + id);
+        if (ring) box.value = ring.value;
+    }
+}
+document.addEventListener('DOMContentLoaded', function () {
+    var ring = document.getElementById('rake-percent-input');
+    if (ring) ring.addEventListener('input', mirrorRingToMtt);
+    switchRakeMode();
+    document.querySelectorAll('[id^="row-split-"]').forEach(function (cb) {
+        toggleRowMode(cb.id.replace('row-split-', ''));
+    });
+});
 </script>
 {% endblock %}
