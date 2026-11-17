@@ -73,6 +73,19 @@ def _apply_hide_breakdown(sheets, pct):
     return out
 
 
+def _rake_pcts_for(entity_id):
+    """(cash %, tournament % or None) for an entity, or (None, None)."""
+    from app.models import RakeConfig
+    if not entity_id:
+        return None, None
+    rc = RakeConfig.query.filter(
+        RakeConfig.entity_type.in_(['sub_agent', 'agent']),
+        RakeConfig.entity_id == entity_id).first()
+    if not rc:
+        return None, None
+    return rc.rake_percent, rc.mtt_rake_percent
+
+
 def _rake_pct_for(entity_id):
     """The configured rake % for an agent / super-agent (sub_agent/agent
     RakeConfig), or None when nothing is configured for them."""
@@ -85,36 +98,91 @@ def _rake_pct_for(entity_id):
     return rc.rake_percent if rc else None
 
 
-def _insert_agent_rake(sheets, pct_by_sheet):
+def _mtt_by_player(use_archive=False, archive_buckets=None, upload_ids=None):
+    """{player_id: tournament rake} over the same window an export used.
+
+    Same model and same date filter as the export's own Rake query, so the
+    two decompose the same number. Returns {} if the column is missing
+    (pre-migration), which makes every caller fall back to the cash %.
+    """
+    from app.models import DailyPlayerStats, ArchivedPlayerStats
+    from sqlalchemy import func as sqlfunc
+    M = ArchivedPlayerStats if use_archive else DailyPlayerStats
+    try:
+        q = M.query.with_entities(M.player_id, sqlfunc.sum(M.mtt_rake))
+        if use_archive and archive_buckets:
+            q = q.filter(_archive_filter(M, archive_buckets))
+        elif upload_ids:
+            q = q.filter(M.upload_id.in_(upload_ids))
+        return {r[0]: float(r[1] or 0) for r in q.group_by(M.player_id).all()}
+    except Exception:
+        return {}
+
+
+def _agent_rake_amount(rake, mtt, pct, mtt_pct):
+    """Rake × the agent's deal, honouring a separate tournament rate."""
+    rake = float(rake or 0)
+    if mtt_pct is None:
+        return round(rake * pct / 100.0, 2)
+    m = max(0.0, min(float(mtt or 0), max(rake, 0.0)))
+    return round((rake - m) * pct / 100.0 + m * mtt_pct / 100.0, 2)
+
+
+def _insert_agent_rake(sheets, pct_by_sheet, mtt_pct_by_sheet=None,
+                       mtt_by_id=None):
     """Add an 'Agent Rake' column (net = Rake × the agent's %) immediately
     BEFORE the 'Rake' column, for every sheet whose agent has a configured %.
 
     - pct_by_sheet: {sheet_name: pct_or_None}. A sheet whose pct is None (agent
       has no RakeConfig) is left untouched — no column is added (per request:
       "לא להציב כלום אם לא מוגדר").
+    - mtt_pct_by_sheet / mtt_by_id: optional. When a sheet's agent has a
+      separate tournament percentage, each row is split by that player's
+      tournament rake instead of taking the cash rate on everything. Without
+      them (or for a player with no tournament rake) the old arithmetic is
+      used unchanged, so an export cannot shift unless a tournament % is
+      actually configured.
     - Only sheets whose rows carry a numeric-friendly 'Rake' column are touched;
       non-numeric Rake cells (blank/total placeholders) stay blank.
     """
+    mtt_pct_by_sheet = mtt_pct_by_sheet or {}
+    mtt_by_id = mtt_by_id or {}
     out = {}
     for name, rows in sheets.items():
         pct = pct_by_sheet.get(name)
         if pct is None or not rows or 'Rake' not in rows[0]:
             out[name] = rows
             continue
+        mtt_pct = mtt_pct_by_sheet.get(name)
         factor = pct / 100.0
         new_rows = []
+        running = 0.0
         for row in rows:
             # A "נטו סוכן (X%)" footer already carries the NET in its Rake cell —
             # don't multiply it again; leave its Agent Rake blank.
             _first = str(next(iter(row.values()), '') or '')
             _is_net_row = _first.startswith('נטו סוכן')
+            _is_total = _first.startswith('סה"כ') or _first.startswith('סה״כ')
             nr = {}
             for k, v in row.items():
                 if k == 'Rake':
                     if _is_net_row:
                         nr['Agent Rake'] = ''
+                    elif not isinstance(v, (int, float)):
+                        nr['Agent Rake'] = ''
+                    elif _is_total:
+                        # The footer must equal the column above it, not a
+                        # fresh multiplication — the rows above may each have
+                        # used a different mix of cash and tournament rake.
+                        nr['Agent Rake'] = round(running, 2)
+                    elif mtt_pct is None:
+                        nr['Agent Rake'] = round(v * factor, 2)
+                        running += v * factor
                     else:
-                        nr['Agent Rake'] = round(v * factor, 2) if isinstance(v, (int, float)) else ''
+                        _amt = _agent_rake_amount(
+                            v, mtt_by_id.get(row.get('ID')), pct, mtt_pct)
+                        nr['Agent Rake'] = _amt
+                        running += _amt
                 nr[k] = v
             new_rows.append(nr)
         out[name] = new_rows
@@ -2391,9 +2459,10 @@ def _dashboard_impl(template_override=None):
         try:
             _ccyc = _collection_current_cycle(sa_id)
             _clive = _collection_live_rows(sa_id, None, None)
+            _cpct, _cmtt = _agent_rake_pcts(sa_id)
             _crows = _collection_cycle_rows(
                 _ccyc, _clive, {p.player_id: p for p in _ccyc.payments},
-                _agent_rake_pct(sa_id))
+                _cpct, _cmtt)
             _debtors = [r for grp in _crows for r in grp if r['settlement'] < 0]
             coll_total_owed = round(sum(abs(r['settlement']) for r in _debtors), 2)
             coll_collected = round(sum(r['paid_so_far'] for r in _debtors), 2)
@@ -3422,7 +3491,8 @@ def _collection_live_rows(sa_id, start_date, end_date):
                 sqlfunc.max(DailyPlayerStats.nickname),
                 sqlfunc.max(DailyPlayerStats.club),
                 sqlfunc.sum(DailyPlayerStats.pnl),
-                sqlfunc.sum(DailyPlayerStats.rake))
+                sqlfunc.sum(DailyPlayerStats.rake),
+                sqlfunc.sum(DailyPlayerStats.mtt_rake))
             .filter(or_(*scope_preds),
                     and_(DailyPlayerStats.role != 'Name Entry',
                          DailyPlayerStats.role.isnot(None),
@@ -3442,14 +3512,18 @@ def _collection_live_rows(sa_id, start_date, end_date):
         xfers = get_transfer_adjustments([r[0] for r in rows])
 
     out = {}
-    for pid, nick, club, pnl, rake in rows:
+    for pid, nick, club, pnl, rake, mtt in rows:
         raw = round(float(pnl or 0), 2)
         xf = round(float(xfers.get(pid, 0) or 0), 2)
         base = round(raw + xf, 2)
         rk = round(float(rake or 0), 2)
+        mt = round(max(0.0, min(float(mtt or 0), max(rk, 0.0))), 2)
         if base or rk or xf:
             out[pid] = {'nickname': nick or pid, 'club': club or '',
                         'base': base, 'rake': rk,
+                        # tournament share of `rake`, so the rakeback cap can
+                        # use the tournament % where one is configured
+                        'mtt_rake': mt,
                         # kept apart so the screen can SHOW why the figure
                         # differs from the raw poker result
                         'raw': raw, 'xfer': xf}
@@ -3461,11 +3535,32 @@ def _agent_rake_pct(sa_id):
     admin's rake configuration (RakeConfig, entity_type agent/sub_agent). An
     agent with a config row uses that percentage; an agent with no config row
     gets 100% (the full generated rake is available to hand back)."""
+    return _agent_rake_pcts(sa_id)[0]
+
+
+def _agent_rake_pcts(sa_id):
+    """(cash %, tournament % or None) for the agent's rake deal."""
     from app.models import RakeConfig
     rc = RakeConfig.query.filter(
         RakeConfig.entity_type.in_(['sub_agent', 'agent']),
         RakeConfig.entity_id == sa_id).first()
-    return float(rc.rake_percent or 0) if rc else 100.0
+    if not rc:
+        return 100.0, None
+    return float(rc.rake_percent or 0), rc.mtt_rake_percent
+
+
+def _rake_cap(total_rake, mtt_rake, pct, mtt_pct):
+    """The most rakeback that may be handed back for this rake.
+
+    With no tournament % it is the old `rake × pct`. With one, the cash and
+    tournament parts are capped at their own percentages, so a lower
+    tournament rate actually lowers what the collection screen allows.
+    """
+    total_rake = float(total_rake or 0)
+    if mtt_pct is None:
+        return round(total_rake * pct / 100.0, 2)
+    mtt = max(0.0, min(float(mtt_rake or 0), max(total_rake, 0.0)))
+    return round((total_rake - mtt) * pct / 100.0 + mtt * mtt_pct / 100.0, 2)
 
 
 def _collection_current_cycle(sa_id, create=True):
@@ -3484,7 +3579,7 @@ def _collection_current_cycle(sa_id, create=True):
     return c
 
 
-def _collection_cycle_rows(cycle, live, pays, rake_pct):
+def _collection_cycle_rows(cycle, live, pays, rake_pct, mtt_pct=None):
     """Build (receive, minus, settled) row lists for one cycle. `live` holds
     {pid: {nickname, club, base, rake}} for the current cycle (live from the
     active files); a frozen cycle passes {} and reads its stored snapshot
@@ -3494,15 +3589,16 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
     for pid, d in live.items():
         seen.add(pid)
         src.append((pid, d['nickname'], d['club'], d['base'], d['rake'],
-                    d.get('xfer', 0), pays.get(pid)))
+                    d.get('xfer', 0), pays.get(pid), d.get('mtt_rake', 0)))
     for pid, pay in pays.items():
         if pid not in seen:
             # Frozen cycle: the stored snapshot already had transfers folded in
             # when it was taken, so there is nothing extra to show.
             src.append((pid, pay.nickname or pid, pay.club or '',
-                        pay.base_amount or 0, pay.total_rake or 0, 0, pay))
+                        pay.base_amount or 0, pay.total_rake or 0, 0, pay,
+                        getattr(pay, 'total_mtt_rake', 0) or 0))
     receive, minus, settled = [], [], []
-    for pid, nick, club, base, rake, xfer, pay in src:
+    for pid, nick, club, base, rake, xfer, pay, mtt_rake in src:
         manual_rake = round((pay.manual_rake or 0) if pay else 0, 2)
         is_paid = pay.is_paid if pay else False
         settlement = round(base + manual_rake, 2)
@@ -3532,7 +3628,8 @@ def _collection_cycle_rows(cycle, live, pays, rake_pct):
             'paid_so_far': paid_so_far, 'remaining': remaining,
             'remaining_abs': remaining_abs, 'fully_paid': fully,
             'is_paid': is_paid, 'paid_at': pay.paid_at if pay else None,
-            'cap': round(rake_pct / 100.0 * rake, 2),
+            'cap': _rake_cap(rake, mtt_rake, rake_pct, mtt_pct),
+            'mtt_rake': round(float(mtt_rake or 0), 2),
             # The refund expressed as a % of the player's generated rake, so the
             # agent enters a percentage and the amount is derived from it.
             'rake_pct_val': round(manual_rake / rake * 100, 2) if rake else 0,
@@ -3561,7 +3658,7 @@ def agent_collection():
     from datetime import datetime
 
     sa_id = current_user.player_id
-    rake_pct = _agent_rake_pct(sa_id)
+    rake_pct, mtt_pct = _agent_rake_pcts(sa_id)
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -3613,15 +3710,24 @@ def agent_collection():
                         if _lb:
                             pay.base_amount = round(_lb.get('base', 0), 2)
                             pay.total_rake = round(_lb.get('rake', 0), 2)
+                            pay.total_mtt_rake = round(_lb.get('mtt_rake', 0), 2)
                     db.session.commit()
                     flash(f'עודכן: שולם {amt:,.2f}.', 'success')
                 else:  # set_rake
                     if cycle.frozen:
                         total_rake = pay.total_rake or 0
+                        total_mtt = getattr(pay, 'total_mtt_rake', 0) or 0
                     else:
-                        total_rake = _collection_live_rows(
-                            sa_id, None, None).get(pid, {}).get('rake', 0)
-                    cap = round(rake_pct / 100.0 * total_rake, 2)
+                        _lrow = _collection_live_rows(sa_id, None, None).get(pid, {})
+                        total_rake = _lrow.get('rake', 0)
+                        total_mtt = _lrow.get('mtt_rake', 0)
+                    cap = _rake_cap(total_rake, total_mtt, rake_pct, mtt_pct)
+                    # The effective ceiling as a percentage of the whole rake.
+                    # With a tournament % configured this sits below the cash %,
+                    # which is the point — the old screen let the agent hand back
+                    # the cash rate on tournament rake too.
+                    max_pct = (round(cap / total_rake * 100, 2)
+                               if total_rake else rake_pct)
                     # The agent now enters a PERCENTAGE of the player's generated
                     # rake; the refund amount is derived from it (e.g. 50% of 100
                     # = 50). Fall back to the legacy absolute-amount field if a
@@ -3636,8 +3742,8 @@ def agent_collection():
                         if pct < 0:
                             flash('אחוז לא יכול להיות שלילי.', 'danger')
                             return redirect(rt)
-                        if pct > rake_pct + 0.001:
-                            flash(f'חריגה! מקסימום האחוז הוא {rake_pct:.0f}%.', 'danger')
+                        if pct > max_pct + 0.001:
+                            flash(f'חריגה! מקסימום האחוז הוא {max_pct:.2f}%.', 'danger')
                             return redirect(rt)
                         val = round(pct / 100.0 * total_rake, 2)
                     else:
@@ -3649,8 +3755,11 @@ def agent_collection():
                     if val < 0:
                         flash('רייק לא יכול להיות שלילי.', 'danger')
                     elif val > cap + 0.001:
-                        flash(f'חריגה! מקסימום הרייק הוא {cap:.2f} '
-                              f'({rake_pct:.0f}% מתוך {total_rake:.2f}).', 'danger')
+                        _how = (f'{rake_pct:.0f}% מתוך {total_rake:.2f}'
+                                if mtt_pct is None else
+                                f'{rake_pct:.0f}% על הקש ו-{mtt_pct:.0f}% על '
+                                f'{total_mtt:.2f} טורנירים')
+                        flash(f'חריגה! מקסימום הרייק הוא {cap:.2f} ({_how}).', 'danger')
                     else:
                         pay.manual_rake = round(val, 2)
                         db.session.commit()
@@ -3669,7 +3778,8 @@ def agent_collection():
     current = _collection_current_cycle(sa_id)
     live = _collection_live_rows(sa_id, None, None)
     receive, minus, settled = _collection_cycle_rows(
-        current, live, {p.player_id: p for p in current.payments}, rake_pct)
+        current, live, {p.player_id: p for p in current.payments},
+        rake_pct, mtt_pct)
     cycles_view.append({
         'cycle': current, 'is_current': True,
         'date_from': date_from, 'date_to': date_to,
@@ -3684,7 +3794,7 @@ def agent_collection():
             owner_id=sa_id, frozen=True, is_closed=False
     ).order_by(CollectionCycle.created_at.desc()).all():
         receive, minus, settled = _collection_cycle_rows(
-            c, {}, {p.player_id: p for p in c.payments}, rake_pct)
+            c, {}, {p.player_id: p for p in c.payments}, rake_pct, mtt_pct)
         cycles_view.append({
             'cycle': c, 'is_current': False,
             'date_from': None, 'date_to': None,
@@ -3715,10 +3825,11 @@ def agent_collection_report(cycle_id):
     cycle = CollectionCycle.query.get(cycle_id)
     if not cycle or cycle.owner_id != sa_id:
         return redirect(url_for('main.agent_collection'))
-    rake_pct = _agent_rake_pct(sa_id)
+    rake_pct, mtt_pct = _agent_rake_pcts(sa_id)
     pays = {p.player_id: p for p in cycle.payments}
     live = {} if (cycle.frozen or cycle.is_closed) else _collection_live_rows(sa_id, None, None)
-    receive, minus, settled = _collection_cycle_rows(cycle, live, pays, rake_pct)
+    receive, minus, settled = _collection_cycle_rows(cycle, live, pays,
+                                                     rake_pct, mtt_pct)
     _dr = db.session.query(_sf.min(DailyUpload.upload_date),
                            _sf.max(DailyUpload.upload_date)).first()
     _all = receive + minus + settled
@@ -4565,6 +4676,7 @@ def export_single_agent(agent_id):
     # Agent-Rake %: each sheet keyed to its own agent. Sub-agent sheets use the
     # sub-agent's %, the report agent's own players use the report agent's %.
     pct_by_sheet = {}
+    mtt_pct_by_sheet = {}
 
     if full_mode:
         # Single sheet with all players sorted by rake
@@ -4576,6 +4688,7 @@ def export_single_agent(agent_id):
         })
         sheets[agent_nick[:31]] = all_rows
         pct_by_sheet[agent_nick[:31]] = _rake_pct_for(agent_id)
+        mtt_pct_by_sheet[agent_nick[:31]] = _rake_pcts_for(agent_id)[1]
     else:
         # Sheet per sub-agent
         for ag_name, ag_rows in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
@@ -4590,6 +4703,7 @@ def export_single_agent(agent_id):
             safe_name = re.sub(r'[\[\]\*\?:/\\]', '', ag_name)[:31] or 'Agent'
             sheets[safe_name] = ag_rows_clean
             pct_by_sheet[safe_name] = _rake_pct_for(agent_name_to_id.get(ag_name))
+            mtt_pct_by_sheet[safe_name] = _rake_pcts_for(agent_name_to_id.get(ag_name))[1]
 
         if direct_rows:
             dr_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'קלאב': r['קלאב'],
@@ -4602,11 +4716,14 @@ def export_single_agent(agent_id):
             })
             sheets['שחקנים ישירים'] = dr_clean
             pct_by_sheet['שחקנים ישירים'] = _rake_pct_for(agent_id)
+            mtt_pct_by_sheet['שחקנים ישירים'] = _rake_pcts_for(agent_id)[1]
 
     if not sheets:
         sheets[agent_nick[:31]] = []
 
-    sheets = _insert_agent_rake(sheets, pct_by_sheet)
+    sheets = _insert_agent_rake(
+        sheets, pct_by_sheet, mtt_pct_by_sheet,
+        _mtt_by_player(use_archive, archive_buckets, upload_ids_filter))
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
     return _make_excel(sheets, f'{agent_nick}{suffix}_players.xlsx', period_label=period_label,
@@ -4762,6 +4879,7 @@ def export_agent_players():
 
     # Agent-Rake % per player-list sheet (each sub-agent by its own %).
     pct_by_sheet = {}
+    mtt_pct_by_sheet = {}
 
     # Create sheet per agent
     for ag_name, ag_players in sorted(agent_groups.items(), key=lambda x: sum(r['Rake'] for r in x[1]), reverse=True):
@@ -4784,6 +4902,7 @@ def export_agent_players():
             })
         sheets[ag_name[:31]] = ag_players
         pct_by_sheet[ag_name[:31]] = _rake_pct_for(ag_pid)
+        mtt_pct_by_sheet[ag_name[:31]] = _rake_pcts_for(ag_pid)[1]
 
     # Create sheet per child SA
     import re
@@ -4808,6 +4927,7 @@ def export_agent_players():
         safe_name = re.sub(r'[\[\]\*\?:/\\]', '', csa_name)[:31] or 'SA'
         sheets[safe_name] = csa_players
         pct_by_sheet[safe_name] = _rake_pct_for(csa_pid)
+        mtt_pct_by_sheet[safe_name] = _rake_pcts_for(csa_pid)[1]
 
     # Direct players sheet
     if direct_players:
@@ -4821,6 +4941,7 @@ def export_agent_players():
         })
         sheets['שחקנים ישירים'] = direct_players
         pct_by_sheet['שחקנים ישירים'] = _rake_pct_for(sa_id)
+        mtt_pct_by_sheet['שחקנים ישירים'] = _rake_pcts_for(sa_id)[1]
 
     # ── Sheet 2: My Agents ──
     _agent_filters = [
@@ -4923,7 +5044,9 @@ def export_agent_players():
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
-    sheets = _insert_agent_rake(sheets, pct_by_sheet)
+    sheets = _insert_agent_rake(
+        sheets, pct_by_sheet, mtt_pct_by_sheet,
+        _mtt_by_player(use_archive, archive_buckets, upload_ids_filter))
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{current_user.username}{suffix}_players.xlsx',
                        period_label=period_label, transfer_pids=[p[0] for p in players])
@@ -5503,7 +5626,8 @@ def export_agent_club(club_id):
             no_sa_rows.append(row)
 
     sheets = {}
-    pct_by_sheet = {}   # each SA sheet by its own %
+    pct_by_sheet = {}
+    mtt_pct_by_sheet = {}   # each SA sheet by its own %
 
     if full_mode:
         # Group by Super Agent so the single sheet reads as an organized list:
@@ -5550,6 +5674,7 @@ def export_agent_club(club_id):
             safe_name = re.sub(r'[\[\]\*\?:/\\]', '', sa_name)[:31] or 'SA'
             sheets[safe_name] = sa_rows_clean
             pct_by_sheet[safe_name] = _rake_pct_for(sa_name_to_id.get(sa_name))
+            mtt_pct_by_sheet[safe_name] = _rake_pcts_for(sa_name_to_id.get(sa_name))[1]
 
         if no_sa_rows:
             no_sa_clean = [{'שחקן': r['שחקן'], 'ID': r['ID'], 'סוכן': r['סוכן'],
@@ -5567,7 +5692,9 @@ def export_agent_club(club_id):
 
     suffix = ('_' + '_'.join(selected_dates)) if selected_dates else ''
     period_label = _format_period_label(selected_dates)
-    sheets = _insert_agent_rake(sheets, pct_by_sheet)
+    sheets = _insert_agent_rake(
+        sheets, pct_by_sheet, mtt_pct_by_sheet,
+        _mtt_by_player(use_archive, archive_buckets, upload_ids_filter))
     if current_user.role == 'agent' and current_user.player_id:
         sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(current_user.player_id))
     return _make_excel(sheets, f'{club_name}{suffix}_report.xlsx',
@@ -5701,7 +5828,10 @@ def export_agent_period():
             sheets['משחקים'] = sess_rows
 
     player_nick = rows[0]['שחקן'] if len(rows) == 1 else current_user.username
-    sheets = _insert_agent_rake(sheets, {f'{from_date} - {to_date}': _rake_pct_for(sa_id)})
+    sheets = _insert_agent_rake(
+        sheets, {f'{from_date} - {to_date}': _rake_pct_for(sa_id)},
+        {f'{from_date} - {to_date}': _rake_pcts_for(sa_id)[1]},
+        _mtt_by_player(upload_ids=upload_ids))
     sheets = _apply_hide_breakdown(sheets, _hide_breakdown_pct(sa_id))
     return _make_excel(sheets, f'{player_nick}_{from_date}_{to_date}.xlsx',
                        transfer_pids=[p[0] for p in players])

@@ -4,6 +4,7 @@ Adds (idempotent, safe to re-run):
   daily_player_stats.ring_rake, .mtt_rake
   archived_player_stats.ring_rake, .mtt_rake
   rake_config.mtt_rake_percent          (NULL = no split, today's behaviour)
+  player_payments.total_mtt_rake        (tournament share of a frozen snapshot)
 
 Existing rows are backfilled with ring_rake = rake, mtt_rake = 0, so the
 invariant  ring_rake + mtt_rake == rake  holds for EVERY row from day one.
@@ -41,6 +42,7 @@ DDL = [
     "ALTER TABLE archived_player_stats ADD COLUMN IF NOT EXISTS ring_rake DOUBLE PRECISION DEFAULT 0",
     "ALTER TABLE archived_player_stats ADD COLUMN IF NOT EXISTS mtt_rake  DOUBLE PRECISION DEFAULT 0",
     "ALTER TABLE rake_config           ADD COLUMN IF NOT EXISTS mtt_rake_percent DOUBLE PRECISION",
+    "ALTER TABLE player_payments      ADD COLUMN IF NOT EXISTS total_mtt_rake DOUBLE PRECISION DEFAULT 0",
 ]
 
 BACKFILL = [

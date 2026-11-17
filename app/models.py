@@ -203,6 +203,11 @@ class PlayerPayment(db.Model):
     club = db.Column(db.String(100), default='')
     base_amount = db.Column(db.Float, default=0)   # snapshot PnL (+ transfer adj)
     total_rake = db.Column(db.Float, default=0)    # snapshot rake — caps manual_rake
+    # Tournament share of that snapshot, so the cap keeps using the right
+    # percentage after the cycle is frozen. 0 on rows written before the
+    # split existed, which makes the cap fall back to the cash % — exactly
+    # the old behaviour.
+    total_mtt_rake = db.Column(db.Float, default=0)
     manual_rake = db.Column(db.Float, default=0)   # rakeback granted by the agent
     is_paid = db.Column(db.Boolean, default=False)  # manual "fully paid" mark
     paid_at = db.Column(db.DateTime, nullable=True)

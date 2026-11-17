@@ -203,6 +203,15 @@ def create_app():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            # Tournament share of the frozen rake snapshot — added with the
+            # ring/MTT rake split, so prod needs the explicit ALTER here too.
+            try:
+                db.session.execute(_text(
+                    'ALTER TABLE player_payments ADD COLUMN IF NOT EXISTS '
+                    'total_mtt_rake DOUBLE PRECISION DEFAULT 0'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             # Widen money_transfers id columns so synthetic counterparty ids
             # like '__club__<club name>' fit (were VARCHAR(20)). Postgres
             # widens a varchar as a fast metadata-only change; runs on every
