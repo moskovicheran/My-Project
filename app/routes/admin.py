@@ -59,8 +59,18 @@ def get_subordinate_managers():
 # via /dashboard?view_as=<club_id>. Clubs without a club_id in the Excel
 # hierarchy can pass their club name as the second arg (get_club_totals
 # falls back to a name match).
+# A club listed here is a HOUSE club: its rows are claimed by the club's own
+# card, which carves them out of every agent's scope (see the tracked_clubs
+# checks below and in main.py). That is the point of the list — but it also
+# means adding a club MOVES rake off the agent cards whose players play there.
+# A club needs no RakeConfig row to sit here: get_club_totals reports
+# rake_pct 0 and net_rake 0 until a percentage is configured.
 OVERVIEW_CLUBS = [
     ('פוקר בדופק גבוהה', '170653'),
+    # Arrived with the move to the Elite Poker alliance union (first seen in
+    # the 17/11/2026 report). Registered as a house club on 18/11/2026 with
+    # NO rake percentage yet — deliberate, to be set manually later.
+    ('ScooPokeR', '875349'),
 ]
 
 # External agents tracked alongside managed clubs — agents not in the
