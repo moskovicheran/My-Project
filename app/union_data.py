@@ -1282,6 +1282,93 @@ def _overview_club_names(M, cid_to_name):
     return names
 
 
+def get_house_club_claims():
+    """All `HouseClubClaim` rows. Cached per-request — the scope builder and
+    every club-side view ask for them within one request."""
+    from app.models import HouseClubClaim
+    return _request_cached('house_club_claims_all',
+                           lambda: HouseClubClaim.query.all())
+
+
+def _house_claims_by_club_name(M):
+    """{club_name: {player_id: {'sa_id', 'agent_id'}}}.
+
+    Claims are stored against the club_id (rename-proof); stats rows carry
+    the club NAME, so resolve through the hierarchy with the same fallback
+    `_overview_club_names` uses — a club with no Excel entry stores its id
+    as the literal club name on the rows."""
+    claims = get_house_club_claims()
+    if not claims:
+        return {}
+    clubs_data, _ = get_members_hierarchy()
+    cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+    out = {}
+    for cl in claims:
+        nm = cid_to_name.get(cl.club_id)
+        if not nm and M.query.filter(M.club == cl.club_id).first():
+            nm = cl.club_id
+        if not nm:
+            continue
+        out.setdefault(nm, {})[cl.player_id] = {
+            'sa_id': cl.assigned_sa_id or '',
+            'agent_id': cl.assigned_agent_id or '',
+        }
+    return out
+
+
+def claimed_pids_in_club(club_name, M=None):
+    """player_ids whose rows in `club_name` were claimed into an agent box.
+
+    Club-side surfaces (the club card, the club dashboard) MUST drop them:
+    the agent box now counts those rows, so leaving them on the club side
+    too would count the same rake twice."""
+    from app.models import DailyPlayerStats
+    if M is None:
+        M = DailyPlayerStats
+    return set(_house_claims_by_club_name(M).get(club_name, {}))
+
+
+def house_clubs_claimed_for(player_id, targets=None, M=None):
+    """Club names where `player_id`'s OWN rows were claimed into a box held
+    by one of `targets` (defaults to the player himself).
+
+    Used by the dashboard's self-row, which otherwise drops every house-club
+    row of the box owner."""
+    from app.models import DailyPlayerStats
+    if M is None:
+        M = DailyPlayerStats
+    tgt = {t for t in (targets if targets is not None else [player_id]) if t}
+    out = set()
+    for club_name, pid_map in _house_claims_by_club_name(M).items():
+        claim = pid_map.get(player_id)
+        if not claim:
+            continue
+        if (claim['sa_id'] and claim['sa_id'] in tgt) or \
+           (claim['agent_id'] and claim['agent_id'] in tgt):
+            out.add(club_name)
+    return out
+
+
+def house_club_claim_preds(M, scope_ids):
+    """Rows a box has claimed out of a house club, as `or_()`-able predicates.
+
+    This is the ONLY path that moves a house-club row onto an agent card.
+    Everywhere else a house club owns its rows outright, because it has its
+    own card on the admin overview."""
+    from sqlalchemy import and_
+    scope = {s for s in (scope_ids or ()) if s and s != '-'}
+    if not scope:
+        return []
+    preds = []
+    for club_name, pid_map in _house_claims_by_club_name(M).items():
+        pids = [pid for pid, tgt in pid_map.items()
+                if (tgt['sa_id'] and tgt['sa_id'] in scope)
+                or (tgt['agent_id'] and tgt['agent_id'] in scope)]
+        if pids:
+            preds.append(and_(M.club == club_name, M.player_id.in_(pids)))
+    return preds
+
+
 def _sa_hierarchy_ids(sa_id, M=None):
     """IDs that mean 'in this SA's hierarchy' for per-row attribution:
     the SA itself, child SAs (SAHierarchy), and regular agents whose own
@@ -1538,6 +1625,16 @@ def build_agent_scope_preds(uid, M, time_filters=None, period_ids=None):
             ))
         else:
             scope_preds.append(M.player_id.in_(override_in_pids))
+
+    # House-club claims (`HouseClubClaim`) — a player whose play in a house
+    # club was permanently attached to THIS box. Deliberately its own OR'd
+    # predicate: the `other_managed_names` carve-outs above exist so a house
+    # club keeps its rows on its own card, and a claim is the one explicit
+    # statement that overrules that, for one player in one club. The club
+    # side drops the same rows (`claimed_pids_in_club`), so each row still
+    # lands in exactly one place.
+    scope_preds.extend(
+        house_club_claim_preds(M, set(all_ids) | set(known_agent_ids)))
 
     ctx = {'all_ids': all_ids, 'known_agent_ids': known_agent_ids,
            'managed_club_names': managed_club_names,
@@ -1911,6 +2008,12 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
     if hier_exclude:
         _h = list(hier_exclude)
         carve_filters = [~StatsModel.sa_id.in_(_h), ~StatsModel.agent_id.in_(_h)]
+    # Players permanently claimed out of this club into an agent's box
+    # (`HouseClubClaim`). get_agent_totals counts their rows there now, so
+    # the club card must not count them again.
+    _claimed = claimed_pids_in_club(club_name, M=StatsModel)
+    if _claimed:
+        carve_filters.append(~StatsModel.player_id.in_(list(_claimed)))
 
     stats = StatsModel.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),

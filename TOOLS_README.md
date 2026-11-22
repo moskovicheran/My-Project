@@ -37,6 +37,30 @@ python tools_assign_player.py --player-id 1443-8481 --delete
 ```
 Idempotent — אם כבר קיים, יעדכן (לא יכפיל).
 
+## 2.1 שיוך משחק במועדון בית לקופסה (`HouseClubClaim`)
+
+### `tools_claim_house_club.py`
+מועדון בית (`OVERVIEW_CLUBS` ב‑`app/routes/admin.py`, למשל ScooPokeR = 875349)
+מחזיק כרטיס משלו בסקירה, ולכן **כל** המנגנונים חותכים ממנו שורות החוצה —
+גם `PlayerAssignment`. הכלי הזה הוא היחיד שמזיז שורות של שחקן מכרטיס מועדון
+הבית לקופסה של סוכן, והשורות עוזבות את תצוגת המועדון באותה נשימה (אין ספירה
+כפולה; `/admin/health` נשאר DELTA = 0).
+
+קבוע לפי (שחקן, מועדון) — לא לפי העלאה או מחזור, אז גם קובץ חדש שבו השחקן
+מופיע שוב תחת מועדון הבית נוחת באותה קופסה.
+```powershell
+# המשחק של F@Taxi Driver ב‑ScooPokeR נספר בקופסה של Mangisto San:
+python tools_claim_house_club.py --player-id 6018-5756 --club-id 875349 `
+    --sa-id 4406-1298 --agent-id 6018-5756 --note "..."
+
+# רשימת כל ה‑claims:
+python tools_claim_house_club.py --list
+
+# ביטול:
+python tools_claim_house_club.py --player-id 6018-5756 --club-id 875349 --delete
+```
+Idempotent — הרצה חוזרת על אותו (שחקן, מועדון) מעדכנת ולא מכפילה.
+
 ## 3. רישום מועדונים לסוכנים (`SARakeConfig`)
 
 ### `tools_add_managed_club.py` (כללי, חדש)

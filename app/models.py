@@ -531,6 +531,44 @@ class PlayerAssignment(db.Model):
         return f'<PlayerAssignment {self.player_id} → sa={self.assigned_sa_id} ag={self.assigned_agent_id}>'
 
 
+class HouseClubClaim(db.Model):
+    """A player's play in a HOUSE club (admin `OVERVIEW_CLUBS`) counted in
+    one agent's box instead of the club's own card.
+
+    Why this is NOT a `PlayerAssignment`: an override there answers "who
+    owns this player", and every scope that applies it deliberately carves
+    OUT house-club rows — a house club has its own card on the overview, so
+    letting an override claim those rows would double-count them. This table
+    answers the narrower question "whose box does this player's play IN THIS
+    HOUSE CLUB belong to", and is the one place allowed to move a row from
+    the club card to an agent box. delta stays 0: the rows leave the club
+    card in exactly the same breath as they join the agent's.
+
+    Permanent by construction — it keys on (player_id, club_id), never on an
+    upload or a cycle, so a new file that lists the player under the house
+    club again lands in the same box.
+    """
+    __tablename__ = 'house_club_claims'
+    __table_args__ = (
+        db.UniqueConstraint('player_id', 'club_id', name='uq_house_claim_player_club'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
+    # The OVERVIEW_CLUBS club id (e.g. '875349' = ScooPokeR). Stored as the
+    # id, not the name, so a club rename doesn't strand the claim.
+    club_id = db.Column(db.String(30), nullable=False, index=True)
+    assigned_sa_id = db.Column(db.String(20), default='')
+    assigned_agent_id = db.Column(db.String(20), default='')
+    note = db.Column(db.String(200), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return (f'<HouseClubClaim {self.player_id} @ {self.club_id} → '
+                f'sa={self.assigned_sa_id} ag={self.assigned_agent_id}>')
+
+
 class ProtectedAgent(db.Model):
     """Per-agent extra-password gate. When a row exists for an sa_id, the
     agent's card on the admin overview is blurred and clicking through to

@@ -1956,6 +1956,11 @@ def agent_view(sa_id):
                 _nm = _cid
             if _nm:
                 _self_other_clubs.add(_nm)
+        # House clubs this SA's OWN play was permanently claimed out of
+        # (`HouseClubClaim`): the club card already dropped those rows and
+        # the SA's card total counts them, so the self-row has to show them.
+        from app.union_data import house_clubs_claimed_for as _hcc_for
+        _self_other_clubs -= _hcc_for(sa_id, targets=[sa_id], M=DailyPlayerStats)
         _self_filters = [DailyPlayerStats.player_id == sa_id, and_(DailyPlayerStats.role != 'Name Entry', DailyPlayerStats.role.isnot(None), DailyPlayerStats.role != '')]
         if _self_other_clubs:
             _self_filters.append(DailyPlayerStats.club.notin_(list(_self_other_clubs)))
@@ -2444,6 +2449,30 @@ def clubs():
             club['total_pnl'] = ct_club['pnl']
             club['total_hands'] = ct_club['total_hands']
             club['active_players'] = ct_club['active_players']
+    # Players permanently claimed out of a house club into an agent's box
+    # (`HouseClubClaim`) are counted on that agent's card now, so they leave
+    # the club's roster here too — otherwise this page keeps listing a
+    # player the club card no longer counts.
+    from app.union_data import claimed_pids_in_club
+
+    def _drop_claimed(sa_node, claimed):
+        sa_node['direct_members'] = [m for m in (sa_node.get('direct_members') or [])
+                                     if m['player_id'] not in claimed]
+        for ag in (sa_node.get('agents') or {}).values():
+            ag['members'] = [m for m in (ag.get('members') or [])
+                             if m['player_id'] not in claimed]
+        for child in (sa_node.get('child_super_agents') or {}).values():
+            _drop_claimed(child, claimed)
+
+    for club in clubs:
+        _claimed = claimed_pids_in_club(club['name'])
+        if not _claimed:
+            continue
+        club['no_sa_members'] = [m for m in (club.get('no_sa_members') or [])
+                                 if m['player_id'] not in _claimed]
+        for sa in (club.get('super_agents') or {}).values():
+            _drop_claimed(sa, _claimed)
+
     # Sort all player lists in each club's hierarchy by PnL:
     # positives first (biggest win), negatives next (biggest loss first), zeros last.
     def _pnl_key(m):

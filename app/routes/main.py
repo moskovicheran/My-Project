@@ -764,6 +764,15 @@ def _dashboard_impl(template_override=None):
                     base_filters.append(DailyPlayerStats.upload_id == -1)
                 StatsModel = DailyPlayerStats
 
+            # Players permanently claimed out of this club into an agent's
+            # box (`HouseClubClaim`). They are counted on that agent's card
+            # now, so they must leave the club view entirely — roster and
+            # totals alike — or the same rake shows up on both sides.
+            from app.union_data import claimed_pids_in_club
+            _claimed_here = claimed_pids_in_club(club_name, M=StatsModel)
+            if _claimed_here:
+                base_filters.append(StatsModel.player_id.notin_(list(_claimed_here)))
+
             club_players_db = StatsModel.query.with_entities(
                 StatsModel.player_id, sqlfunc.max(StatsModel.nickname),
                 sqlfunc.max(StatsModel.sa_id), sqlfunc.max(StatsModel.agent_id),
@@ -1079,8 +1088,9 @@ def _dashboard_impl(template_override=None):
         _pd_period_ids = ([b['period_id'] for b in archive_buckets]
                           if use_archive else None)
         def _my_players_filter_builder(M):
-            from app.union_data import build_agent_scope_preds
-            _pp, _ = build_agent_scope_preds(sa_id, M, period_ids=_pd_period_ids)
+            from app.union_data import (build_agent_scope_preds,
+                                        house_club_claim_preds)
+            _pp, _ctx = build_agent_scope_preds(sa_id, M, period_ids=_pd_period_ids)
             _pf = or_(*_pp) if _pp else (M.id < 0)
             flts = [
                 _pf,
@@ -1088,7 +1098,15 @@ def _dashboard_impl(template_override=None):
                 and_(M.role != 'Name Entry', M.role.isnot(None), M.role != ''),
             ]
             if _other_owned_clubs:
-                flts.append(M.club.notin_(list(_other_owned_clubs)))
+                # A house club is "owned elsewhere" — except for the players
+                # this box has permanently claimed out of it
+                # (`HouseClubClaim`). Without the exemption the claim would
+                # reach the card total (get_agent_totals) but not the listed
+                # members, and the list would stop summing to the card.
+                _claims = house_club_claim_preds(
+                    M, set(_ctx['all_ids']) | set(_ctx['known_agent_ids']))
+                _not_owned = M.club.notin_(list(_other_owned_clubs))
+                flts.append(or_(_not_owned, *_claims) if _claims else _not_owned)
             return flts
 
         _my_sub = _stats_union_subquery(
@@ -1421,6 +1439,14 @@ def _dashboard_impl(template_override=None):
                         _self_other_clubs.add(_nm)
             except Exception:
                 pass
+            # A house club the SA's OWN play was permanently claimed out of
+            # (`HouseClubClaim`) is no longer owned elsewhere for him: the
+            # club side already dropped those rows and his card total counts
+            # them, so the self-row must show them or the listed box stops
+            # summing to the card.
+            from app.union_data import house_clubs_claimed_for
+            _self_other_clubs -= house_clubs_claimed_for(
+                sa_id, targets=all_sa_ids, M=SM)
             _self_filters = [SM.player_id == sa_id, and_(SM.role != 'Name Entry', SM.role.isnot(None), SM.role != '')]
             if _self_other_clubs:
                 _self_filters.append(SM.club.notin_(list(_self_other_clubs)))
@@ -3498,6 +3524,10 @@ def _collection_live_rows(sa_id, start_date, end_date):
     if po_clubs:
         scope_preds.append(and_(DailyPlayerStats.club.in_(po_clubs),
                                 DailyPlayerStats.player_id == sa_id))
+    # House-club rows permanently claimed into this box (`HouseClubClaim`):
+    # that rake is the box's, so it has to be collectable here too.
+    from app.union_data import house_club_claim_preds
+    scope_preds.extend(house_club_claim_preds(DailyPlayerStats, scope_sa_ids))
     date_filters = []
     if start_date:
         date_filters.append(DailyUpload.upload_date >= start_date)
@@ -4806,6 +4836,11 @@ def export_agent_players():
     if _po_clubs:
         _scope_preds.append(_and(SM.club.in_(_po_clubs),
                                  SM.player_id == sa_id))
+    # House-club rows permanently claimed into this box (`HouseClubClaim`).
+    # They carry no sa_id/agent_id of their own, so without this the export
+    # would come out short against the card total.
+    from app.union_data import house_club_claim_preds as _hccp
+    _scope_preds.extend(_hccp(SM, _scope_sa_ids))
 
     # Nickname map (always from active data — needed for resolving names even
     # when archive filter returns no rows for the SA itself)
@@ -5328,6 +5363,12 @@ def export_agent_full_box():
     if _po_clubs:
         _scope_preds.append(_and(SM.club.in_(_po_clubs),
                                  SM.player_id == sa_id))
+    # House-club rows permanently claimed into this box (`HouseClubClaim`) —
+    # the `_other_owned` carve-out above rightly keeps every OTHER house-club
+    # row on the club's own card; a claim is the explicit exception, so it
+    # goes in as its own OR'd predicate.
+    from app.union_data import house_club_claim_preds as _hccp
+    _scope_preds.extend(_hccp(SM, _ov_targets))
 
     # Nickname lookup (from active data — names are stable across archives)
     all_nicks = dict(DailyPlayerStats.query.with_entities(
