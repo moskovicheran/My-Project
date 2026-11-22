@@ -719,12 +719,26 @@ def health():
     # A player who changed agent mid-cycle needs a per-day settlement split
     # (his days under each agent settle with that agent). Rare and easy to
     # miss, so surface it as a pop-up on the health page whenever it happens.
+    #
+    # House-club rows are EXCLUDED from this check (both the detection and
+    # the per-agent split below). A club in OVERVIEW_CLUBS claims its own
+    # rows and carves them out of every agent's scope, so the sa_id written
+    # on such a row never settles with that agent -- it is not a party to a
+    # "move". Counting it made every player who merely plays in a house club
+    # look like he had switched agent: when ScooPokeR arrived with the Elite
+    # Poker union and its rows started carrying sa_id 9953-6336 on
+    # 20/11/2026, the pop-up fired on ~10 players at once, none of whom had
+    # moved anywhere. A player who really does change agent between two
+    # non-house clubs is still caught.
+    _house_clubs = [name for name, _cid in OVERVIEW_CLUBS]
+    _not_house = DailyPlayerStats.club.notin_(_house_clubs)
     _moved_rows = DailyPlayerStats.query.with_entities(
         DailyPlayerStats.player_id, sqlfunc.max(DailyPlayerStats.nickname)
     ).filter(
         DailyPlayerStats.role != 'Name Entry',
         DailyPlayerStats.sa_id.isnot(None),
         DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-',
+        _not_house,
     ).group_by(DailyPlayerStats.player_id).having(
         sqlfunc.count(sqlfunc.distinct(DailyPlayerStats.sa_id)) > 1
     ).all()
@@ -740,6 +754,7 @@ def health():
             DailyPlayerStats.role != 'Name Entry',
             DailyPlayerStats.sa_id.isnot(None),
             DailyPlayerStats.sa_id != '', DailyPlayerStats.sa_id != '-',
+            _not_house,
         ).group_by(DailyPlayerStats.sa_id).all():
             _sn = DailyPlayerStats.query.with_entities(
                 sqlfunc.max(DailyPlayerStats.nickname)
