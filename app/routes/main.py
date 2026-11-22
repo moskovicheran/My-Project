@@ -213,6 +213,30 @@ def _insert_agent_rake(sheets, pct_by_sheet, mtt_pct_by_sheet=None,
 # that closed cycle instead of the live one.
 CYCLE_VIEW_KEY = 'cycle_view_period'
 
+# Session key for the calendar filter. A filter is a mode, not a property of
+# one page: once it is on it applies everywhere — the agent's box, the club
+# card, a player's record, the exports — so clicking from the overview into an
+# agent keeps the day you were looking at instead of silently reverting to the
+# whole cycle. It lives in the session, so it ends when the user clears the
+# picker or the browser session does. Same storage and lifetime as
+# CYCLE_VIEW_KEY above, so the two modes behave alike.
+STICKY_DATES_KEY = 'sticky_date_filter'
+
+
+def _remember_dates(dates):
+    """Arm (or disarm, on an empty list) the session-wide date filter."""
+    from flask import session
+    if dates:
+        session[STICKY_DATES_KEY] = list(dates)
+    else:
+        session.pop(STICKY_DATES_KEY, None)
+
+
+def _remembered_dates():
+    """The filter the user switched on earlier in this session, if any."""
+    from flask import session
+    return list(session.get(STICKY_DATES_KEY) or [])
+
 
 def cycle_view_period():
     """The archived cycle the admin is currently browsing, or None.
@@ -245,16 +269,29 @@ def requested_date_filter():
     """Dates this request should render.
 
     An explicit ?dates= always wins, so the calendar picker keeps working
-    inside the mode. With no explicit dates, the "previous cycle" mode
-    supplies the whole archived period — which is what makes the boxes,
-    the overview cards and the exports all land on that cycle at once
-    without threading a parameter through every link.
+    inside the mode — and it also ARMS the filter for every page that comes
+    after it, until the user clears the picker or the session ends. That is
+    what carries the chosen day from the overview into an agent's dashboard,
+    his exports and a player's record without threading the parameter onto
+    every link in the site. `?dates=` with nothing after it is the picker
+    saying "cleared", which is why an empty value is not the same as no
+    parameter at all.
+
+    With no dates anywhere, the "previous cycle" mode supplies the whole
+    archived period — which is what makes the boxes, the overview cards and
+    the exports all land on that cycle at once. It outranks a remembered
+    filter: entering that mode is the more deliberate act of the two, and a
+    stale remembered day must not quietly carve up the cycle being browsed.
     """
-    picked = explicit_date_filter()
-    if picked:
-        return picked
+    if 'dates' in request.args:
+        picked = explicit_date_filter()
+        _remember_dates(picked)
+        if picked:
+            return picked
     period = cycle_view_period()
-    return cycle_view_dates(period) if period else []
+    if period:
+        return cycle_view_dates(period)
+    return _remembered_dates()
 
 
 def explicit_date_filter():
@@ -271,8 +308,15 @@ def picker_dates(resolved):
     page read as a filtered report instead of the site as it stood back then,
     which is the whole point of the mode. So the picker stays empty unless the
     user picked dates himself — the banner is what says where you are.
+
+    A filter he armed earlier in the session DOES show as chips, even though
+    this page's URL carries no ?dates=: it is still his filter, and a filter
+    that silently shaped the page while the picker read "כל התקופות" would be
+    the worst of both.
     """
-    return resolved if explicit_date_filter() else []
+    if cycle_view_period() and not explicit_date_filter():
+        return []
+    return resolved
 
 
 def _resolve_date_uploads(selected_dates):

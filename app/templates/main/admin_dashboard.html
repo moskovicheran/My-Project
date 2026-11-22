@@ -179,7 +179,9 @@ function ovGetDateRange() {
 }
 function ovDpApply() {
     var dates = ovGetDateRange();
-    if (!dates.length) { window.location.href = '{{ url_for("main.dashboard") }}'; }
+    // An EMPTY dates= is how the picker says "cleared" — a bare URL would
+    // just look like ordinary navigation and the armed filter would survive.
+    if (!dates.length) { window.location.href = '{{ url_for("main.dashboard") }}?dates='; }
     else { window.location.href = '{{ url_for("main.dashboard") }}?dates=' + dates.join(','); }
 }
 function ovUpdateInfo() {

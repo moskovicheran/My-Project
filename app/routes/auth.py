@@ -122,6 +122,13 @@ def login():
         else:
             login_user(user, remember=remember)
             session.permanent = True
+            # Entering the site starts unfiltered. The calendar filter is a
+            # mode that lasts the whole session, so a day left armed in a
+            # previous one must not silently shape the first page of this
+            # one — the picker would read "כל התקופות" while every number
+            # on screen showed a single day.
+            from app.routes.main import STICKY_DATES_KEY
+            session.pop(STICKY_DATES_KEY, None)
             # Log the login
             try:
                 from app.models import LoginLog
@@ -151,6 +158,11 @@ def login():
 @auth_bp.route('/logout')
 @login_required
 def logout():
+    # Drop the session-wide calendar filter: leaving the site ends the mode.
+    # logout_user() only clears Flask-Login's own keys, so without this the
+    # next sign-in on the same browser would inherit someone's filter.
+    from app.routes.main import STICKY_DATES_KEY
+    session.pop(STICKY_DATES_KEY, None)
     logout_user()
     flash('התנתקת בהצלחה.', 'info')
     return redirect(url_for('auth.login'))

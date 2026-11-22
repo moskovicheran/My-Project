@@ -263,8 +263,10 @@ function _getDateRange() {
 
 function dpApply() {
     var dates = _getDateRange();
+    // An EMPTY dates= is how the picker says "cleared" — a bare URL would
+    // just look like ordinary navigation and the armed filter would survive.
     if (dates.length === 0) {
-        window.location.href = '{{ url_for("main.dashboard") }}';
+        window.location.href = '{{ url_for("main.dashboard") }}?dates=';
     } else {
         window.location.href = '{{ url_for("main.dashboard") }}?dates=' + dates.join(',');
     }
