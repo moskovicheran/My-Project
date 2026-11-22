@@ -792,6 +792,18 @@ def _dashboard_impl(template_override=None):
             # Manual overrides (/admin/lost-players) — replace natural sa_id/agent_id
             # so club view matches the agent's personal dashboard.
             overrides_map = get_player_overrides()
+            # ...but NOT in a house club. An override never claims house-club
+            # rows — they stay on this club's own card (the
+            # `other_managed_names` carve-out in build_agent_scope_preds) — so
+            # relabelling them with the override's SA invents a box here for
+            # an agent whose card does not hold this money. arsenal 1 made a
+            # "Pagsos" box appear inside ScooPokeR while every one of those
+            # chips sat on ScooPokeR's own card. The one thing that DOES move
+            # such rows is a HouseClubClaim, and a claimed player has already
+            # been filtered off this roster above.
+            from app.union_data import house_club_names
+            if club_name in house_club_names(StatsModel):
+                overrides_map = {}
 
             # Build SA structure
             club_sas = {}

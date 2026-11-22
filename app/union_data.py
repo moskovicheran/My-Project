@@ -1282,6 +1282,20 @@ def _overview_club_names(M, cid_to_name):
     return names
 
 
+def house_club_names(M=None):
+    """Club NAMES of the admin-tracked house clubs (`OVERVIEW_CLUBS`).
+
+    A house club owns its rows: no SA/agent override reaches into one (see
+    the `other_managed_names` carve-outs in `build_agent_scope_preds`), so
+    anything deciding how a house club's rows are LABELLED has to know it is
+    looking at one."""
+    from app.models import DailyPlayerStats
+    if M is None:
+        M = DailyPlayerStats
+    clubs_data, _ = get_members_hierarchy()
+    return _overview_club_names(M, {c['club_id']: c['name'] for c in clubs_data})
+
+
 def get_house_club_claims():
     """All `HouseClubClaim` rows. Cached per-request — the scope builder and
     every club-side view ask for them within one request."""
