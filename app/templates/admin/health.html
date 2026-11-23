@@ -3,7 +3,12 @@
 
 {% block content %}
 <style>
-.health-card { background:#fff; border-radius:12px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+/* The card is white in BOTH themes (there is no body.dark override for it),
+   so it has to state its own text colour: inheriting the page default put
+   #333 here in light mode — thin and washed out at phone font sizes — and
+   body.dark's #e0e0e0, light grey on white, in dark mode. */
+.health-card { background:#fff; border-radius:12px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); color:#111; }
+body.dark .health-card { color:#111; }
 .health-status { font-size:1.4rem; font-weight:700; padding:0.6rem 1rem; border-radius:8px; display:inline-block; }
 .status-ok { background:#d4edda; color:#155724; }
 .status-bad { background:#f8d7da; color:#721c24; }
@@ -15,9 +20,16 @@
 .delta-zero { color:#28a745; }
 .health-table { width:100%; border-collapse:collapse; margin-top:0.5rem; }
 .health-table th, .health-table td { padding:0.5rem 0.7rem; text-align:right; border-bottom:1px solid #eee; font-variant-numeric:tabular-nums; }
-.health-table th { background:#f7f7f7; font-weight:600; color:#555; }
+.health-table td { color:#111; }
+.health-table th { background:#f7f7f7; font-weight:600; color:#333; }
+body.dark .health-table td { color:#111; }
+body.dark .health-table th { color:#333; }
 .health-table tbody tr:hover { background:#f9f9f9; }
-.muted { color:#999; font-size:0.85rem; }
+.muted { color:#6a6a6a; font-size:0.85rem; }
+/* Needs to out-specify `.health-table td` above, or the secondary column
+   (dates, ids) goes the same black as the data and the row loses its shape. */
+.health-card .muted { color:#6a6a6a; }
+body.dark .health-card .muted { color:#6a6a6a; }
 .section-title { font-size:1.15rem; font-weight:700; margin:0 0 0.6rem 0; }
 .badge { display:inline-block; padding:0.2rem 0.55rem; border-radius:999px; font-size:0.8rem; font-weight:600; }
 .badge-orphan { background:#fff3cd; color:#856404; }
@@ -38,6 +50,9 @@
     .health-status { font-size:1.1rem; padding:0.5rem 0.8rem; }
     .health-table th, .health-table td { padding:0.4rem 0.5rem; font-size:0.82rem; }
     .health-table th { white-space:nowrap; }
+    /* At this size a thin grey reads as faded — hold the contrast. */
+    .health-table td { color:#000; font-weight:500; }
+    .health-card .muted { color:#555; }
     /* KV grid → stacked (single column, no large gap). */
     .kv-grid { grid-template-columns:1fr; gap:0.15rem 0; }
     .kv-grid dd { font-size:0.9rem; line-height:1.35; margin-bottom:0.35rem; }
@@ -93,6 +108,8 @@ body.dark .sa-pick-opt.pinned { background:#3a3520; }
     .section-title { font-size:0.95rem; }
     .health-status { font-size:0.95rem; padding:0.35rem 0.6rem; }
     .health-table th, .health-table td { padding:0.3rem 0.35rem; font-size:0.75rem; }
+    .health-table td { color:#000; font-weight:500; }
+    .health-card .muted { color:#4d4d4d; }
     .kv-grid dd { font-size:0.85rem; }
     .alert-new { padding:0.6rem 0.7rem; }
     .alert-new h3 { font-size:0.95rem; }
