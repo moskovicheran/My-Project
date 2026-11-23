@@ -812,10 +812,20 @@ def _dashboard_impl(template_override=None):
             # box (`HouseClubClaim`). They are counted on that agent's card
             # now, so they must leave the club view entirely — roster and
             # totals alike — or the same rake shows up on both sides.
-            from app.union_data import claimed_pids_in_club
+            from app.union_data import claimed_pids_in_club, club_adoption_pred
             _claimed_here = claimed_pids_in_club(club_name, M=StatsModel)
             if _claimed_here:
                 base_filters.append(StatsModel.player_id.notin_(list(_claimed_here)))
+
+            # The mirror image: players ADOPTED by this club
+            # (`PlayerAssignment.assigned_club`). Their rows in clubs no card
+            # owns are counted on this club's card, so the roster has to list
+            # them — otherwise the card's total names a player the page can't
+            # show. base_filters[0] is the `club == club_name` predicate.
+            from sqlalchemy import or_ as _or
+            _adopt_here = club_adoption_pred(club_name, StatsModel)
+            if _adopt_here is not None:
+                base_filters[0] = _or(base_filters[0], _adopt_here)
 
             club_players_db = StatsModel.query.with_entities(
                 StatsModel.player_id, sqlfunc.max(StatsModel.nickname),

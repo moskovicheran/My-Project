@@ -1296,6 +1296,74 @@ def house_club_names(M=None):
     return _overview_club_names(M, {c['club_id']: c['name'] for c in clubs_data})
 
 
+def owned_club_names(M=None):
+    """Every club NAME that has a card of its own: an SA's managed club
+    (`SARakeConfig.managed_club_id`) or a house club (`OVERVIEW_CLUBS`).
+
+    A row in one of these clubs is already counted on that card, so it is
+    the set a club ADOPTION must never reach into. The complement — SPC T,
+    SPC C and friends — is where an orphan actually lives."""
+    from app.models import DailyPlayerStats
+    if M is None:
+        M = DailyPlayerStats
+    clubs_data, _ = get_members_hierarchy()
+    cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+    names = set(_overview_club_names(M, cid_to_name))
+    for c in get_managed_clubs_all_cfgs():
+        names.add(cid_to_name.get(c.managed_club_id) or c.managed_club_id)
+    names.discard('')
+    return names
+
+
+def club_owner_sa(club_name, M=None):
+    """The sa_id that registered `club_name` as a managed club, or '' if the
+    club has no owner (a house club on the overview has a card, not an SA)."""
+    from app.models import DailyPlayerStats
+    if M is None:
+        M = DailyPlayerStats
+    clubs_data, _ = get_members_hierarchy()
+    cid_to_name = {c['club_id']: c['name'] for c in clubs_data}
+    for c in get_managed_clubs_all_cfgs():
+        if (cid_to_name.get(c.managed_club_id) or c.managed_club_id) == club_name:
+            return c.sa_id or ''
+    return ''
+
+
+def club_adoptions():
+    """{club_name: {player_id, ...}} from `PlayerAssignment.assigned_club`.
+
+    An adoption is the club-card twin of an sa/agent override: the player is
+    placed by it ALONE, so `build_agent_scope_preds` drops him from every
+    agent's raw/current-scope predicate (he is already in `override_any_pids`)
+    and the club card below picks his unowned-club rows up."""
+    out = {}
+    for ov in get_all_player_assignments():
+        nm = (getattr(ov, 'assigned_club', '') or '').strip()
+        if nm:
+            out.setdefault(nm, set()).add(ov.player_id)
+    return out
+
+
+def club_adopted_pids(club_name):
+    """player_ids adopted by `club_name`."""
+    return club_adoptions().get(club_name, set())
+
+
+def club_adoption_pred(club_name, M):
+    """Predicate for the rows a club adoption adds to `club_name`'s card:
+    the adopted players' rows in clubs no OTHER card owns. Returns None when
+    the club has adopted nobody."""
+    from sqlalchemy import and_, not_
+    pids = club_adopted_pids(club_name)
+    if not pids:
+        return None
+    other_owned = owned_club_names(M) - {club_name}
+    pred = M.player_id.in_(list(pids))
+    if other_owned:
+        pred = and_(pred, not_(M.club.in_(list(other_owned))))
+    return pred
+
+
 def get_house_club_claims():
     """All `HouseClubClaim` rows. Cached per-request — the scope builder and
     every club-side view ask for them within one request."""
@@ -1511,9 +1579,15 @@ def build_agent_scope_preds(uid, M, time_filters=None, period_ids=None):
     for ov in get_all_player_assignments():
         ov_sa = ov.assigned_sa_id or ''
         ov_ag = ov.assigned_agent_id or ''
+        ov_club = (getattr(ov, 'assigned_club', '') or '').strip()
+        if not (ov_sa or ov_ag or ov_club):
+            continue
+        # A club adoption counts as "explicitly placed" just like an sa/agent
+        # override: the club card claims the player's unowned-club rows, so no
+        # agent box may also claim them through raw hierarchy / current scope.
+        override_any_pids.append(ov.player_id)
         if not (ov_sa or ov_ag):
             continue
-        override_any_pids.append(ov.player_id)
         if (ov_sa and ov_sa in override_target_set) or (ov_ag and ov_ag in override_target_set):
             override_in_pids.append(ov.player_id)
 
@@ -2029,14 +2103,22 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
     if _claimed:
         carve_filters.append(~StatsModel.player_id.in_(list(_claimed)))
 
+    # Players ADOPTED by this club (`PlayerAssignment.assigned_club`) — their
+    # rows in clubs no card owns are counted here. Every agent box drops them
+    # (they sit in `override_any_pids`), so the rake still lands once.
+    _adopt = club_adoption_pred(club_name, StatsModel)
+    _club_pred = and_(StatsModel.club == club_name, *carve_filters) if carve_filters         else (StatsModel.club == club_name)
+    if _adopt is not None:
+        _club_pred = or_(_club_pred, _adopt)
+
     stats = StatsModel.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),
         sqlfunc.sum(StatsModel.rake),
         sqlfunc.sum(StatsModel.pnl),
         sqlfunc.sum(StatsModel.hands),
-    ).filter(StatsModel.club == club_name,
+    ).filter(_club_pred,
              and_(StatsModel.role != 'Name Entry', StatsModel.role.isnot(None), StatsModel.role != ''),
-             *scope_filters, *carve_filters).first()
+             *scope_filters).first()
 
     player_count = stats[0] or 0
     total_rake = round(float(stats[1] or 0), 2)

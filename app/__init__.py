@@ -212,6 +212,16 @@ def create_app():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            # Assignment of a player to a CLUB card (added with the club
+            # option on /admin/health). prod skips create_all, so the
+            # column needs its own ALTER here. No-op once applied.
+            try:
+                db.session.execute(_text(
+                    'ALTER TABLE player_assignments ADD COLUMN IF NOT EXISTS '
+                    "assigned_club VARCHAR(120) DEFAULT ''"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             # Widen money_transfers id columns so synthetic counterparty ids
             # like '__club__<club name>' fit (were VARCHAR(20)). Postgres
             # widens a varchar as a fast metadata-only change; runs on every

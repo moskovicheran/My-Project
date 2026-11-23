@@ -440,7 +440,10 @@ def health():
     # Per-row attribution scan: orphans + double-counts
     cd, _ = get_members_hierarchy()
     cid_to_name = {c['club_id']: c['name'] for c in cd}
-    all_overrides = PlayerAssignment.query.all()
+    # Same cached accessor the scope builder reads, so this scan and the
+    # real predicates can never disagree about what is overridden.
+    from app.union_data import get_all_player_assignments
+    all_overrides = get_all_player_assignments()
     from app.union_data import get_sa_descendants
     sa_info = []
     for _, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
@@ -516,9 +519,27 @@ def health():
         if si['player_only']:
             for mc in si['managed']:
                 po_pids_per_club[mc].add(si['pid'])
+    # Club adoptions (`PlayerAssignment.assigned_club`): the club card takes
+    # the player's rows in clubs no card owns, and — exactly as for an sa
+    # override — no agent box may claim him through scope. Mirror both sides
+    # here or the scan reports a phantom orphan / double-count.
+    from app.union_data import club_adoptions as _club_adoptions
+    _adopt_by_club = _club_adoptions()
+    _adopt_club_of = {pid: cn for cn, pids in _adopt_by_club.items() for pid in pids}
+    _owned_club_names = all_managed | tracked_clubs
+
     for r in DailyPlayerStats.query.yield_per(5000):
         if (r.role or '') == 'Name Entry': continue
         cards_hit = []
+        _adopted_by = _adopt_club_of.get(r.player_id, '')
+        if _adopted_by and r.club not in _owned_club_names:
+            # Counted on the adopting club's card; nothing else may take it.
+            if _adopted_by in tracked_clubs:
+                cards_hit.append('CLUB:' + _adopted_by)
+            else:
+                # Registered club → the owning SA's card claims it via the
+                # sa override written alongside the adoption.
+                pass
         # CLUB card claims the row unless its sa/agent sits in a managing-SA's
         # hierarchy — in that case the SA's shared-managed predicate takes it.
         if r.club in tracked_clubs:
@@ -559,6 +580,11 @@ def health():
             # another card's managed or tracked club belongs to THAT card,
             # not to us — mirrors get_agent_totals' override predicate.
             in_ov = (r.player_id in sa['ov']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
+            # Adopted into a HOUSE club's card: that card owns the row, so the
+            # scope-based claims (which the real predicate drops for an
+            # explicitly placed player) must not fire here either.
+            if _adopted_by and _adopted_by in tracked_clubs and r.club not in _owned_club_names:
+                in_cur = in_ov = False
             if in_cur or in_managed or in_ov:
                 cards_hit.append(sa['pid'])
         rk = float(r.rake or 0); pl = float(r.pnl or 0)
@@ -713,6 +739,28 @@ def health():
     ).group_by(DailyPlayerStats.player_id).all()) if extra_ids else {}
     extras = [(pid, f'{extra_nicks.get(pid) or pid} ({pid})') for pid in extra_ids]
     extras.sort(key=lambda x: x[1].lower())
+
+    # Clubs that can take an orphan directly. "A club with an owner" means a
+    # club that has somewhere to put the rows: a house club with its own card
+    # on the overview, or a club registered to an SA (the rows then land in
+    # that SA's card). A club with neither — SPC C, SPC T — is where orphans
+    # come FROM and cannot be a target.
+    from app.union_data import (owned_club_names as _owned_clubs,
+                                club_owner_sa as _club_owner,
+                                house_club_names as _house_club_names)
+    # Resolve through club_id, never through the label in OVERVIEW_CLUBS: the
+    # name stored on the rows is whatever the report writes, which for the
+    # Hebrew house club is the label with its characters reversed.
+    _house_names = _house_club_names(DailyPlayerStats)
+    _nick_by_pid = {pid: nick for nick, pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS}
+    assign_club_targets = []
+    for _cn in sorted(_owned_clubs(DailyPlayerStats)):
+        if _cn in _house_names:
+            assign_club_targets.append((_cn, f'{_cn} (מועדון הבית)'))
+        else:
+            _ow = _club_owner(_cn, DailyPlayerStats)
+            _own_nick = _nick_by_pid.get(_ow) or extra_nicks.get(_ow) or _ow
+            assign_club_targets.append((_cn, f'{_cn} (מועדון — {_own_nick})'))
     assign_targets.extend(extras)
 
     # --- Moved players: the SAME player appears under more than one sa_id ----
@@ -779,6 +827,7 @@ def health():
                            orphans=orphans_list,
                            overlaps=overlaps_list,
                            assign_targets=assign_targets,
+                           assign_club_targets=assign_club_targets,
                            pinned_count=pinned_count,
                            unknown_clubs=unknown_clubs_list,
                            unknown_sas=unknown_sas_list,
@@ -2509,13 +2558,32 @@ def lost_players():
             pid = (request.form.get('player_id') or '').strip()
             sa_key = (request.form.get('sa_key') or '').strip()    # "sa_id|nick"
             ag_key = (request.form.get('agent_key') or '').strip() # "agent_id|nick"
+            club_key = (request.form.get('club_key') or '').strip()  # club NAME
             note = (request.form.get('note') or '').strip()
             sa_id_val = sa_key.split('|', 1)[0] if '|' in sa_key else ''
             ag_id_val = ag_key.split('|', 1)[0] if '|' in ag_key else ''
+            club_val = ''
+            if club_key:
+                from app.union_data import owned_club_names, club_owner_sa
+                # Only a club that actually HAS a card may be a target —
+                # anything else would silently drop the rows nowhere.
+                if club_key not in owned_club_names(DailyPlayerStats):
+                    flash('מועדון לא מוכר — בחר מועדון מהרשימה.', 'warning')
+                    club_key = ''
+                else:
+                    club_val = club_key
+                    # A club registered to an SA has no card of its own: its
+                    # rows live inside that SA's card, so resolve the owner
+                    # and use the ordinary, well-trodden sa override. The club
+                    # name is still stored, as the label of what was chosen.
+                    from app.union_data import house_club_names
+                    owner = club_owner_sa(club_key, DailyPlayerStats)
+                    if owner and club_key not in house_club_names(DailyPlayerStats):
+                        sa_id_val = sa_id_val or owner
             if not pid:
                 flash('חסר מזהה שחקן.', 'danger')
-            elif not sa_id_val and not ag_id_val:
-                flash('חובה לבחור לפחות SA אחד או סוכן אחד.', 'warning')
+            elif not sa_id_val and not ag_id_val and not club_val:
+                flash('חובה לבחור SA, סוכן או מועדון.', 'warning')
             else:
                 existing = PlayerAssignment.query.filter_by(player_id=pid).first()
                 if not existing:
@@ -2523,10 +2591,14 @@ def lost_players():
                     db.session.add(existing)
                 existing.assigned_sa_id = sa_id_val
                 existing.assigned_agent_id = ag_id_val
+                existing.assigned_club = club_val
                 existing.assigned_by_user_id = current_user.id
                 existing.note = note[:200]
                 db.session.commit()
-                flash(f'השחקן שויך בהצלחה.', 'success')
+                if club_val and not sa_id_val and not ag_id_val:
+                    flash(f'השחקן שויך למועדון {club_val}.', 'success')
+                else:
+                    flash('השחקן שויך בהצלחה.', 'success')
         elif action == 'unassign':
             pid = (request.form.get('player_id') or '').strip()
             row = PlayerAssignment.query.filter_by(player_id=pid).first()

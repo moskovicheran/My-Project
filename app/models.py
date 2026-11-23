@@ -520,6 +520,13 @@ class PlayerAssignment(db.Model):
     player_id = db.Column(db.String(20), unique=True, nullable=False, index=True)
     assigned_sa_id = db.Column(db.String(20), default='')
     assigned_agent_id = db.Column(db.String(20), default='')
+    # Assignment to a CLUB instead of to a person. Holds the club NAME (the
+    # same string stored on DailyPlayerStats.club), and means: this player's
+    # rows that no other card owns belong to that club's card. Used for a
+    # house club on the overview, which has a card but no SA to assign to.
+    # A club that IS owned by an SA is resolved to that SA at save time and
+    # keeps using the plain sa override — this field is then only the label.
+    assigned_club = db.Column(db.String(120), default='')
     assigned_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     note = db.Column(db.String(200), default='')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -528,7 +535,8 @@ class PlayerAssignment(db.Model):
     assigned_by = db.relationship('User', backref='player_assignments')
 
     def __repr__(self):
-        return f'<PlayerAssignment {self.player_id} → sa={self.assigned_sa_id} ag={self.assigned_agent_id}>'
+        return (f'<PlayerAssignment {self.player_id} → sa={self.assigned_sa_id} '
+                f'ag={self.assigned_agent_id} club={self.assigned_club}>')
 
 
 class HouseClubClaim(db.Model):
