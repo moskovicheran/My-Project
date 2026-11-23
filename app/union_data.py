@@ -2011,6 +2011,42 @@ def get_agent_scope_predicate(sa_id, M=None):
     return or_(*scope_preds)
 
 
+def build_club_scope_pred(club_name, M):
+    """The canonical "which rows belong to this CLUB's card" predicate.
+
+    The twin of `build_agent_scope_preds`. Extend HERE, never in a copy —
+    the health page's reconciliation scan reads it too, so the page and the
+    card can never disagree about which rows the club owns.
+
+      • rows in the club, MINUS
+          - rows whose sa/agent sits in a managing SA's hierarchy (that SA's
+            card takes them on a shared club),
+          - players claimed out of the club into an agent box
+            (`HouseClubClaim`),
+      • PLUS players adopted by the club (`PlayerAssignment.assigned_club`),
+        for their rows in clubs no card owns.
+    """
+    from sqlalchemy import and_, or_
+    clubs_data, _ = get_members_hierarchy()
+    cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data}
+    hier_exclude = set()
+    for sa_id in _sas_managing_club(club_name, cid_to_name_all):
+        hier_exclude |= _sa_hierarchy_ids(sa_id, M=M)
+    carve = []
+    if hier_exclude:
+        _h = list(hier_exclude)
+        carve = [~M.sa_id.in_(_h), ~M.agent_id.in_(_h)]
+    _claimed = claimed_pids_in_club(club_name, M=M)
+    if _claimed:
+        carve.append(~M.player_id.in_(list(_claimed)))
+
+    pred = and_(M.club == club_name, *carve) if carve else (M.club == club_name)
+    _adopt = club_adoption_pred(club_name, M)
+    if _adopt is not None:
+        pred = or_(pred, _adopt)
+    return pred
+
+
 def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
                     archive_upload_ids=None, archive_buckets=None):
     """Calculate total rake/pnl/hands/players for a club — filtered by
@@ -2083,33 +2119,7 @@ def get_club_totals(club_id, upload_ids=None, archive_period_id=None,
                 'total_pnl': 0.0, 'total_hands': 0, 'player_count': 0,
                 'club_name': ''}
 
-    # Per-row attribution: when this club is ALSO an SA's managed_club
-    # (SARakeConfig), rows whose sa_id/agent_id sit in that SA's hierarchy
-    # belong to the SA card — not to this club card. Exclude them to avoid
-    # double-counting vs get_agent_totals' shared-club path.
-    cid_to_name_all = {c['club_id']: c['name'] for c in clubs_data}
-    managing_sas = _sas_managing_club(club_name, cid_to_name_all)
-    hier_exclude = set()
-    for sa_id in managing_sas:
-        hier_exclude |= _sa_hierarchy_ids(sa_id, M=StatsModel)
-    carve_filters = []
-    if hier_exclude:
-        _h = list(hier_exclude)
-        carve_filters = [~StatsModel.sa_id.in_(_h), ~StatsModel.agent_id.in_(_h)]
-    # Players permanently claimed out of this club into an agent's box
-    # (`HouseClubClaim`). get_agent_totals counts their rows there now, so
-    # the club card must not count them again.
-    _claimed = claimed_pids_in_club(club_name, M=StatsModel)
-    if _claimed:
-        carve_filters.append(~StatsModel.player_id.in_(list(_claimed)))
-
-    # Players ADOPTED by this club (`PlayerAssignment.assigned_club`) — their
-    # rows in clubs no card owns are counted here. Every agent box drops them
-    # (they sit in `override_any_pids`), so the rake still lands once.
-    _adopt = club_adoption_pred(club_name, StatsModel)
-    _club_pred = and_(StatsModel.club == club_name, *carve_filters) if carve_filters         else (StatsModel.club == club_name)
-    if _adopt is not None:
-        _club_pred = or_(_club_pred, _adopt)
+    _club_pred = build_club_scope_pred(club_name, StatsModel)
 
     stats = StatsModel.query.with_entities(
         sqlfunc.count(sqlfunc.distinct(StatsModel.player_id)),

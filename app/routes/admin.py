@@ -502,98 +502,58 @@ def health():
     for c in SARakeConfig.query.filter(SARakeConfig.managed_club_id.isnot(None)).all():
         all_registered_clubs.add(cid_to_name.get(c.managed_club_id) or c.managed_club_id)
     all_registered_clubs |= tracked_clubs
-    # Build a map of "SAs that manage each tracked club" for per-row attribution
-    # on shared clubs — mirrors get_club_totals' carve-out.
-    sas_per_tracked = {club: set() for club in tracked_clubs}
-    for si in sa_info:
-        for mc in si['managed']:
-            if mc in sas_per_tracked:
-                sas_per_tracked[mc].add(si['pid'])
+    # ---- card membership, from the predicates the cards are actually built
+    # from -------------------------------------------------------------------
+    # This used to be a hand-rolled per-row re-implementation of the scope
+    # rules, and it drifted: it tested current scope at PLAYER level, so a
+    # row that already sat safely on a card was still reported as an orphan
+    # (erany1804 showed 15.19 of "orphan" rake while only 4.40 — the real
+    # DELTA — was unattributed). Asking `build_agent_scope_preds` and
+    # `build_club_scope_pred` directly makes the page exact by construction:
+    # whatever the cards count, this counts.
+    from app.union_data import build_agent_scope_preds, build_club_scope_pred
+    from sqlalchemy import or_ as _or
 
-    # Map club → PLAYER_ONLY SAs' player_ids that registered it. Used in
-    # the per-row loop so an OTHER SA's exclusive-managed claim on the
-    # same club subtracts those player_ids — mirrors the carve-out in
-    # get_agent_totals (managed_club_names_player_only).
-    po_pids_per_club = defaultdict(set)
-    for si in sa_info:
-        if si['player_only']:
-            for mc in si['managed']:
-                po_pids_per_club[mc].add(si['pid'])
-    # Club adoptions (`PlayerAssignment.assigned_club`): the club card takes
-    # the player's rows in clubs no card owns, and — exactly as for an sa
-    # override — no agent box may claim him through scope. Mirror both sides
-    # here or the scan reports a phantom orphan / double-count.
-    from app.union_data import club_adoptions as _club_adoptions
-    _adopt_by_club = _club_adoptions()
-    _adopt_club_of = {pid: cn for cn, pids in _adopt_by_club.items() for pid in pids}
-    _owned_club_names = all_managed | tracked_clubs
+    # Rows the cards consider at all. A row outside this filter is counted
+    # nowhere by design and is not an orphan.
+    _countable = [DailyPlayerStats.role != 'Name Entry',
+                  DailyPlayerStats.role.isnot(None),
+                  DailyPlayerStats.role != '']
 
-    for r in DailyPlayerStats.query.yield_per(5000):
-        if (r.role or '') == 'Name Entry': continue
-        cards_hit = []
-        _adopted_by = _adopt_club_of.get(r.player_id, '')
-        if _adopted_by and r.club not in _owned_club_names:
-            # Counted on the adopting club's card; nothing else may take it.
-            if _adopted_by in tracked_clubs:
-                cards_hit.append('CLUB:' + _adopted_by)
-            else:
-                # Registered club → the owning SA's card claims it via the
-                # sa override written alongside the adoption.
-                pass
-        # CLUB card claims the row unless its sa/agent sits in a managing-SA's
-        # hierarchy — in that case the SA's shared-managed predicate takes it.
-        if r.club in tracked_clubs:
-            claimed_by_sa = False
-            for sa_pid in sas_per_tracked.get(r.club, ()):
-                sa = next((s for s in sa_info if s['pid'] == sa_pid), None)
-                if sa and (r.sa_id in sa['hier'] or r.agent_id in sa['hier']):
-                    claimed_by_sa = True
-                    break
-            if not claimed_by_sa:
-                cards_hit.append('CLUB:' + (r.club or ''))
-        for sa in sa_info:
-            in_cur = (r.player_id in sa['cur']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
-            # PLAYER_ONLY SAs must not extend current_scope into their
-            # managed clubs beyond their own player_id — downline rows
-            # in those clubs belong to the actual roster manager.
-            if sa['player_only'] and r.club in sa['managed'] and r.player_id != sa['pid']:
-                in_cur = False
-            # Managed-club claim: if club is in sa's managed AND also tracked
-            # (shared), require explicit sa/agent in hierarchy (per-row). If
-            # it's managed but not tracked, claim unconditionally as before.
-            if r.club in sa['managed']:
-                if sa['player_only']:
-                    # PLAYER_ONLY SAs claim only their own player_id row.
-                    in_managed = (r.player_id == sa['pid'])
-                elif r.club in tracked_clubs:
-                    in_managed = (r.sa_id in sa['hier']) or (r.agent_id in sa['hier'])
-                else:
-                    in_managed = True
-                    # Subtract rows owned by any PLAYER_ONLY SA that
-                    # registered the same club (those rows belong to
-                    # that SA, not here).
-                    if r.player_id in po_pids_per_club.get(r.club, ()) and r.player_id != sa['pid']:
-                        in_managed = False
-            else:
-                in_managed = False
-            # Override applies the SAME carve-out as current_scope: a row in
-            # another card's managed or tracked club belongs to THAT card,
-            # not to us — mirrors get_agent_totals' override predicate.
-            in_ov = (r.player_id in sa['ov']) and (r.club not in (all_managed | tracked_clubs) or r.club in sa['managed'])
-            # Adopted into a HOUSE club's card: that card owns the row, so the
-            # scope-based claims (which the real predicate drops for an
-            # explicitly placed player) must not fire here either.
-            if _adopted_by and _adopted_by in tracked_clubs and r.club not in _owned_club_names:
-                in_cur = in_ov = False
-            if in_cur or in_managed or in_ov:
-                cards_hit.append(sa['pid'])
+    row_cards = defaultdict(list)      # row id -> cards claiming it
+    for _nick, _pid in OVERVIEW_MANAGERS + OVERVIEW_EXTERNAL_AGENTS:
+        if _pid in subordinate:
+            continue
+        _preds, _ = build_agent_scope_preds(_pid, DailyPlayerStats)
+        if not _preds:
+            continue
+        for (_rid,) in DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.id).filter(*_countable, _or(*_preds)).all():
+            row_cards[_rid].append(_pid)
+    for _cnm, _cid in OVERVIEW_CLUBS:
+        _club_name = cid_to_name.get(_cid)
+        if not _club_name and DailyPlayerStats.query.filter(
+                DailyPlayerStats.club == _cid).first():
+            _club_name = _cid
+        if not _club_name:
+            continue
+        for (_rid,) in DailyPlayerStats.query.with_entities(
+                DailyPlayerStats.id).filter(
+                *_countable,
+                build_club_scope_pred(_club_name, DailyPlayerStats)).all():
+            row_cards[_rid].append('CLUB:' + _club_name)
+
+    for r in DailyPlayerStats.query.filter(*_countable).yield_per(5000):
+        cards_hit = row_cards.get(r.id, ())
         rk = float(r.rake or 0); pl = float(r.pnl or 0)
         if not cards_hit:
-            # Only flag as orphan (per-player) if it's in a managed club (SPC T/SPC C).
-            if r.club in orphan_clubs:
-                d = orphans[r.player_id]
-                d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
-                d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
+            # A row on no card at all. No club filter any more: the old list
+            # was pinned to SPC T / SPC C, so a NEW club arriving with no
+            # owner would have hidden its orphans. Every club with an owner
+            # claims all of its rows, so nothing noisy can reach here.
+            d = orphans[r.player_id]
+            d['rake'] += rk; d['pnl'] += pl; d['rows'] += 1
+            d['nick'] = r.nickname or d['nick']; d['club'] = r.club or d['club']
             # Track as "unknown club" if the club isn't registered anywhere.
             if r.club and r.club not in all_registered_clubs and r.club not in orphan_clubs:
                 d = unknown_clubs[r.club]
