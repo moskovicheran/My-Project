@@ -1211,6 +1211,24 @@ def _dashboard_impl(template_override=None):
         player_sa_lookup = dict(SM.query.with_entities(
             SM.player_id, sqlfunc.max(SM.sa_id)
         ).filter(*_sa_lookup_filters).group_by(SM.player_id).all())
+        # A house-club claim places a player exactly like a manual override
+        # does, but lives in its own table, so the lookup above never sees it:
+        # a claimed player's own rows carry NO sa/agent at all, which means he
+        # is absent here and the child-SA guard below reads that missing entry
+        # as "not mine" and drops him. `build_agent_scope_preds` meanwhile DOES
+        # count his rows, so the card total included him while no line anywhere
+        # showed where the money came from (F@Taxi Driver's 1,443.90 inside
+        # Mangisto's 17,952.55). Applied BEFORE the overrides below, so a
+        # manual assignment still wins over a claim.
+        from app.union_data import get_house_club_claims
+        _claim_scope = set(all_sa_ids) | my_known_agent_ids
+        for _cl in (get_house_club_claims() or []):
+            _c_sa = (_cl.assigned_sa_id or '').strip()
+            _c_ag = (_cl.assigned_agent_id or '').strip()
+            if _c_sa and (_c_sa in _claim_scope
+                          or (_c_ag and _c_ag in _claim_scope)):
+                player_sa_lookup[_cl.player_id] = _c_sa
+
         # Apply sa overrides to the lookup
         for _pid, _ov in overrides_map.items():
             if _ov.get('sa_id'):
