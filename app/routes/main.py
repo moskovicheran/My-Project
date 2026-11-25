@@ -1222,12 +1222,15 @@ def _dashboard_impl(template_override=None):
         # manual assignment still wins over a claim.
         from app.union_data import get_house_club_claims
         _claim_scope = set(all_sa_ids) | my_known_agent_ids
+        claim_agent_map = {}      # pid -> the agent the claim files him under
         for _cl in (get_house_club_claims() or []):
             _c_sa = (_cl.assigned_sa_id or '').strip()
             _c_ag = (_cl.assigned_agent_id or '').strip()
             if _c_sa and (_c_sa in _claim_scope
                           or (_c_ag and _c_ag in _claim_scope)):
                 player_sa_lookup[_cl.player_id] = _c_sa
+                if _c_ag:
+                    claim_agent_map[_cl.player_id] = _c_ag
 
         # Apply sa overrides to the lookup
         for _pid, _ov in overrides_map.items():
@@ -1245,6 +1248,13 @@ def _dashboard_impl(template_override=None):
             all_my_player_ids.add(pid)
             # Apply agent_id override — if admin attached this player to a specific agent
             _ov = overrides_map.get(pid)
+            # A claim names the agent it files the player under — honour it the
+            # same way, so he shows as an agent of his own in "הסוכנים שלי"
+            # rather than buried in the collapsed direct-players card. An
+            # explicit override still wins, so it is applied after this.
+            _cl_ag = claim_agent_map.get(pid)
+            if _cl_ag:
+                ag_id = _cl_ag
             if _ov and _ov.get('agent_id'):
                 ag_id = _ov['agent_id']
             _is_overridden = bool(_ov and (_ov.get('sa_id') or _ov.get('agent_id')))
